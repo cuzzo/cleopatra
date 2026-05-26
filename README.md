@@ -65,11 +65,13 @@ The goal is to generate:
 
  1. 200 simplification commits from history.
  2. 200 feature request commits from history.
- 3. 400 synthetic feature requests by deleting functions, classes, files and telling the model to fix it.
- 4. 400 synthetic trivial bugs introduced via mutant tests
- 5. 100 real bugs from CLEAR.
-    
-For each of these:
+ 3. 100 real bugs from CLEAR.
+ 4. 400 synthetic feature requests by deleting functions, classes, files and telling the model to fix it.
+ 5. 400 synthetic trivial bugs introduced via mutant tests.
 
- * We will have DeepSeek v4 Flash generate possible *working* solutions - they will *likely* be sloppier than the true implementation (these will be the alternative paths to train GRAM).
- * We will save DeepSeek's tool calling, etc, to improve tool calling in a more powerful model later, if this method turns out to be viable.
+For #1, #2, #4 #5 - we will generate permutations of partial implementations throughout history that are less ideal versions to train our model.
+
+For #3:
+
+ * We will have other models (DeepSeek v4 Flash, Qwen Coder 30B, Phi 3.8B MoE, etc) generate solutions (which will likely be sloppier than the solution chosen from history).
+ * We will save their tool calling, etc, to improve tool calling in a more powerful model later, if this method turns out to be viable.
