@@ -53,14 +53,23 @@ If the test is successful, it is *realistic* to belive a model Phi 3.8B MoE size
 
 We want to validate or invalidate the hypothesis as quickly and cheaply as possible.
 
-Since I already can generate good AI sloppiness metrics for Ruby code, the first model will be specifically fine tuned only for Ruby code.
+Existing training methods *likely* work better than the approach we want to try.  But, we want to try something *somewhat* like JEPA.
 
- 1. [The Stack v2 (BigCode)](https://huggingface.co/datasets/bigcode/the-stack-v2) - Ruby Only
- 2. [Project CodeNet](https://huggingface.co/datasets/TheFinAI/ibm-project-codenet) - Ruby Only
- 3. [OpenCodeReasoning-2](https://huggingface.co/datasets/nvidia/OpenCodeReasoning-2) - Select Python scripts converted to Ruby (with conversion errors kept for additional training data)
- 5. [TACO](https://huggingface.co/datasets/BAAI/TACO) - ^^
+Idea:
 
-To determine feasibility of the hypothesis, we select 1k Ruby examples.
+ 1. Take the [CLEAR](https://github.com/cuzzo/clear) codebase.
+ 2. Similar to JEPA, we want to randomly hide functions and classes at different points in time in the repository and tell the model to fill in the blanks.  It will *likely* choose many paths that don't work, or are worse than the one chosen.
+ 3. We will use a version of mutant testing to generate synthetic bugs, and then tell the code to model to fix the bugs.  Most of the time it will *likely* fail.
 
- * For each example, we will have DeepSeek v4 Flash generate 10 other plausible, sloppy implementations.
- * We will keep the tool calling and fixing for additional training data later (assuming the hypothesis is not quickly completely invalidated).
+The goal is to generate:
+
+ 1. 200 simplification commits from history.
+ 2. 200 feature request commits from history.
+ 3. 400 synthetic feature requests by deleting functions, classes, files and telling the model to fix it.
+ 4. 400 synthetic trivial bugs introduced via mutant tests
+ 5. 100 real bugs from CLEAR.
+    
+For each of these:
+
+ * We will have DeepSeek v4 Flash generate possible *working* solutions - they will *likely* be sloppier than the true implementation (these will be the alternative paths to train GRAM).
+ * We will save DeepSeek's tool calling, etc, to improve tool calling in a more powerful model later, if this method turns out to be viable.
