@@ -75,3 +75,25 @@ For #3:
 
  * We will have other models (DeepSeek v4 Flash, Qwen Coder 30B, Phi 3.8B MoE, etc) generate solutions (which will likely be sloppier than the solution chosen from history).
  * We will save their tool calling, etc, to improve tool calling in a more powerful model later, if this method turns out to be viable.
+
+## The obvious hurdles
+
+Let's *assume* that GRAM can make a model 2000x better at local reasoning.
+
+The problem is that most feature requests are non-local.  A larger model has a massively unfair advantage against a smarter model on a huge context (most code).
+
+GRAM / JEPA *theoretically* can help here.  Our model can explore many different paths of what it should include in it's context.
+
+If it can be 2000x smarter at selectively including data in its context, it may be able to perform tasks a model of its size cannot currently be expected to peform.
+
+ * SOTA 3B models cannot reliably make changes across several files, or non-greenfield changes over 20+ lines.
+ * SOTA 14B models can.
+
+A 3B model isn't *that* helpful if it's as good as a 14B model, but still limited in use to only fixing single, small function problems reliably.
+
+A 16B MoE model isn't *that* helpful if it can only make small architectural changes reliably - but if it can perform like a 50B model, those SOTA models *can* make those changes.
+
+## The goal
+
+ 1. We want to take a task a model *can* perform - like single function changes for a 3B model - and make it perform as well as models 10x larger.
+ 2. We want to expand the scope of a model to be able to perform tasks a model 2-4x larger can perform.
