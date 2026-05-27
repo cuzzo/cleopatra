@@ -27,11 +27,16 @@ The problem is their implementations are *sloppy*, or overly complex, have bad a
 
 ## How GRAM *might* help
 
-The goal of this model is to score solutions based on how sloppy they are based on a number of CodeQL static analysis / code health metrics.
+We want to explore two paths where GRAM *might* help:
 
-GRAM can explore many paths simultaneously and chose the least sloppy working path, not just the a path that works.
+ 1. Using CodeQL style metrics to score solutions based on how sloppy they are to improve quality.
+ 2. Using tool calling to fit better quality context into a smaller window.
 
-That is the goal, time will tell if it works.
+GRAM can explore many paths simultaneously and chose the one with the best context or the least sloppy solution and choose the winners.
+
+GRAM improved reasoning by 5000-10000.
+
+If it can *only* improve tool calling by *only* 10x, or *only* local reasoning for bugs by 10x - either of those on their own would be huge.  If the two compound, it would be incredible.
 
 ## How to test it
 
@@ -97,3 +102,7 @@ A 16B MoE model isn't *that* helpful if it can only make small architectural cha
 
  1. We want to take a task a model *can* perform - like single function changes for a 3B model - and make it perform as well as models 10x larger.
  2. We want to expand the scope of a model to be able to perform tasks a model 2-4x larger can perform.
+
+## Order of operations
+
+It is easiest to validate the tool calling hypothesis, since we can easily generate tons of synthetic data for this.  We will start there. 
