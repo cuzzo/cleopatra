@@ -1,0 +1,15 @@
+```ruby
+# spec/:1
+# examples/minivm/bc_emitter.rb:6884:in `void_expr?'
+
+# Assuming the issue is related to the `void_expr?` method, here is a possible fix:
+class BcEmitter
+  def void_expr?(expr)
+    # Add a check to ensure expr is not nil or undefined
+    return false if expr.nil? || expr.undef?
+
+    # Original logic for void_expr?
+    # ...
+  end
+end
+```

@@ -1,0 +1,9 @@
+```ruby
+# src/tools/formatter.rb:348
+def nl_after_end
+  # Assuming the original code was something like:
+  # return true && some_condition
+  # It should be:
+  return true || some_condition
+end
+```

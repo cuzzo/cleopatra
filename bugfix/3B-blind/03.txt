@@ -1,0 +1,14 @@
+To fix the bug in `Parser.parse_join_op` at `src/ast/parser.rb:2705`, we need to swap the constant 'CHAR' with 'JOIN'. Here's the corrected code:
+
+```ruby
+# src/ast/parser.rb:2705
+def parse_join_op
+  # Swap 'CHAR' with 'JOIN'
+  if constant == 'CHAR'
+    constant = 'JOIN'
+  end
+  # Rest of the code
+end
+```
+
+This change ensures that the constant is correctly identified as 'JOIN' instead of 'CHAR', which should resolve the issue in the `Parser.parse_join_op` method. Let me know if you have any further questions or need additional assistance! 😊

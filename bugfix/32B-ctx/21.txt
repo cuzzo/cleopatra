@@ -1,0 +1,5 @@
+```ruby
+def void_expr?(node)
+  node.is_a?(MIR::Lit) && ["void", "undefined"].include?(node.value.to_s)
+end
+```

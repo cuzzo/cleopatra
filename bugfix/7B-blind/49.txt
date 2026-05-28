@@ -1,0 +1,12 @@
+```ruby
+# Ensure that the constant is defined in the correct scope
+module ExprNode
+  OPERATOR = 'operator'
+end
+
+# In the parse_term method, use the fully qualified constant name
+def parse_term
+  # Your code here
+  ExprNode::OPERATOR
+end
+```

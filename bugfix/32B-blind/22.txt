@@ -1,0 +1,8 @@
+```ruby
+def parse_when_block
+  # Assuming the bug is related to range handling, adjust the end index by subtracting 1
+  start_index = token.index
+  end_index = token.end_index - 1
+  # Rest of the method implementation
+end
+```

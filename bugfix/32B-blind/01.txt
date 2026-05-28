@@ -1,0 +1,7 @@
+```ruby
+def discover_fields!
+  data.each_line do |line|
+    # Process each line
+  end
+end
+```

@@ -1,0 +1,9 @@
+```ruby
+def wrap_step_as_stmt(mir)
+  if mir.nil?
+    # Handle the nil case
+  else
+    # Handle the non-nil case
+  end
+end
+```

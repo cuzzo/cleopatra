@@ -1,0 +1,3 @@
+```ruby
+type_name = node.class.name&.split('::')&.last&.to_sym
+```

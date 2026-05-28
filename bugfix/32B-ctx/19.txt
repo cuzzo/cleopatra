@@ -1,0 +1,11 @@
+```ruby
+groups = {}
+actions.each do |action|
+  site, calls = primary_action_callsite(action)
+  site ||= "#{action["path"]}:#{action["line"]}"
+  group = groups[site] ||= { "site" => site, "calls" => 0, "actions" =>  }
+  group["calls"] += calls.to_i
+  group["actions"] << action
+end
+groups.values.sort_by { |group| [-group["actions"].size, -group["calls"].to_i, group["site"]] }
+```

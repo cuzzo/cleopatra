@@ -1,0 +1,13 @@
+```ruby
+def neglected_conditions
+  out = []
+  conditions.each do |condition|
+    next if condition[:covered]
+    out << { # Forgotten line
+      line: condition[:line],
+      condition: condition[:condition]
+    }
+  end
+  out
+end
+```

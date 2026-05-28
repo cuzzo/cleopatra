@@ -1,0 +1,7 @@
+```ruby
+def wrap_step_as_stmt(mir)
+  unless mir.nil?
+    # existing code
+  end
+end
+```

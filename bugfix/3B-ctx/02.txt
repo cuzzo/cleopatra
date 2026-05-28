@@ -1,0 +1,46 @@
+To fix the bug, we need to ensure that the `SemanticAnnotator` class is properly bound before accessing its methods. The error message indicates that the `SemanticAnnotator` class is not bound, which is causing the `verify_handler_reachability!` method to fail.
+
+Here's the corrected code:
+
+```ruby
+T.bind(self, SemanticAnnotator) rescue nil
+  node    = site[:node]
+  clause  = node.lock_error_clause
+  return unless clause
+
+  # MVCC L5 + True-Sync-Polymorphism (#324 / #330):
+  # SNAPSHOT-transaction blocks have a per-cell-family possibility
+  # set:
+  #   @versioned       -> {MvccConflict}    (Versioned.update bounded retry)
+  #   @indirect:atomic -> {AtomicConflict}  (AtomicPtr.update bounded retry)
+  # LockTimeout / LockCycle / Deadlock never apply because the
+  # lock-free CAS paths don't acquire a mutex. The cell-family
+  # check mirrors the dispatch in
+  # SemanticAnnotator#validate_lock_error_clause!.
+  if node.snapshot_mode == :transaction
+    has_atomic_ptr = (node.capabilities || []).any? { |c|
+      next false unless c[:capability] == :SNAPSHOT
+      sym = c[:var_node]&.respond_to?(:symbol) ? c[:var_node].symbol : nil
+      sym && sym.atomic? && sym.respond_to?(:layout) && sym.indirect?
+    }
+    possible = Set.new([has_atomic_ptr ? :AtomicConflict : :MvccConflict])
+  else
+    possible = Set.new
+    possible << :LockTimeout if site[:cap_types].any?
+    site[:cap_types].each do |t|
+      possible << :LockCycle if types_in_cycle.include?(t)
+      possible << :Deadlock  if types_with_self.include?(t)
+    end
+  end
+  possible << :GuardFail if (node.capabilities || []).any? { |c| c[:guard_expr] }
+
+  clause[:selectors].each do |sel|
+    expansion = case sel[:form]
+                  when :kind then AST.types_for_kind(sel[:name]).to_set
+                  when :type then Set.new([sel[:name]])
+                  else Set.new
+                  end
+    reachable = expansion & possible
+    next unless reachable.empty?
+
+    label = sel[:name].to_s

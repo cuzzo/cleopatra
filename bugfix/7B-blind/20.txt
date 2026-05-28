@@ -1,0 +1,7 @@
+```ruby
+# src/mir/mir_lowering.rb
+def register_ownership_finalization_visible_names!(state)
+  guarded_cleanup_names = state[:guarded_cleanup_names]
+  # Rest of the method
+end
+```

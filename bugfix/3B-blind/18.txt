@@ -1,0 +1,12 @@
+To fix the bug in `PipelineHost.build_mat_set` at src/backends/pipeline_host.rb:804, we need to swap the constant 'MIR' with 'CallableContract'. Here's the corrected code:
+
+```ruby
+# src/backends/pipeline_host.rb:804
+def build_mat_set
+  # Swap 'MIR' with 'CallableContract'
+  constant = 'CallableContract'
+  # Rest of the code
+end
+```
+
+This change ensures that the constant used in the `build_mat_set` method is correctly defined as 'CallableContract', which should resolve the issue. Let me know if you need further assistance!

@@ -1,0 +1,5 @@
+```ruby
+def reject_bare_atomic_ptr_mutation!(field_node)
+  # Your code here
+end
+```

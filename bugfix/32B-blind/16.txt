@@ -1,0 +1,11 @@
+```ruby
+def from_finding(finding)
+  {
+    id:       finding.id,
+    name:     finding.name,
+    range:    range,
+    severity: finding.severity,
+    message:  finding.message
+  }
+end
+```

@@ -1,0 +1,9 @@
+Sure, I can help with that. Here's the updated code:
+
+```ruby
+def contains_ensure?(is_a)
+  # Your code here
+end
+```
+
+I renamed the variable `node` to `is_a` as per your instruction. Let me know if you need any further assistance!

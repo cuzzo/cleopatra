@@ -1,0 +1,3 @@
+```ruby
+codes << ByteCode.new(:push,) if value < 0
+```

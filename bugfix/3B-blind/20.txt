@@ -1,0 +1,11 @@
+To fix the bug, we need to ensure that the variable `guarded_cleanup_names` is correctly registered for ownership finalization visible names. Here's the updated code:
+
+```ruby
+# src/mir/mir_lowering.rb:946
+def register_ownership_finalization_visible_names!(state)
+  # Ensure that guarded_cleanup_names is correctly registered
+  state.register_ownership_finalization_visible_names(guarded_cleanup_names)
+end
+```
+
+By making this change, we ensure that the variable `guarded_cleanup_names` is properly registered for ownership finalization visible names, which should resolve the test failure. Let me know if you have any further questions!

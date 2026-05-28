@@ -1,0 +1,32 @@
+To fix the bug, we need to ensure that the `ExprNode` is correctly instantiated and returned for each type of token. The current code is missing the instantiation of `ExprNode` for the `SYMBOL` type, which should be handled similarly to the `INTEGER` and `STRING` types.
+
+Here's the corrected code:
+
+```ruby
+if @tokens[@pos].type == :INTEGER
+  ExprNode.new(type: :Integer, value: consume(:INTEGER).value)
+
+# If the current token is a string:
+elsif @tokens[@pos].type == :STRING
+  ExprNode.new(type: :String, value: consume(:STRING).value)
+
+# If the current token is a symbol (like `result`):
+elsif @tokens[@pos].type == :SYMBOL
+  name = consume(:SYMBOL).value
+
+  # If the next token is a `(`, it's a function call:
+  if @tokens[@pos]&.type == :OPERATOR && @tokens[@pos].value == "("
+    ExprNode.new(type: :Call, name: name, args: parse_call_args)
+
+  # Otherwise, it's a simple variable:
+  else
+    ExprNode.new(type: :Variable, name: name)
+  end
+
+# If we see anything else, it's a syntax error for now:
+else
+  raise "Unexpected expression token #{@tokens[@pos].inspect}"
+end
+```
+
+This ensures that `ExprNode` is instantiated and returned for each type of token, fixing the bug and allowing the parser to correctly handle different types of expressions. --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---

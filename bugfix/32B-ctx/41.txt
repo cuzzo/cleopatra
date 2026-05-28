@@ -1,0 +1,20 @@
+```ruby
+fix = Fix.new(
+      description: "Replace `#{rule[:match]}` with `#{rule[:replace]}` — #{rule[:label]}.",
+      confidence: :auto,
+      edits: [Edit.new(
+        span: Span.new(file: nil, line: line, col: col, length: rule[:match].length),
+        replacement: rule[:replace]
+      )]
+    )
+
+anchor = Struct.new(:line, :column).new(line, col)
+finding = FixableFinding.new(
+      level: :error,
+      message: "Unknown operator `#{rule[:match]}` — did you mean `#{rule[:replace]}`?",
+      token: anchor,
+      category: :type,
+      fixes: [fix]
+    )
+FixCollector.push(finding)
+```

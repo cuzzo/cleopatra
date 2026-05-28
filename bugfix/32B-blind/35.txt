@@ -1,0 +1,7 @@
+```ruby
+def contains_ensure?(node, value)
+  return false if node.nil?
+  return true if node.value == value
+  contains_ensure?(node.left, value) || contains_ensure?(node.right, value)
+end
+```

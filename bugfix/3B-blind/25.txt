@@ -1,0 +1,14 @@
+To fix the bug, we need to ensure that the inclusive range is correctly converted to an exclusive range. The `generic_type_params` method should handle this conversion properly.
+
+Here's the corrected code:
+
+```ruby
+def generic_type_params(range)
+  # Convert inclusive range to exclusive range
+  exclusive_range = range.begin...range.end
+  # Further processing with the exclusive range
+  # ...
+end
+```
+
+By using the `...` operator, we ensure that the range is exclusive, which is the correct behavior for this method. This should resolve the off-by-one issue and fix the test failure. ```

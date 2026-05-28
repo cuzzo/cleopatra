@@ -1,0 +1,7 @@
+```ruby
+def sigs
+  unless entry.is_a?(Array)
+    # Your existing code here
+  end
+end
+```

@@ -1,0 +1,9 @@
+```ruby
+def record_case
+  pats = []
+  (0...pattern.length).each do |p|
+    pats << slice(p)
+  end
+  pats
+end
+```

@@ -1,0 +1,3 @@
+```ruby
+!defined?(saved) || !saved
+```

@@ -1,0 +1,28 @@
+```ruby
+return false unless is_a
+      return false if is_a.is_a?(Prism::DefNode) || is_a.is_a?(Prism::ClassNode) || is_a.is_a?(Prism::ModuleNode)
+      return true if is_a.is_a?(Prism::EnsureNode)
+      is_a.respond_to?(:child_nodes) && is_a.child_nodes.compact.any? { |child| contains_ensure?(child) }
+``` ```ruby
+return false unless is_a
+      return false if is_a.is_a?(Prism::DefNode) || is_a.is_a?(Prism::ClassNode) || is_a.is_a?(Prism::ModuleNode)
+      return true if is_a.is_a?(Prism::EnsureNode)
+      is_a.respond_to?(:child_nodes) && is_a.child_nodes.compact.any? { |child| contains_ensure?(child) }
+``` ```ruby
+return false unless is_a
+      return false if is_a.is_a?(Prism::DefNode) || is_a.is_a?(Prism::ClassNode) || is_a.is_a?(Prism::ModuleNode)
+      return true if is_a.is_a?(Prism::EnsureNode)
+      is_a.respond_to?(:child_nodes) && is_a.child_nodes.compact.any? { |child| contains_ensure?(child) }
+``` ```ruby
+return false unless is_a
+      return false if is_a.is_a?(Prism::DefNode) || is_a.is_a?(Prism::ClassNode) || is_a.is_a?(Prism::ModuleNode)
+      return true if is_a.is_a?(Prism::EnsureNode)
+      is_a.respond_to?(:child_nodes) && is_a.child_nodes.compact.any? { |child| contains_ensure?(child) }
+``` ```ruby
+return false unless is_a
+      return false if is_a.is_a?(Prism::DefNode) || is_a.is_a?(Prism::ClassNode) || is_a.is_a?(Prism::ModuleNode)
+      return true if is_a.is_a?(Prism::EnsureNode)
+      is_a.respond_to?(:child_nodes) && is_a.child_nodes.compact.any? { |child| contains_ensure?(child) }
+``` ```ruby
+return false unless is_a
+      return false if is_a.is_a?(Prism::DefNode) || is_a.is_a?(Prism::ClassNode) || is_a.is_a?(Prism::ModuleNode

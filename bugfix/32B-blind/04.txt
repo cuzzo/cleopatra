@@ -1,0 +1,8 @@
+```ruby
+def finalize
+  # Assuming 'segments' is the correct variable name now
+  segments.each do |segment|
+    # Your existing code logic here
+  end
+end
+```

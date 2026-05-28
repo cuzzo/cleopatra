@@ -1,0 +1,3 @@
+```ruby
+alias_snapshot_for_catch_body
+```

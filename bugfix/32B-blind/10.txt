@@ -1,0 +1,8 @@
+```ruby
+def auto?
+  # Assuming the original line was something like:
+  # return false if condition1 || condition2
+  # It should be:
+  return false if condition1 && condition2
+end
+```

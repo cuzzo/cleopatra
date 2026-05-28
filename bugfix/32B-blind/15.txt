@@ -1,0 +1,6 @@
+```ruby
+def check_var_args
+  # Assuming the line in question was something like this:
+  # if condition1 && condition2
+  # It should be:
+  if condition1 || condition

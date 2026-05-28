@@ -1,0 +1,9 @@
+```ruby
+class PipelineHost
+  def self.build_mat_set
+    # Assuming MIR and CallableContract are constants that need to be swapped
+    MIR, CallableContract = CallableContract, MIR
+    # Rest of the method implementation
+  end
+end
+```

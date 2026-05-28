@@ -1,0 +1,7 @@
+```ruby
+def emit_typo_finding!(typo, new)
+  # Assuming the method uses 'fix' which is now renamed to 'new'
+  puts "Typo found: #{typo}, suggested fix: #{new}"
+  # Other logic using 'new' instead of 'fix'
+end
+```

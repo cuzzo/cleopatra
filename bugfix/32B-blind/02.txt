@@ -1,0 +1,11 @@
+```ruby
+def verify_handler_reachability!
+  begin
+    # existing code that may raise an error
+  rescue => e
+    # log the error or handle it appropriately
+    Rails.logger.error("Error verifying handler reachability: #{e.message}")
+    raise e # re-raise the error to ensure it's not swallowed
+  end
+end
+```

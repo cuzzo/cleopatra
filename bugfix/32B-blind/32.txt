@@ -1,0 +1,5 @@
+```ruby
+def flow_body_terminates?
+  swapped || some_other_condition
+end
+```

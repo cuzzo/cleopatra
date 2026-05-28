@@ -1,0 +1,7 @@
+```ruby
+# classifier.rb:109
+def trivial?
+  return false if @data.nil? || @data.empty?
+  @data.all? { |item| item == @data.first }
+end
+```

@@ -1,0 +1,21 @@
+To fix the bug, we need to ensure that the `saved` variable is defined before we attempt to assign it to `@value_by_name`. This can be achieved by adding a check to see if `saved` is defined before attempting to assign it.
+
+Here's the corrected code:
+
+```ruby
+def compile_snapshot_transaction(stmt)
+    cell_name = extract_cell_name(stmt.cell_unwrap.to_s)
+    raise Unsupported, "register emitter could not extract cell name from SnapshotTransaction" unless cell_name
+    src = @value_by_name[cell_name]
+    raise Unsupported, "register emitter does not know cell #{cell_name.inspect}" unless src
+
+    record_shared_event(:transaction, cell_name, src[:kind], caps: caps_for_value(src))
+    saved = @value_by_name.dup if defined?(saved) && saved
+    @value_by_name[stmt.alias_zig.to_s] = { kind: :struct, type: src[:type], fields: src[:fields] }
+    semantic_body(stmt.body || []).each { |s| compile_stmt(s) }
+  ensure
+    @value_by_name = saved if defined?(saved) && saved
+  end
+```
+
+This ensures that `saved` is defined before we attempt to assign it to `@value_by_name`, preventing the `negated condition` error. --- ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ``` ```

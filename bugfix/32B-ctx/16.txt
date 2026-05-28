@@ -1,0 +1,13 @@
+```ruby
+tok    = finding.token
+length = token_length(tok, source_text)
+range  = Position.range_for(tok, length, source_text)
+
+{
+  range:    range,
+  severity: SEVERITY_FOR_LEVEL.fetch(finding.level, SEVERITY_ERROR),
+  source:   SOURCE_NAME,
+  message:  finding.message.to_s,
+  code:     code_for(finding),
+}.compact
+```

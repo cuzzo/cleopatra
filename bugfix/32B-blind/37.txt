@@ -1,0 +1,8 @@
+```ruby
+def compile_struct_map_set
+  # Assuming the line in question is a conditional check
+  if swapped || condition
+    # existing code
+  end
+end
+```

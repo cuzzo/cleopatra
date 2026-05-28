@@ -1,0 +1,5 @@
+```ruby
+def emit_typo_finding!(typo, new)
+  # Your code here
+end
+```

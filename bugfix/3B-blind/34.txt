@@ -1,0 +1,4 @@
+```python
+def append_gap_actions(actions, gap):
+    # ... (rest of the function remains unchanged)
+```

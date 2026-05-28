@@ -1,0 +1,54 @@
+```ruby
+skip_patches = []
+# Pool-element bindings (`IF pool[id] AS env { ... mutate env ... }`)
+# need writeback at body end: env is a COPY of the pool slot in the VM
+# (pool elements are Values, not pointers), so mutations to env don't
+# reach pool[id] without an explicit list-set! at scope exit.
+pool_writebacks = []
+node.bindings.each do |b|
+  expr = b[:expr]
+  capture = b[:capture].to_s
+  pool_node, idx_node, pool_elem = pool_get_components(expr)
+  compile_expr_to_value(expr); pop_type
+  alloc_slot(capture, :any) unless has_slot?(capture)
+  # Pool element struct hint: when the bound value is a struct fetched
+  # from a typed pool, stamp the slot so field-access dispatch
+  # (expr_collection_kind / find_field_index) can route through the
+  # right struct schema (e.g. env.vars -> :map for HashMap<...> fields).
+  if pool_elem && @struct_fields&.key?(pool_elem)
+    @slot_types[capture] = :"struct_#{pool_elem}"
+  else
+    @slot_types[capture] = :any
+  end
+  emit_op(STORE_SLOT, @slots[capture])
+  emit_op(LOAD_SLOT, @slots[capture])
+  emit_op(JUMP_IF_FALSE)  # nil is falsy
+  skip_patches << @ops.length
+  emit_op(0)
+  pool_writebacks << [capture, pool_node, idx_node] if pool_node
+end
+
+emit_body_stmts(node.then_body)
+
+# Writeback each pool binding: pool = list-set!(pool, idx, env). Must
+# happen on the success path (after body, before exiting to else/end).
+pool_writebacks.each do |capture, pool_node, idx_node|
+  next unless pool_node.is_a?(MIR::Ident) && has_slot?(pool_node.name.to_s)
+  compile_expr_to_value(pool_node); pop_type
+  compile_expr_to_value(idx_node); pop_type
+  emit_op(LOAD_SLOT, @slots[capture])
+  emit_op(NATIVE_CALL, NATIVES["list-set!"], 3)
+  emit_store(pool_node.name.to_s, :any)
+  emit_op(POP)  # consume the new_list copy STORE_SLOT left
+end
+
+if node.else_body && !node.else_body.empty?
+  emit_op(JUMP); end_patch = @ops.length; emit_op(0)
+  skip_patches.each { |idx| @ops[idx] = @ops.length }
+  emit_body_stmts(node.else_body)
+  @ops[end_patch] = @ops.length
+else
+  skip_patches.each { |idx| @ops[idx] = @ops.length }
+end
+push_type(:void)
+```

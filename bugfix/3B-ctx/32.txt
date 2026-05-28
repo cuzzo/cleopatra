@@ -1,0 +1,50 @@
+To fix the bug, we need to ensure that the `flow_body_terminates?` function correctly handles the case when the `last` statement is a `MIR::ScopeBlock`. The current implementation checks if the `last` statement is a `MIR::ScopeBlock` and then calls `flow_body_terminates?` on the `body` of the `last` statement. However, if the `body` is empty, the function should return `false`.
+
+Here's the corrected code:
+
+```ruby
+return false unless stmts && !stmts.empty?
+    last = stmts.last
+    case last
+    when MIR::ReturnStmt
+      true
+    when MIR::RawZig
+      last.code.to_s.include?("return;") || last.code.to_s.include?("return ")
+    when MIR::ScopeBlock
+      return false if last.body && last.body.empty?
+      flow_body_terminates?(last.body || [])
+    when MIR::IfStmt
+      flow_body_terminates?(last.then_body || []) &&
+        last.else_body && !last.else_body.empty? &&
+        flow_body_terminates?(last.else_body || [])
+    else
+      false
+    end
+```
+
+This change ensures that if the `body` of a `MIR::ScopeBlock` is empty, the function returns `false`, which is the correct behavior for this case. The rest of the function remains unchanged. --- ``` ``` ```ruby
+return false unless stmts && !stmts.empty?
+    last = stmts.last
+    case last
+    when MIR::ReturnStmt
+      true
+    when MIR::RawZig
+      last.code.to_s.include?("return;") || last.code.to_s.include?("return ")
+    when MIR::ScopeBlock
+      return false if last.body && last.body.empty?
+      flow_body_terminates?(last.body || [])
+    when MIR::IfStmt
+      flow_body_terminates?(last.then_body || []) &&
+        last.else_body && !last.else_body.empty? &&
+        flow_body_terminates?(last.else_body || [])
+    else
+      false
+    end
+``` ``` ```ruby
+return false unless stmts && !stmts.empty?
+    last = stmts.last
+    case last
+    when MIR::ReturnStmt
+      true
+    when MIR::RawZig
+      last.code.to_s.include?("return;")

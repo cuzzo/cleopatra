@@ -1,0 +1,5 @@
+```ruby
+def ownership_fact_covers_node?(ownership_fact, respond_to)
+  # Your implementation here
+end
+```

@@ -1,0 +1,28 @@
+To fix the bug in `NilKill::SourceIndex.array_element_shape_for_expression`, we need to ensure that the negated condition `return_node?(expr)` is correctly handled. The issue arises because the negation of `return_node?(expr)` is not correctly applied in the code.
+
+Here's the corrected code:
+
+```ruby
+case expr
+  when :bare_return
+    nil
+  when Prism::StatementsNode, Prism::BeginNode, Prism::ElseNode, Prism::ParenthesesNode
+    array_element_shape_for_expression(implicit_return_expression(expr))
+  else
+    if !return_node?(expr)
+      args = expr.respond_to?(:arguments) ? expr.arguments : nil
+      values = args&.arguments || []
+      return array_element_shape_for_expression(values.first || :bare_return)
+    end
+    case expr
+    when Prism::IfNode
+      left = array_element_shape_for_expression(implicit_return_expression(expr.statements))
+      right = expr.subsequent ? array_element_shape_for_expression(implicit_return_expression(expr.subsequent)) : nil
+      return nil unless left && right
+      merge_hash_record_shapes(left, right)
+    else
+      array_element_shape_for_value(expr)
+    end
+  end
+end
+```

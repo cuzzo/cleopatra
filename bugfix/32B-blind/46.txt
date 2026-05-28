@@ -1,0 +1,6 @@
+```ruby
+def ownership_fact_covers_node?(fact, node)
+  # Assuming 'respond_to' was mistakenly used where 'node' should be
+  fact.node == node
+end
+```

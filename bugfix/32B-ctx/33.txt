@@ -1,0 +1,10 @@
+```ruby
+(node.handlers || []).each do |clause|
+  case clause[:action]
+  when :exit
+    visit(clause[:message]) if clause[:message]
+  when :block
+    visit_stmts(clause[:body]) if clause[:body]
+  end
+end
+```

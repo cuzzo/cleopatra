@@ -1,0 +1,31 @@
+To fix the CI failing spec, we need to ensure that the `compile_statements` method in the `examples/puck/v9/compiler.rb` file is correctly handling the input and producing the expected output. Here's a step-by-step approach to address the issue:
+
+1. **Understand the Problem**: The CI is failing because the `compile_statements` method is not producing the expected output. This could be due to incorrect logic, missing input handling, or incorrect output generation.
+
+2. **Review the Code**: Open the `examples/puck/v9/compiler.rb` file and examine the `compile_statements` method. Look for any logic that might be causing the failure.
+
+3. **Add Input Handling**: Ensure that the method is receiving the correct input. If the input is not being handled correctly, the method might be producing incorrect output.
+
+4. **Correct Logic**: Review the logic within the method to ensure it is correctly processing the input and generating the expected output.
+
+5. **Test the Method**: After making changes, test the `compile_statements` method with various inputs to ensure it is producing the expected output.
+
+Here's an example of how the `compile_statements` method might be implemented:
+
+```ruby
+def compile_statements(statements)
+  # Initialize an empty array to store the compiled statements
+  compiled_statements = []
+
+  # Iterate over each statement in the input array
+  statements.each do |statement|
+    # Process each statement and add it to the compiled_statements array
+    compiled_statements << process_statement(statement)
+  end
+
+  # Return the array of compiled statements
+  compiled_statements
+end
+
+def process_statement(statement)
+  #

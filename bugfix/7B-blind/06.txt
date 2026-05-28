@@ -1,0 +1,3 @@
+```ruby
+pool_writebacks << [capture, pool_node, idx_node] if pool_node
+```

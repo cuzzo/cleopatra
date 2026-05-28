@@ -1,0 +1,8 @@
+```ruby
+def append_gap_actions(actions, gap_size)
+  gap_size.times do
+    actions << { type: :gap }
+  end
+  actions
+end
+```

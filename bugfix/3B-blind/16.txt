@@ -1,0 +1,12 @@
+To fix the issue in the `from_finding` function, you need to add the missing line `'range:    range,'` to the function. Here's the corrected code:
+
+```python
+def from_finding(data):
+    # Add the missing line
+    range:    range,
+    
+    # Your existing code here
+    # ...
+```
+
+This ensures that the `range` variable is defined and included in the function. Make sure to replace `# Your existing code here` with the rest of your function's logic.

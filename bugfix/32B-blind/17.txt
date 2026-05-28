@@ -1,0 +1,16 @@
+```ruby
+# lib/nil_kill/cli.rb
+def run
+  return if ARGV.empty?
+
+  command = ARGV.first
+  case command
+  when 'check'
+    check_for_nil
+  when 'fix'
+    fix_nil_issues
+  else
+    puts "Unknown command: #{command}"
+  end
+end
+```

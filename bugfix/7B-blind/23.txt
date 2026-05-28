@@ -1,0 +1,3 @@
+```ruby
+scoped_facts = param["type"].nil? || !NilKill.useful_type?(param["type"])
+```

@@ -1,0 +1,12 @@
+To fix the bug, we need to ensure that the variable `schema` is correctly renamed to `schema_lookup` in the `classify_non_copy_union` method. Here's the updated code:
+
+```ruby
+# src/mir/cleanup_classifier.rb
+def classify_non_copy_union(schema)
+  # Use schema_lookup instead of schema
+  schema_lookup = schema
+  # Rest of the method
+end
+```
+
+By renaming `schema` to `schema_lookup`, we ensure that the variable is used consistently throughout the method, which should resolve the test failure. Let me know if you have any further questions!

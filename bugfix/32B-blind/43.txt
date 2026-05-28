@@ -1,0 +1,6 @@
+```ruby
+def lower_order_by
+  # Assuming 'MIR' was incorrectly used and should be 'Ident'
+  order('Ident ASC')
+end
+```

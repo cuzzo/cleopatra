@@ -1,0 +1,5 @@
+```ruby
+def contains_ensure?(is_a)
+  is_a.include?("ensure")
+end
+```

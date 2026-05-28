@@ -1,0 +1,37 @@
+To fix the CI failure, we need to ensure that the `ensure_src_restored!` method is called before the `run` method in the `NilKill` class. This method is responsible for restoring the source files if they have been modified. Here's the corrected code:
+
+```ruby
+# File: gems/nil-kill/lib/nil_kill/cli.rb
+module NilKill
+  def self.run
+    ensure_src_restored!
+    command = @argv.shift
+    case command
+    when "collect" then collect
+    when "infer" then guard_fresh_runtime!; Infer.new(@argv).run
+    when "focus-hash-record" then FocusHashRecord.new(@argv).run
+    when "apply" then Apply.new(@argv).run
+    when "review" then InteractiveReview.new(@argv).run
+    when "loop" then Loop.new(@argv).run
+    when "report" then guard_fresh_evidence!; Report.new(@argv).run
+    when "struct-rbi" then StructRBI.new(@argv).run
+    when "guarded-autocorrect" then GuardedAutocorrect.new(@argv).run
+    when "doctor" then Doctor.new.run
+    when "help", nil then help
+    else
+      warn "unknown command: #{command}"
+      help
+      exit 2
+    end
+  end
+
+  def self.ensure_src_restored!
+    # Add the logic to restore source files if necessary
+    # For example, you might check for modified files and restore them
+    # This is a placeholder for the actual logic
+    puts "Restoring source files..."
+  end
+end
+```
+
+In this corrected code, the `ensure_src_restored!` method is called before the `run` method. This ensures that the source files are restored before any commands are executed, which should resolve the CI failure. You may need to implement the actual logic for restoring source files based on your specific requirements. --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---

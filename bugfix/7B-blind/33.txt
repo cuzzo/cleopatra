@@ -1,0 +1,10 @@
+```ruby
+def visit_SyncPolicyDecl(node)
+  case node.type
+  when :block
+    # Handle the block case
+  when :other_type
+    # Handle other cases
+  end
+end
+```

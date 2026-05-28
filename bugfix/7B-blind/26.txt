@@ -1,0 +1,6 @@
+```ruby
+# src/mir/cleanup_classifier.rb
+def classify_non_copy_union(schema_lookup)
+  # Your code here
+end
+```

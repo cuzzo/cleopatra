@@ -1,0 +1,7 @@
+```ruby
+def compile_if_bind(capture, pool_node, idx_node)
+  # existing code...
+  pool_writebacks << [capture, pool_node, idx_node] if pool_node
+  # existing code...
+end
+```

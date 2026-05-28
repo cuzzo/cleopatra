@@ -1,0 +1,10 @@
+```ruby
+def compile_string_expr(expr)
+  case expr.type
+  when :TryExpr
+    # Your existing code for handling TryExpr
+  else
+    # Other cases
+  end
+end
+```

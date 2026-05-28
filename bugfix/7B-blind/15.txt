@@ -1,0 +1,7 @@
+```ruby
+# Original line with swapped && -> ||
+# if condition && another_condition
+
+# Fixed line
+if condition || another_condition
+```

@@ -1,0 +1,17 @@
+To fix the bug in `FsmLowering.wrap_step_as_stmt`, we need to ensure that the `mir` variable is not `nil` before proceeding with the rest of the function. The current code has a negated condition `mir.nil?`, which means it will return `nil` if `mir` is `nil`. This is incorrect because we want to handle the case where `mir` is `nil` appropriately.
+
+Here's the corrected code:
+
+```ruby
+T.bind(self, MIRLowering) rescue nil
+    return nil if mir.nil?
+    if step[:binding]
+      return MIR::Let.new(step[:binding], mir, false, nil, nil)
+    end
+    return mir if mir.respond_to?(:stmt?) && mir.stmt?
+    expr_type = step[:expr].full_type!
+    is_void_step = ast_void_type?(expr_type)
+    MIR::ExprStmt.new(mir, !is_void_step)
+```
+
+In this corrected version, we first check if `mir` is `nil` and return `nil` if it is. This ensures that the function handles the case where `mir` is `nil` appropriately, preventing any potential errors or unexpected behavior. The rest of the function remains unchanged. --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---

@@ -1,0 +1,5 @@
+```ruby
+record_case = lambda do |p, slice|
+  pats << slice(p)
+end
+```

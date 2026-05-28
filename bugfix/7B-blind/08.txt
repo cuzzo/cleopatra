@@ -1,0 +1,10 @@
+```ruby
+# In intrinsic_registry.rb
+def sigs
+  if entry.is_a?(Array)
+    # Your existing code here
+  else
+    # Handle the case when entry is not an Array
+  end
+end
+```

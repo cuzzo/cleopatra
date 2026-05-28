@@ -1,0 +1,4 @@
+```ruby
+def hit
+  # Assuming the original line was something like:
+  # if condition1 || condition

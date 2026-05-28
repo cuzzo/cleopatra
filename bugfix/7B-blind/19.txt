@@ -1,0 +1,9 @@
+```ruby
+# spec/:1
+# gems/nil-kill/lib/nil_kill/report.rb:294:in `grouped_action_priorities'
+
+def grouped_action_priorities
+  # Assuming `action_priorities` is a method that returns an array of priorities
+  action_priorities.group_by { |priority| priority[:category] }
+end
+```

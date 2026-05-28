@@ -1,0 +1,11 @@
+```ruby
+def array_element_shape_for_expression(expr)
+  return nil unless expr
+
+  if return_node?(expr)
+    # Your existing code here
+  else
+    # Your existing code here
+  end
+end
+```

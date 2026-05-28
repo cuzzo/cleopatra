@@ -1,0 +1,15 @@
+```ruby
+elem_zig = lhs_type.element_type.zig_type
+var_decl, defer = mat_var_and_defer(elem_zig)
+
+iter_let = MIR::Let.new("__skit",
+  MIR::MethodCall.new(MIR::Ident.new("pipe_src_list"), "keyIterator", , false, MIR::CallableContract.no_ownership(0)),
+  true, nil, nil)
+deref = MIR::FieldGet.new(MIR::Ident.new("__skptr"), "*")
+loop_node = MIR::WhileStmt.new(
+  MIR::MethodCall.new(MIR::Ident.new("__skit"), "next", , false, MIR::CallableContract.no_ownership(0)),
+  [mat_append(deref)],
+  "__skptr", nil)
+
+[var_decl, defer, iter_let, loop_node, mat_items_let]
+```

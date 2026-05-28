@@ -1,0 +1,7 @@
+```ruby
+lines << ""
+lines << "## Gap Actions (#{actions.size})"
+if actions.empty?
+  lines << "- none"
+else
+  actions.first(

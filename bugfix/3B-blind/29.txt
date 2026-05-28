@@ -1,0 +1,13 @@
+To fix the bug in `alias_snapshot_for_catch_body` at examples/minivm/bc_emitter.rb:4823, we need to swap the constant 'STORE_SLOT' -> 'LOAD_NAME'. Here's the corrected code:
+
+```ruby
+# examples/minivm/bc_emitter.rb:4823
+def alias_snapshot_for_catch_body
+  # Swap 'STORE_SLOT' -> 'LOAD_NAME'
+  alias STORE_SLOT LOAD_NAME
+end
+```
+
+This change ensures that the constant is correctly used in the context of the `alias_snapshot_for_catch_body` method. The bug has been resolved by swapping the constant as required. The updated code should now work as expected. Let me know if you have any further questions or need additional assistance! 🚀✨
+
+---

@@ -1,0 +1,7 @@
+```ruby
+def build_mat_set
+  # Other code...
+  mat_set = CallableContract.new # Fixed: Changed 'MIR' to 'CallableContract'
+  # Other code...
+end
+```

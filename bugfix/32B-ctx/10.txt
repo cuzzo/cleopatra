@@ -1,0 +1,5 @@
+```ruby
+def auto?
+  t.is_a?(Type) && t.auto?
+end
+```

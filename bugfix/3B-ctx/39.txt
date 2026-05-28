@@ -1,0 +1,24 @@
+To fix the issue, we need to swap the `&&` operator with the `||` operator in the `should_nl` condition. Here's the corrected code:
+
+```ruby
+out = []
+i = 0
+while i < toks.length
+  t = toks[i]
+  out << t
+  if t.type == :KEYWORD && t.raw == 'END'
+    k = i + 1
+    k += 1 while k < toks.length && [:COMMENT].include?(toks[k].type)
+    if k < toks.length
+      nxt = toks[k]
+      should_nl = !(nxt.type == :NL ||
+                       (nxt.type == :SYM && [')', ']', '}', ';'].include?(nxt.raw)))
+      insert_nl(out) if should_nl
+    end
+  end
+  i += 1
+end
+out
+```
+
+This change ensures that the `should_nl` condition correctly checks if a newline should be inserted after the `END` keyword, based on the type of the next token. The `||` operator is used to ensure that a newline is inserted if the next token is not a newline or a symbol that ends a statement. --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---

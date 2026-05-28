@@ -1,0 +1,12 @@
+```ruby
+field_node = T.let(field_node, AST::GetField)
+field_node = field_node.target while field_node.respond_to?(:target) && !field_node.is_a?(AST::Identifier)
+return unless field_node.is_a?(AST::Identifier)
+sym = field_node.symbol
+return unless sym
+return unless sym.atomic?
+return unless sym.respond_to?(:layout) && sym.indirect?
+
+error!(assignment_node, :INDIRECT_ATOMIC_FIELD_WRITE,
+  name: field_node.name, field: field_name_for_msg(field_node))
+```

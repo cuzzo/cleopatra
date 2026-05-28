@@ -1,0 +1,41 @@
+To fix the CI failure in the `source_index_spec.rb` file, we need to ensure that the `run` method in the `nil_kill/cli.rb` file is correctly handling the input and output. Here's the updated code:
+
+```ruby
+# /home/yahn/cheat/gems/nil-kill/lib/nil_kill/cli.rb
+module NilKill
+  class CLI
+    def run
+      # Check if the input is provided
+      if ARGV.empty?
+        puts "Usage: nil-kill <file>"
+        return
+      end
+
+      # Get the file path from the input
+      file_path = ARGV[0]
+
+      # Check if the file exists
+      if !File.exist?(file_path)
+        puts "Error: File not found"
+        return
+      end
+
+      # Process the file
+      process_file(file_path)
+    end
+
+    private
+
+    def process_file(file_path)
+      # Read the file content
+      content = File.read(file_path)
+
+      # Process the content (example: count lines)
+      line_count = content.split("\n").length
+
+      # Output the result
+      puts "File processed successfully. Line count: #{line_count}"
+    end
+  end
+end
+```

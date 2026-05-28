@@ -1,0 +1,15 @@
+To fix the bug in the `Compiler.compile_expression` method, we need to swap the comparison operator from `<` to `>=` near the line where `ByteCode.new` is being created. Here's the corrected code:
+
+```ruby
+# examples/puck/v2/compiler.rb:51
+codes << ByteCode.new(code, op, arg, >=)  # Swap '<' to '>='
+```
+
+This change ensures that the comparison operator correctly reflects the intended logic for the `ByteCode.new` creation. After making this fix, the `Compiler.compile_expression` method should work as expected. Let's verify this by running the test again:
+
+```ruby
+# spec/:1
+# examples/puck/v2/compiler.rb:51:in `compile_expression'
+```
+
+If the test passes without any errors, the bug has been successfully fixed. Let me know if you need further assistance!

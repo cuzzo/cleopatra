@@ -1,0 +1,7 @@
+```ruby
+# Assuming the bug is in the `generic_type_params` method
+def generic_type_params(type)
+  # Fixing the off-by-one error by adjusting the range
+  (type.start_index..type.end_index - 1).to_a
+end
+```

@@ -1,0 +1,14 @@
+```ruby
+# src/annotator/helpers/lock_helper.rb
+def verify_handler_reachability!
+  # Your existing code here
+  begin
+    # Code that might raise an error
+  rescue StandardError => e
+    # Handle the error appropriately
+    Rails.logger.error("Error occurred: #{e.message}")
+    # Optionally, re-raise the error if it's critical
+    # raise e
+  end
+end
+```

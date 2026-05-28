@@ -1,0 +1,9 @@
+```ruby
+def read_message
+  begin
+    # some code that might raise an error
+  rescue ParserError => e
+    # handle ParserError
+  end
+end
+```

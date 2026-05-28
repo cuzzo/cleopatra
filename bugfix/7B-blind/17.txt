@@ -1,0 +1,13 @@
+```ruby
+# /home/yahn/cheat/gems/nil-kill/spec/source_index_spec.rb:16
+# /home/yahn/cheat/gems/nil-kill/lib/nil_kill/cli.rb:10:in `run'
+
+# Assuming the issue is related to a nil value being accessed, we need to add a check for nil before accessing it.
+# Example fix:
+# Before:
+# result = some_method
+
+# After:
+result = some_method
+result = result if result
+```

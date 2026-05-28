@@ -1,0 +1,8 @@
+```ruby
+def scoped_facts
+  params.each do |param|
+    next unless NilKill.useful_type?(param["type"])
+    # rest of the method logic
+  end
+end
+```

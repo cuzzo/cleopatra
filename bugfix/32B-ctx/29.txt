@@ -1,0 +1,5 @@
+```ruby
+alloc_slot("snapshot", :any)
+emit_op(LOAD_NAME, add_const("__snapshot"))
+emit_op(STORE_SLOT, @slots["snapshot"])
+```

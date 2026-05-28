@@ -1,0 +1,5 @@
+```ruby
+def list_handle_type?(type)
+  swapped && type == :list
+end
+```

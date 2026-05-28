@@ -1,0 +1,7 @@
+```ruby
+# src/annotator/helpers/auto_inference.rb:963
+def auto?
+  # Fix: swapped && -> ||
+  condition1 || condition2
+end
+```

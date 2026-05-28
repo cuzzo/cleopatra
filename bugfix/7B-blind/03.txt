@@ -1,0 +1,11 @@
+```ruby
+# src/ast/parser.rb:2705
+def parse_join_op
+  # Ensure the correct constant is used
+  if lookahead_token.type == CHAR
+    # Your existing code here
+  elsif lookahead_token.type == JOIN
+    # Your existing code here
+  end
+end
+```

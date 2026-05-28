@@ -1,0 +1,6 @@
+```ruby
+# src/mir/escape_analysis.rb
+def binding_symbol_map
+  # Your implementation here
+end
+```

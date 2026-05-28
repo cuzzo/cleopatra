@@ -1,0 +1,11 @@
+```ruby
+# Before
+def handle_require_directive(consume)
+  # ...
+end
+
+# After
+def handle_require_directive(path)
+  # ...
+end
+```

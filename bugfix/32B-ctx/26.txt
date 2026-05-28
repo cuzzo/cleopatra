@@ -1,0 +1,9 @@
+```ruby
+schema = schema_lookup.call(ti.resolved) rescue nil
+return nil unless Schemas.union?(schema)
+is_copy = ti.implicitly_copyable? { |t| schema_lookup.call(t) rescue nil } rescue true
+return nil if is_copy
+has_heap_variants = union_variants_need_cleanup?(schema, schema_lookup)
+alloc = has_heap_variants ? :heap : (ti.provenance_alloc || :frame)
+e = entry(:uniform, alloc: alloc)
+e[:fixed_alloc] =

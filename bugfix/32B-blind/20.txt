@@ -1,0 +1,7 @@
+```ruby
+def register_ownership_finalization_visible_names!
+  guarded_cleanup_names.each do |name|
+    # existing logic using name
+  end
+end
+```

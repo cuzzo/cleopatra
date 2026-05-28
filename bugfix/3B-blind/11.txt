@@ -1,0 +1,14 @@
+To fix the bug, we need to ensure that the condition `swapped || -> &&` is correctly evaluated. The `swapped` variable is likely a boolean that indicates whether a certain condition has been met, and the `-> &&` part is a lambda that returns a boolean value.
+
+Here's a step-by-step approach to fix the bug:
+
+1. **Identify the Condition**: Determine what the `swapped` variable represents and what the lambda `-> &&` does. This will help us understand the logic behind the condition.
+
+2. **Evaluate the Condition**: Ensure that the condition `swapped || -> &&` is correctly evaluated. This means that if `swapped` is true, the condition should be true. If `swapped` is false, the condition should be evaluated by the lambda.
+
+3. **Fix the Code**: Modify the code to ensure that the condition is correctly evaluated. This might involve changing the logic of the lambda or the condition itself.
+
+Here's an example of how the code might look after fixing the bug:
+
+```ruby
+#

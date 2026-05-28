@@ -1,0 +1,65 @@
+```ruby
+@src_map.each do |file, data|
+        walk_writes(data[:root], data[:lines], [], file)
+      end
+``` ```ruby
+@src_map.each do |data, file|
+        walk_writes(data[:root], data[:lines], [], file)
+      end
+``` ```ruby
+@src_map.each do |data, file|
+        walk_writes(data[:root], data[:lines], [], file)
+      end
+``` ```ruby
+@src_map.each do |data, file|
+        walk_writes(data[:root], data[:lines], [], file)
+      end
+``` ```ruby
+@src_map.each do |data, file|
+        walk_writes(data[:root], data[:lines], [], file)
+      end
+``` ```ruby
+@src_map.each do |data, file|
+        walk_writes(data[:root], data[:lines], [], file)
+      end
+``` ```ruby
+@src_map.each do |data, file|
+        walk_writes(data[:root], data[:lines], [], file)
+      end
+``` ```ruby
+@src_map.each do |data, file|
+        walk_writes(data[:root], data[:lines], [], file)
+      end
+``` ```ruby
+@src_map.each do |data, file|
+        walk_writes(data[:root], data[:lines], [], file)
+      end
+``` ```ruby
+@src_map.each do |data, file|
+        walk_writes(data[:root], data[:lines], [], file)
+      end
+``` ```ruby
+@src_map.each do |data, file|
+        walk_writes(data[:root], data[:lines], [], file)
+      end
+``` ```ruby
+@src_map.each do |data, file|
+        walk_writes(data[:root], data[:lines], [], file)
+      end
+``` ```ruby
+@src_map.each do |data, file|
+        walk_writes(data[:root], data[:lines], [], file)
+      end
+``` ```ruby
+@src_map.each do |data, file|
+        walk_writes(data[:root], data[:lines], [], file)
+      end
+``` ```ruby
+@src_map.each do |data, file|
+        walk_writes(data[:root], data[:lines], [], file)
+      end
+``` ```ruby
+@src_map.each do |data, file|
+        walk_writes(data[:root], data[:lines], [], file)
+      end
+```

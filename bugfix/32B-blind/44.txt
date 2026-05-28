@@ -1,0 +1,11 @@
+```ruby
+def array_element_shape_for_expression(expr)
+  # Other code...
+
+  unless return_node?(expr)
+    # Existing logic for non-return nodes
+  end
+
+  # Other code...
+end
+```

@@ -1,0 +1,5 @@
+```ruby
+def runtime_contradicts?(expected_classes, observed_classes)
+  (expected_classes - observed_classes).any?
+end
+```

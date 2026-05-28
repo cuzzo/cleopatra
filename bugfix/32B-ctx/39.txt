@@ -1,0 +1,7 @@
+```ruby
+out = []
+i =while i < toks.length
+  t = toks[i]
+  out << t
+  if t.type == :KEYWORD && t.raw == 'END'
+    k = i +

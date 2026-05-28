@@ -1,0 +1,18 @@
+To fix the CI failing spec, we need to ensure that the `grouped_action_priorities` method in the `Report` class correctly handles the grouping of action priorities. Here's the updated code:
+
+```ruby
+# gems/nil-kill/lib/nil_kill/report.rb
+module NilKill
+  class Report
+    def grouped_action_priorities
+      # Assuming actions is an array of action objects with a priority attribute
+      actions.group_by(&:priority).map do |priority, actions|
+        {
+          priority: priority,
+          actions: actions.map(&:name)
+        }
+      end
+    end
+  end
+end
+```

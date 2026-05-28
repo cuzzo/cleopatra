@@ -1,0 +1,7 @@
+```ruby
+def discover_fields!
+  data.each do |file|
+    # Your code here
+  end
+end
+```

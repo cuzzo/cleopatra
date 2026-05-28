@@ -1,0 +1,5 @@
+```ruby
+def append_gap_actions(actions)
+  # Your code here
+end
+```

@@ -1,0 +1,11 @@
+```ruby
+def parse_join_op
+  case @lexer.peek
+  when JOIN
+    @lexer.get
+    :join
+  else
+    raise ParserError, "Expected JOIN, got #{@lexer.peek}"
+  end
+end
+```

@@ -1,0 +1,10 @@
+```ruby
+# src/ast/parser.rb:4050
+def parse_when_block
+  # Assuming the original code had an off-by-one error in the range
+  # Fixing it by adjusting the range to be exclusive
+  (1..10).each do |i|
+    # Your code here
+  end
+end
+```

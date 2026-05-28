@@ -1,0 +1,8 @@
+```ruby
+def parse_term
+  # Assuming OPERATOR was incorrectly used where ExprNode should be
+  if @tokens[@index].type == :ExprNode
+    # Your logic to handle ExprNode
+  end
+end
+```

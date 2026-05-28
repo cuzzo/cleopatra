@@ -1,0 +1,63 @@
+```ruby
+def append_gap_actions(actions)
+  actions.each do |a|
+    lines << "- #{a["path"]}:#{a["line"]} #{a["kind"]}: #{a["message"]}"
+  end
+end
+``` ``` ```ruby
+def append_gap_actions(actions)
+  actions.each do |a|
+    lines << "- #{a["path"]}:#{a["line"]} #{a["kind"]}: #{a["message"]}"
+  end
+end
+``` ``` ```ruby
+def append_gap_actions(actions)
+  actions.each do |a|
+    lines << "- #{a["path"]}:#{a["line"]} #{a["kind"]}: #{a["message"]}"
+  end
+end
+``` ``` ```ruby
+def append_gap_actions(actions)
+  actions.each do |a|
+    lines << "- #{a["path"]}:#{a["line"]} #{a["kind"]}: #{a["message"]}"
+  end
+end
+``` ``` ```ruby
+def append_gap_actions(actions)
+  actions.each do |a|
+    lines << "- #{a["path"]}:#{a["line"]} #{a["kind"]}: #{a["message"]}"
+  end
+end
+``` ``` ```ruby
+def append_gap_actions(actions)
+  actions.each do |a|
+    lines << "- #{a["path"]}:#{a["line"]} #{a["kind"]}: #{a["message"]}"
+  end
+end
+``` ``` ```ruby
+def append_gap_actions(actions)
+  actions.each do |a|
+    lines << "- #{a["path"]}:#{a["line"]} #{a["kind"]}: #{a["message"]}"
+  end
+end
+``` ``` ```ruby
+def append_gap_actions(actions)
+  actions.each do |a|
+    lines << "- #{a["path"]}:#{a["line"]} #{a["kind"]}: #{a["message"]}"
+  end
+end
+``` ``` ```ruby
+def append_gap_actions(actions)
+  actions.each do |a|
+    lines << "- #{a["path"]}:#{a["line"]} #{a["kind"]}: #{a["message"]}"
+  end
+end
+``` ``` ```ruby
+def append_gap_actions(actions)
+  actions.each do |a|
+    lines << "- #{a["path"]}:#{a["line"]} #{a["kind"]}: #{a["message"]}"
+  end
+end
+``` ``` ```ruby
+def append_gap_actions(actions)
+  actions.each

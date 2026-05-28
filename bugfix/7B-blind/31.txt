@@ -1,0 +1,10 @@
+```ruby
+# /home/yahn/cheat/gems/decomplex/test/state_mesh_test.rb:181
+# gems/decomplex/lib/decomplex/state_mesh.rb:195:in `metrics'
+
+# Before
+# value = some_value * another_value
+
+# After
+value = some_value / another_value
+```

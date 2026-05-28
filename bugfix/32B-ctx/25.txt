@@ -1,0 +1,5 @@
+```ruby
+start = type.index("[")
+return [] unless start && type.end_with?("]")
+split_top_level(type[(start + 1)...-1]).map(&:strip).reject(&:empty?)
+```

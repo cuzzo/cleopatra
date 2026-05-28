@@ -1,0 +1,7 @@
+To fix the bug, we need to change the multiplication operator from `*` to `/` in the `messiness` calculation. Here's the corrected code:
+
+```ruby
+messiness = (n_writes + n_reads + n_reder) / scatter * fix_churn
+```
+
+This change ensures that the `messiness` calculation is performed correctly, which should resolve the test failure. Let's apply this fix and verify that the test passes. --- Test failure:  swapped operator: '*' -> '/' /home/yahn/cheat/gems/decomplex/test/state_mesh_test.rb:181 gems/decomplex/lib/decomplex/state_mesh.rb:195:in `metrics' Fix the bug.
