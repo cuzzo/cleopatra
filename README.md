@@ -127,7 +127,8 @@ So context alone is well within our goals to make a model perform 2x better.  Li
 
 ### In progress
 
-Testing against a 30B Qwen model now.
+ - [ ] Testing against a 30B Qwen model now.
+ - [ ] Test against a ~300B model (less apples to apples since Qwen does not have a 300B model).
 
 ## Stage 2:
 
