@@ -34,7 +34,7 @@ We want to explore two paths where GRAM *might* help:
 
 GRAM can explore many paths simultaneously and chose the one with the best context or the least sloppy solution and choose the winners.
 
-GRAM improved reasoning by 5000-10000.
+GRAM improved reasoning by 5000 - 10,000x.
 
 If it can *only* improve tool calling by *only* 10x, or *only* local reasoning for bugs by 10x - either of those on their own would be huge.  If the two compound, it would be incredible.
 
@@ -46,13 +46,13 @@ Qwen2.5-Coder-3B is *highly* unlikely to match frontier model performance on non
 
 However, if GRAM is a viable solution to significantly improving performance, we should be able to easily see that on a Qwen2.5 model quickly and cheaply.
 
-**The goal:** get Qwen2.5-Coder-3B to outperform a 7B model on a mix of implementation tasks (and ideally better than 13B).
+**The goal:** get Qwen2.5-Coder-3B to outperform a 7B model on a mix of implementation tasks (and ideally better than 14B).
 
 ## The Real Solution
 
 If the Qwen results are successful, we should be able to get Phi 3.8B MoE to run locally on MacBook M5s at 30+ Tok/s.
 
-If the test is successful, it is *realistic* to belive a model Phi 3.8B MoE size could perform as well as Opus for implementation, and for context sizes <32k tokens (implementation tasks), it should be able to run smoothly on a MacBook M5 base hardware.
+If the test is successful, it is *realistic* to belive a model Phi 3.8B MoE size could perform competitively with Opus 4.7 for implementation, and for context sizes <32k tokens (implementation tasks), it should be able to run smoothly on a MacBook M5 base hardware.
 
 ## The training set
 
@@ -109,8 +109,44 @@ It is easiest to validate the tool calling hypothesis, since we can easily gener
 
 ## Stage 1:
 
-See [Context Is What You Need](https://doi.org/10.48550/arxiv.2509.21361) & [Context Length Alone Hurts LLM Performance Despite Perfect Retrieval](https://doi.org/10.48550/arxiv.2510.05381).
+Eventually, we want to test how effectively Qwen2.5 can be trained with GRAM to use a custom tool to get far better context.
+
+> See [Context Is What You Need](https://doi.org/10.48550/arxiv.2509.21361) & [Context Length Alone Hurts LLM Performance Despite Perfect Retrieval](https://doi.org/10.48550/arxiv.2510.05381) for why.
+
+### The test
+
+We fed Qwen2.5 the context we *want* it to learn to extract from our tool.
+
+### The Result
 
 Feeding ideal context to Qwen2.5-Coder-3B improved fixing bug performance from ~70% to ~96%.
 
-For context, without ideal context, Qwen2.5-Coder-7B-Instruct performs at ~78%.  So context alone is well within our goals to make a model perform 2x better.  Like closer to ~10x better.
+For context, without ideal context, a model twice the size (Qwen2.5-Coder-7B-Instruct) performs at ~78%.
+
+So context alone is well within our goals to make a model perform 2x better.  Likely between to ~10-100x better.
+
+### In progress
+
+Testing against a 30B Qwen model now.
+
+## Stage 2:
+
+Next, we will test how effectively the original model can learn to use a tool.
+
+Then, we will compare a GRAM-based version of it.
+
+Finally, we will compare that to a 7B version.
+
+Since training is expensive, we will extrapolate learning based on performance scaling - to *estimate* how effectively a 30B model would likely learn to use our tool.
+
+### Goal
+
+We *hope* that GRAM can help the model learn to use the tool 100-1000x better than without GRAM.
+
+If this is the case, even if GRAM does not help with local reasoning in coding at all - purely the context boost could make the model perform 10x+ better.
+
+## Stage 3:
+
+If GRAM does not improve tool calling ability by impressive margins, we are skeptical it will improve coding local reasoning.
+
+However, we will try it regardless.
