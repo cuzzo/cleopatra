@@ -106,3 +106,11 @@ A 16B MoE model isn't *that* helpful if it can only make small architectural cha
 ## Order of operations
 
 It is easiest to validate the tool calling hypothesis, since we can easily generate tons of synthetic data for this.  We will start there. 
+
+## Stage 1:
+
+See [Context Is What You Need](https://doi.org/10.48550/arxiv.2509.21361) & [Context Length Alone Hurts LLM Performance Despite Perfect Retrieval](https://doi.org/10.48550/arxiv.2510.05381).
+
+Feeding ideal context to Qwen2.5-Coder-3B improved fixing bug performance from ~70% to ~96%.
+
+For context, without ideal context, Qwen2.5-Coder-7B-Instruct performs at ~78%.  So context alone is well within our goals to make a model perform 2x better.  Like closer to ~10x better.
