@@ -1,6 +1,6 @@
 # Cleopatra
 
-This project will explore if [MLA](https://machinelearningmastery.com/a-gentle-introduction-to-multi-head-latent-attention-mla/) + [MoE](https://en.wikipedia.org/wiki/Mixture_of_experts) + [GRAM](https://ahn-ml.github.io/gram-website/#) can:
+This project will explore if [1.58-bit](https://en.wikipedia.org/wiki/1.58-bit_large_language_model) + [MLA](https://machinelearningmastery.com/a-gentle-introduction-to-multi-head-latent-attention-mla/) + [MoE](https://en.wikipedia.org/wiki/Mixture_of_experts) + [GRAM](https://ahn-ml.github.io/gram-website/#) can:
 
  1. Substantially improve LLMs for *implementation* at coding tasks.
  2. Make near SOTA implementation possible on local models on MacBook M5 base hardware at 30+ Tok/s.
