@@ -1,0 +1,16 @@
+.venv/
+archives/
+data/
+bugs.jsonl
+training_data/
+held_back/
+training/
+validation/
+tasks/
+models/
+test_results/
+decomposed_*.json
+classified_commits.json
+perf_commits.json
+triage_results.json
+triage_non_ruby.json

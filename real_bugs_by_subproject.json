@@ -1,0 +1,1250 @@
+[
+  {
+    "sha": "4e0c9448e03d845f6e8180696445aa25e4536536",
+    "msg": "fix(mir): close #57 string-store + extend COPY-into-collection-field",
+    "files": [
+      "src/annotator.rb",
+      "src/mir/mir_lowering.rb",
+      "tools/fuzz/templates/list_append_modality.rb",
+      "tools/fuzz/templates/struct_field_store_modality.rb"
+    ],
+    "added": 16,
+    "removed": 11,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "fcc8f80f5c3dbc4bb7b7d6cab1b6366a5b79c9a0",
+    "msg": "fix(mir): close #55 + #58 by routing struct-with-heap-fields cleanup through cleanupAlloc",
+    "files": [
+      "spec/escape_promotion_matrix_spec.rb",
+      "src/mir/mir_lowering.rb",
+      "src/mir/promotion_plan.rb"
+    ],
+    "added": 17,
+    "removed": 18,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "1aa43902ad6b16d45f50ac977b9b77fefe69e931",
+    "msg": "fix(annotator): close #51 struct_owned_fields TAKES needs rt",
+    "files": [
+      "spec/generics_spec.rb",
+      "src/annotator-helpers/effects.rb",
+      "src/annotator.rb",
+      "src/mir/escape_graph.rb",
+      "src/mir/mir_emitter.rb"
+    ],
+    "added": 13,
+    "removed": 32,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "89628aed85edd26796c7c39ea68401cc8e28249d",
+    "msg": "fix(annotator/escape): close #43 union_owned_payload TAKES",
+    "files": [
+      "src/annotator-helpers/effects.rb",
+      "src/annotator.rb",
+      "src/mir/escape_graph.rb"
+    ],
+    "added": 32,
+    "removed": 3,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "edbfe97fd40bd147bde017370c96bb5831aa98fd",
+    "msg": "fix(escape/mir): dynamic Int64[] -> TAKES via heap promotion + slice extract (#39)",
+    "files": [
+      "src/mir/mir_lowering.rb",
+      "tools/fuzz/templates/takes_move_modality.rb"
+    ],
+    "added": 14,
+    "removed": 8,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "69a7d148d41c75f2e5a11666db76a3fb6d7f6746",
+    "msg": "fix(mir): revert U2 exclusion-drop -- #39 needs escape-analysis (not lowering)",
+    "files": [
+      "src/mir/mir_lowering.rb",
+      "tools/fuzz/templates/takes_move_modality.rb"
+    ],
+    "added": 29,
+    "removed": 37,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "25be68f5f3d6a9a8b9afc53443556a7d2fb0ead2",
+    "msg": "fix(mir): COPY of @list to TAKES collection / drop syntax exclusions (#37 COPY, #39)",
+    "files": [
+      "spec/mir_lowering_spec.rb",
+      "src/mir/mir_lowering.rb"
+    ],
+    "added": 43,
+    "removed": 29,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "c0a2ef7591b45af065a0f5bd3609df4f303289b4",
+    "msg": "fix(emit): @constCast outer .deinit for list_with_elem_cleanup (#40)",
+    "files": [
+      "src/mir/mir_emitter.rb"
+    ],
+    "added": 6,
+    "removed": 1,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "3c3626d32542a4a907faade56fa8c5dd4e2492d4",
+    "msg": "fix(mir): emit slice only when callee param is not a collection (#37 bare)",
+    "files": [
+      "src/mir/mir_lowering.rb",
+      "tools/fuzz/templates/takes_move_modality.rb"
+    ],
+    "added": 9,
+    "removed": 4,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "17bdffaa692704dc9cc1840941cd5d8c84c235e3",
+    "msg": "fix(annotator): channel-termination authority for can_fail (#11)",
+    "files": [
+      "docs/agents/puck-clear-bugs.md",
+      "src/annotator-helpers/effects.rb",
+      "src/annotator.rb",
+      "tools/fuzz/templates/infallible_signature.rb"
+    ],
+    "added": 69,
+    "removed": 30,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "c1fc21ca665531668a880a75ce55e8e79454b0a2",
+    "msg": "fix(annotator): channel-termination authority for can_fail (#11)",
+    "files": [
+      "docs/agents/puck-clear-bugs.md",
+      "src/annotator-helpers/effects.rb",
+      "src/annotator.rb",
+      "tools/fuzz/templates/infallible_signature.rb"
+    ],
+    "added": 69,
+    "removed": 30,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "cd460c435770748291c320163a1c53707bee2547",
+    "msg": "fix bug #2: recognise frame-stdlib-call decls in local_frame_decls",
+    "files": [
+      "src/mir/control_flow.rb",
+      "tools/fuzz/templates/loop_local_method_temp.rb"
+    ],
+    "added": 30,
+    "removed": 3,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "67874bed5ed54050aa5532efc2cb2959e394fbc3",
+    "msg": "fix bug #1: lower_if drains cond @pending_stmts before the body",
+    "files": [
+      "src/mir/mir_lowering.rb",
+      "tools/fuzz/templates/cond_or_fallback.rb"
+    ],
+    "added": 33,
+    "removed": 6,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "05d5f40848034c75a2445d9fe26baa6a1689dfea",
+    "msg": "fix(escape): make Type#escape_class lazy + clear KNOWN_BUG matrix pendings",
+    "files": [
+      "spec/escape_promotion_matrix_spec.rb",
+      "src/ast/type.rb",
+      "src/mir/escape_analysis.rb"
+    ],
+    "added": 75,
+    "removed": 73,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "507b7d050257906f70386b4cd165b27803bf2678",
+    "msg": "fix(annotator): close BG-handle escape gap for plain @local captures",
+    "files": [
+      "src/annotator.rb"
+    ],
+    "added": 46,
+    "removed": 11,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "a9ed13cd2b56a25ebfa5cc9bea8a4a438b68eb3f",
+    "msg": "fix(escape): make Type#escape_class lazy + clear KNOWN_BUG matrix pendings",
+    "files": [
+      "spec/escape_promotion_matrix_spec.rb",
+      "src/ast/type.rb",
+      "src/mir/escape_analysis.rb"
+    ],
+    "added": 75,
+    "removed": 73,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "4c722ba171db689c5b233f0f725d5d81f0bc795f",
+    "msg": "fix(annotator): close BG-handle escape gap for plain @local captures",
+    "files": [
+      "src/annotator.rb"
+    ],
+    "added": 46,
+    "removed": 11,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "ebd4d57ef0d28113a0e8aa01adbcfb1287e7d184",
+    "msg": "fix(annotator): close BG-handle escape gap for plain @local captures",
+    "files": [
+      "src/annotator.rb"
+    ],
+    "added": 49,
+    "removed": 11,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "df324032b0985b4117f639950b93afee85f4b1be",
+    "msg": "fix(mir): strip optional/error-union prefix when matching enum CAST",
+    "files": [
+      "src/mir/mir_lowering.rb"
+    ],
+    "added": 8,
+    "removed": 2,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "fb3969ed1c0eb179120b1ffb9571bd3f4f15eab5",
+    "msg": "fix(mir): raw fixed-array indexed-set bypasses by-value setAt",
+    "files": [
+      "src/mir/mir_lowering.rb"
+    ],
+    "added": 18,
+    "removed": 0,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "295d7b2b5baba3427935548aaa237b939ccb0fbf",
+    "msg": "fix(mir): fixed-array literal :stack OR :frame storage",
+    "files": [
+      "src/mir/mir_lowering.rb"
+    ],
+    "added": 11,
+    "removed": 2,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "ee6082f729667dcb70e361629b2be00cdab6a714",
+    "msg": "fix(mir): strip optional/error-union prefix when matching enum CAST",
+    "files": [
+      "src/mir/mir_lowering.rb"
+    ],
+    "added": 8,
+    "removed": 2,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "06d22256b870737dfc45eb4d114ca3d5c35c374f",
+    "msg": "fix(mir): raw fixed-array indexed-set bypasses by-value setAt",
+    "files": [
+      "src/mir/mir_lowering.rb"
+    ],
+    "added": 18,
+    "removed": 0,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "0e9b15951774ea993f809af5e6d0409400c8b5de",
+    "msg": "fix(mir): fixed-array literal :stack OR :frame storage",
+    "files": [
+      "src/mir/mir_lowering.rb"
+    ],
+    "added": 11,
+    "removed": 2,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "67b8da98591f4089ca6f0f48177d06b9d3d4309c",
+    "msg": "fix(mir-checker): INV-CROSS-FRAME-PARAM-ALLOC catches the test 380 UAF class",
+    "files": [
+      "spec/mir_checker_spec.rb",
+      "src/ast/diagnostic_registry.rb",
+      "src/backends/pipeline_host.rb",
+      "src/mir/mir.rb",
+      "src/mir/mir_checker.rb",
+      "src/mir/mir_lowering.rb"
+    ],
+    "added": 185,
+    "removed": 14,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "d5db63d826428804f3ea0b602b23da004fd1b4df",
+    "msg": "fix(mir-checker): INV-CROSS-FRAME-PARAM-ALLOC catches the test 380 UAF class",
+    "files": [
+      "spec/mir_checker_spec.rb",
+      "src/ast/diagnostic_registry.rb",
+      "src/backends/pipeline_host.rb",
+      "src/mir/mir.rb",
+      "src/mir/mir_checker.rb",
+      "src/mir/mir_lowering.rb"
+    ],
+    "added": 185,
+    "removed": 14,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "7cad4aae14cfb592e0ae9e56baceb5557c5ada36",
+    "msg": "fix(minivm): compile std.debug.print calls directly",
+    "files": [
+      "examples/minivm/bc_emitter.rb",
+      "src/ast/std_lib.rb"
+    ],
+    "added": 34,
+    "removed": 2,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "a34815a4b665acf15e3713716125ecdd6737d85d",
+    "msg": "fix: parser syntax fixes — missing `;`, `THEN`, `DO`, `->`",
+    "files": [
+      "clear",
+      "spec/clear_fix_spec.rb",
+      "src/ast/parser.rb"
+    ],
+    "added": 123,
+    "removed": 7,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "89b4ebb8690c11d7b300968a3f010d4e1ff2c6c1",
+    "msg": "fix: category 4 migration — registry mismatch closest-match suggest",
+    "files": [
+      "spec/clear_fix_spec.rb",
+      "src/annotator-helpers/fixable_helpers.rb",
+      "src/annotator.rb"
+    ],
+    "added": 117,
+    "removed": 14,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "0b924f036c5b4f2fd7d06ea8f3d90c23b2ea0e9b",
+    "msg": "fix: error accumulation in FixCollector (LSP-ready)",
+    "files": [
+      "spec/clear_fix_spec.rb",
+      "src/ast/fixable_error.rb",
+      "src/ast/source_error.rb"
+    ],
+    "added": 87,
+    "removed": 19,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "73114c8dcfab719643faec19375e8e80c9d00756",
+    "msg": "fix: OR fallback struct with string fields no longer leaks on success path",
+    "files": [
+      "src/mir/mir_lowering.rb"
+    ],
+    "added": 77,
+    "removed": 39,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "b6d163c2b84e6ac1edd0b1a8204743a9fd591109",
+    "msg": "fix: replace @panic with proper error propagation in or_fallback_dupe",
+    "files": [
+      "spec/mir_lowering_spec.rb",
+      "src/mir_lowering.rb"
+    ],
+    "added": 63,
+    "removed": 1,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "9ac0628c1f1ff0219e924dd9e498c278a261e449",
+    "msg": "fix: replace @panic with proper error propagation in or_fallback_dupe",
+    "files": [
+      "spec/mir_lowering_spec.rb",
+      "src/mir_lowering.rb"
+    ],
+    "added": 63,
+    "removed": 1,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "1cb150176f0dd8c1a7e2239a7804bd2bc003d870",
+    "msg": "fix: 4 Zig type errors from provenance unification",
+    "files": [
+      "spec/mir_emitter_spec.rb",
+      "src/mir_emitter.rb",
+      "src/promotion_plan.rb",
+      "src/type.rb"
+    ],
+    "added": 10,
+    "removed": 4,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "9b3878259cc20e51ea92031ceb013a9d7bc44937",
+    "msg": "fix: two LoopFrameAnalysis correctness bugs in control_flow.rb",
+    "files": [
+      "src/control_flow.rb"
+    ],
+    "added": 22,
+    "removed": 2,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "a6814f8cdafeb3faf3fa20c495499469696c9b86",
+    "msg": "fix: two LoopFrameAnalysis correctness bugs in control_flow.rb",
+    "files": [
+      "src/control_flow.rb"
+    ],
+    "added": 22,
+    "removed": 2,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "1fa794fe432ec9193f0c41aa2b7bea1841d74f8a",
+    "msg": "fix: two LoopFrameAnalysis correctness bugs in control_flow.rb",
+    "files": [
+      "src/control_flow.rb"
+    ],
+    "added": 22,
+    "removed": 2,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "91648cf6197b48187e2c0ccc036daf089db4b7a2",
+    "msg": "fix: two LoopFrameAnalysis correctness bugs in control_flow.rb",
+    "files": [
+      "src/control_flow.rb"
+    ],
+    "added": 22,
+    "removed": 2,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "12cefa1179c3f0e23f25fb07880a2b84f108bc46",
+    "msg": "fix: include pipeline_host/generator changes for SOA MIR conversion",
+    "files": [
+      "src/pipeline_generator.rb",
+      "src/pipeline_host.rb"
+    ],
+    "added": 40,
+    "removed": 20,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "9b3b08275cb4df9940ed552ae83135d5f1dfc38c",
+    "msg": "fix: include pipeline_host/generator changes for SOA MIR conversion",
+    "files": [
+      "src/pipeline_generator.rb",
+      "src/pipeline_host.rb"
+    ],
+    "added": 40,
+    "removed": 20,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "7a8cd2677c6d08b1c3395bb39e3e2fe42278b776",
+    "msg": "fix: include pipeline_host/generator changes for SOA MIR conversion",
+    "files": [
+      "src/pipeline_generator.rb",
+      "src/pipeline_host.rb"
+    ],
+    "added": 40,
+    "removed": 20,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "4ee5a4f267f813ee323266c819da3f13150d66b7",
+    "msg": "fix: include pipeline_host/generator changes for SOA MIR conversion",
+    "files": [
+      "src/pipeline_generator.rb",
+      "src/pipeline_host.rb"
+    ],
+    "added": 40,
+    "removed": 20,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "baa90eb296ed670aa3a67a334ed4019a68a51b35",
+    "msg": "fix: lower_raise emits rt.setError() so CATCH clauses can match error kinds",
+    "files": [
+      "spec/mir_lowering_spec.rb",
+      "src/mir_lowering.rb"
+    ],
+    "added": 32,
+    "removed": 4,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "58faf7f38d782fded515fe70bc7c9d996eac9911",
+    "msg": "fix: lower_raise emits rt.setError() so CATCH clauses can match error kinds",
+    "files": [
+      "spec/mir_lowering_spec.rb",
+      "src/mir_lowering.rb"
+    ],
+    "added": 32,
+    "removed": 4,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "4297ce0a7cd5a9452035c41e4587f1146052ff38",
+    "msg": "fix: lower_raise emits rt.setError() so CATCH clauses can match error kinds",
+    "files": [
+      "spec/mir_lowering_spec.rb",
+      "src/mir_lowering.rb"
+    ],
+    "added": 32,
+    "removed": 4,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "c677f4a166c5882fff9b22fa635b2ae38cc1670c",
+    "msg": "fix: lower_raise emits rt.setError() so CATCH clauses can match error kinds",
+    "files": [
+      "spec/mir_lowering_spec.rb",
+      "src/mir_lowering.rb"
+    ],
+    "added": 32,
+    "removed": 4,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "0c1232e2cc2192b59823cc94659309cf59f8a70b",
+    "msg": "fix: leak checker collect_mir_nodes uses arrays to handle duplicate names",
+    "files": [
+      "src/static_leak_checker.rb"
+    ],
+    "added": 37,
+    "removed": 23,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "8243759bb33ed03a1df81a930c113df7decde0c6",
+    "msg": "fix: leak checker collect_mir_nodes uses arrays to handle duplicate names",
+    "files": [
+      "src/static_leak_checker.rb"
+    ],
+    "added": 37,
+    "removed": 23,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "03de8edbf7d483753dd992f3f6d093a28b65ae55",
+    "msg": "fix: leak checker collect_mir_nodes uses arrays to handle duplicate names",
+    "files": [
+      "src/static_leak_checker.rb"
+    ],
+    "added": 37,
+    "removed": 23,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "e334720eb4212aafa3fd141cd169bb8b547f820e",
+    "msg": "fix: leak checker collect_mir_nodes uses arrays to handle duplicate names",
+    "files": [
+      "src/static_leak_checker.rb"
+    ],
+    "added": 37,
+    "removed": 23,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "504d9aa24358673539bfbb44ec578273719bea11",
+    "msg": "fix: pipeline rewriter bugs - circular refs, AVERAGE div-by-zero, snapshot loss",
+    "files": [
+      "spec/higher_order_spec.rb",
+      "src/pipeline_rewriter.rb"
+    ],
+    "added": 112,
+    "removed": 38,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "e1777b953dba1bf873e25b9504042b793ae6ea27",
+    "msg": "fix: pipeline rewriter bugs - circular refs, AVERAGE div-by-zero, snapshot loss",
+    "files": [
+      "spec/higher_order_spec.rb",
+      "src/pipeline_rewriter.rb"
+    ],
+    "added": 112,
+    "removed": 38,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "6603b4554ce9c4313701b9a366478955d569c547",
+    "msg": "fix: pipeline rewriter bugs - circular refs, AVERAGE div-by-zero, snapshot loss",
+    "files": [
+      "spec/higher_order_spec.rb",
+      "src/pipeline_rewriter.rb"
+    ],
+    "added": 112,
+    "removed": 38,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "0a2afff62bda7098d7f88855e065acffecd0631c",
+    "msg": "fix: pipeline rewriter bugs - circular refs, AVERAGE div-by-zero, snapshot loss",
+    "files": [
+      "spec/higher_order_spec.rb",
+      "src/pipeline_rewriter.rb"
+    ],
+    "added": 112,
+    "removed": 38,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "46d61663560e388c617de1eedc1185fca619bb57",
+    "msg": "fix: eliminate 4 pre-existing memory leaks (takes_union guard, CopyNode type sharing, map key alloc)",
+    "files": [
+      "src/annotator.rb",
+      "src/control_flow.rb"
+    ],
+    "added": 14,
+    "removed": 4,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "9dbee4e13f245a1c4f88a00c4f5b86c328b948ad",
+    "msg": "fix: eliminate 4 pre-existing memory leaks (takes_union guard, CopyNode type sharing, map key alloc)",
+    "files": [
+      "src/annotator.rb",
+      "src/control_flow.rb"
+    ],
+    "added": 14,
+    "removed": 4,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "eacbb486d692cdc18b999ea13be844c41c58863b",
+    "msg": "fix: eliminate suppress_non_string HPT leak via scan_for_hpt_downgrade",
+    "files": [
+      "src/promotion_plan.rb"
+    ],
+    "added": 74,
+    "removed": 23,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "ae314f4bac0717d6ba9109dafc03d81aa72a2e55",
+    "msg": "fix: eliminate suppress_non_string HPT leak via scan_for_hpt_downgrade",
+    "files": [
+      "src/promotion_plan.rb"
+    ],
+    "added": 74,
+    "removed": 23,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "b442722af7e8cb77f561bb40b051a2c02ab3b814",
+    "msg": "fix: eliminate suppress_non_string HPT leak via scan_for_hpt_downgrade",
+    "files": [
+      "src/promotion_plan.rb"
+    ],
+    "added": 74,
+    "removed": 23,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "3cfb42957c10dfe160bdc7bb4dc8d528ad6bd97c",
+    "msg": "fix: eliminate suppress_non_string HPT leak via scan_for_hpt_downgrade",
+    "files": [
+      "src/promotion_plan.rb"
+    ],
+    "added": 74,
+    "removed": 23,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "5b2b782851224360529f05962c9ed7a5d60c0c18",
+    "msg": "fix: COPY union argument leaks duped strings when callee discards",
+    "files": [
+      "src/annotator.rb"
+    ],
+    "added": 15,
+    "removed": 0,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "d870ce68bdf2eb598bb426d4d64f6d469bc2e495",
+    "msg": "fix: COPY union argument leaks duped strings when callee discards",
+    "files": [
+      "src/annotator.rb"
+    ],
+    "added": 15,
+    "removed": 0,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "57993ad711d9e64623f6d68447724e8fc38bb226",
+    "msg": "fix: inline struct literal args leak heap-duped string fields",
+    "files": [
+      "spec/cleanup_plan_spec.rb",
+      "src/annotator.rb"
+    ],
+    "added": 41,
+    "removed": 1,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "8905c04dacfcda9605cbdfdce8fdb3402814dab3",
+    "msg": "fix: inline struct literal args leak heap-duped string fields",
+    "files": [
+      "spec/cleanup_plan_spec.rb",
+      "src/annotator.rb"
+    ],
+    "added": 41,
+    "removed": 1,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "c53b3ce5fe3c6c66cc8ef985f963667db92c4b09",
+    "msg": "fix: CATCH string returns leak - caller gets heap_string cleanup",
+    "files": [
+      "spec/cleanup_plan_spec.rb",
+      "src/annotator.rb",
+      "src/promotion_plan.rb"
+    ],
+    "added": 50,
+    "removed": 0,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "d62235135bdf0d9fde8735da9d447f95e0913a7b",
+    "msg": "fix: CATCH string returns leak - caller gets heap_string cleanup",
+    "files": [
+      "spec/cleanup_plan_spec.rb",
+      "src/annotator.rb",
+      "src/promotion_plan.rb"
+    ],
+    "added": 50,
+    "removed": 0,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "dc9a2591b263249b91d8444eb3e3be64081df1be",
+    "msg": "fix: inline struct literal args leak heap-duped string fields",
+    "files": [
+      "spec/cleanup_plan_spec.rb",
+      "src/annotator.rb"
+    ],
+    "added": 41,
+    "removed": 1,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "1382b812a6bb827e442672e59f47ee74385ec454",
+    "msg": "fix: inline struct literal args leak heap-duped string fields",
+    "files": [
+      "spec/cleanup_plan_spec.rb",
+      "src/annotator.rb"
+    ],
+    "added": 41,
+    "removed": 1,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "776ec5b62c8ce016c8a2eec64c42ae7115972250",
+    "msg": "fix: CATCH string returns leak - caller gets heap_string cleanup",
+    "files": [
+      "spec/cleanup_plan_spec.rb",
+      "src/annotator.rb",
+      "src/promotion_plan.rb"
+    ],
+    "added": 50,
+    "removed": 0,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "cf997d1d83ade3b59243781251506e1ae8fae834",
+    "msg": "fix: CATCH string returns leak - caller gets heap_string cleanup",
+    "files": [
+      "spec/cleanup_plan_spec.rb",
+      "src/annotator.rb",
+      "src/promotion_plan.rb"
+    ],
+    "added": 50,
+    "removed": 0,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "3e97581c0da57aee0685185fc3ecead3ea0d9cf3",
+    "msg": "fix: circular dependency raises CircularDependencyError with cycle path",
+    "files": [
+      "spec/annotator_spec.rb",
+      "src/importer.rb"
+    ],
+    "added": 5,
+    "removed": 2,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "42cf6815ba40ff559cee596bf03877fe7e5494e8",
+    "msg": "fix: circular dependency raises CircularDependencyError with cycle path",
+    "files": [
+      "spec/annotator_spec.rb",
+      "src/importer.rb"
+    ],
+    "added": 5,
+    "removed": 2,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "8fdf10a168a77b840214f52548068ac9182cd905",
+    "msg": "fix: circular dependency raises CircularDependencyError with cycle path",
+    "files": [
+      "spec/annotator_spec.rb",
+      "src/importer.rb"
+    ],
+    "added": 5,
+    "removed": 2,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "c98a3e17b6cbe72c849bc2580a2cc5938bd08444",
+    "msg": "fix: circular dependency raises CircularDependencyError with cycle path",
+    "files": [
+      "spec/annotator_spec.rb",
+      "src/importer.rb"
+    ],
+    "added": 5,
+    "removed": 2,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "4e4c896c002b21c035fa4cca77615245b0cc2148",
+    "msg": "fix: structs with string fields get cleanup (fixes CATCH/promote leak)",
+    "files": [
+      "spec/caller_cleanup_spec.rb",
+      "src/annotator.rb",
+      "src/ownership_generator.rb"
+    ],
+    "added": 32,
+    "removed": 2,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "04fda707d117426a863777a5782c58e25c2ff58a",
+    "msg": "fix: structs with string fields get cleanup (fixes CATCH/promote leak)",
+    "files": [
+      "spec/caller_cleanup_spec.rb",
+      "src/annotator.rb",
+      "src/ownership_generator.rb"
+    ],
+    "added": 32,
+    "removed": 2,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "9491430a147628b8698f1562fbf9210576450a76",
+    "msg": "fix: structs with string fields get cleanup (fixes CATCH/promote leak)",
+    "files": [
+      "spec/caller_cleanup_spec.rb",
+      "src/annotator.rb",
+      "src/ownership_generator.rb"
+    ],
+    "added": 32,
+    "removed": 2,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "41af482d4893ba109932ab5085d049392f215959",
+    "msg": "fix: structs with string fields get cleanup (fixes CATCH/promote leak)",
+    "files": [
+      "spec/caller_cleanup_spec.rb",
+      "src/annotator.rb",
+      "src/ownership_generator.rb"
+    ],
+    "added": 32,
+    "removed": 2,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "45c1172c452dc62bde0332028b507a2f30a7c796",
+    "msg": "fix: OR on container borrow of non-Copy type is a compile error",
+    "files": [
+      "spec/container_borrow_spec.rb",
+      "src/annotator.rb"
+    ],
+    "added": 28,
+    "removed": 23,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "cfab53fc9b1a5cf9cc3956b61517fed1c6f26146",
+    "msg": "fix: OR on container borrow of non-Copy type is a compile error",
+    "files": [
+      "spec/container_borrow_spec.rb",
+      "src/annotator.rb"
+    ],
+    "added": 28,
+    "removed": 23,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "a1cc59906aa66fe8c34fe6095008df7195c50508",
+    "msg": "fix: OR on container borrow of non-Copy type is a compile error",
+    "files": [
+      "spec/container_borrow_spec.rb",
+      "src/annotator.rb"
+    ],
+    "added": 28,
+    "removed": 23,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "dbe4b83a663a31b8f0d51d8cad2ee1522ac93db5",
+    "msg": "fix: tailCall error handling - non-recursive + Zig backend errors",
+    "files": [
+      "clear",
+      "spec/stack_tier_spec.rb",
+      "src/annotator.rb"
+    ],
+    "added": 19,
+    "removed": 1,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "66f9b9317125e514985117a5acf1fe7de46ecdc6",
+    "msg": "fix: tailCall error handling - non-recursive + Zig backend errors",
+    "files": [
+      "clear",
+      "spec/stack_tier_spec.rb",
+      "src/annotator.rb"
+    ],
+    "added": 19,
+    "removed": 1,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "2a2af197c8be560e1d026b0c4f51750af4f6eb2a",
+    "msg": "fix: tailCall error handling - non-recursive + Zig backend errors",
+    "files": [
+      "clear",
+      "spec/stack_tier_spec.rb",
+      "src/annotator.rb"
+    ],
+    "added": 19,
+    "removed": 1,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "d63ade15353f14466ecdd170275ba4d59a6b1975",
+    "msg": "fix: remove union return-promotion dupe (reduces leaks 114→51)",
+    "files": [
+      "src/annotator.rb"
+    ],
+    "added": 1,
+    "removed": 13,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "80ec2b04f5db12e507d480a801aab25ac8b01d4b",
+    "msg": "fix: remove union return-promotion dupe (reduces leaks 114→51)",
+    "files": [
+      "src/annotator.rb"
+    ],
+    "added": 1,
+    "removed": 13,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "48e99dc27deee5de7340226081964f5273d59344",
+    "msg": "fix: remove union return-promotion dupe (reduces leaks 114→51)",
+    "files": [
+      "src/annotator.rb"
+    ],
+    "added": 1,
+    "removed": 13,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "71cd3e2b34cd64f664e5ceb8da17eaf585f99556",
+    "msg": "fix: 4 SOA codegen bugs — pipe_items.len, ORDER_BY/LIMIT, CONCURRENT, EACH writeback",
+    "files": [
+      "src/pipeline_generator.rb"
+    ],
+    "added": 33,
+    "removed": 8,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "ed33e7c6ebbcf0b6209407f5597b99a9f2830db9",
+    "msg": "fix: 4 SOA codegen bugs — pipe_items.len, ORDER_BY/LIMIT, CONCURRENT, EACH writeback",
+    "files": [
+      "src/pipeline_generator.rb"
+    ],
+    "added": 33,
+    "removed": 8,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "41e2ee6e4e9ac9799e726431d0a1a39477927ef0",
+    "msg": "fix: 4 SOA codegen bugs — pipe_items.len, ORDER_BY/LIMIT, CONCURRENT, EACH writeback",
+    "files": [
+      "src/pipeline_generator.rb"
+    ],
+    "added": 33,
+    "removed": 8,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "f5b1056ad4c58c612d9558ebaff2fe1d4aa5b642",
+    "msg": "fix: 4 SOA codegen bugs — pipe_items.len, ORDER_BY/LIMIT, CONCURRENT, EACH writeback",
+    "files": [
+      "src/pipeline_generator.rb"
+    ],
+    "added": 33,
+    "removed": 8,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "a0fcf2e7bb635cb445186051756bbde9c4796c39",
+    "msg": "fix: 4 SOA codegen bugs — pipe_items.len, ORDER_BY/LIMIT, CONCURRENT, EACH writeback",
+    "files": [
+      "src/pipeline_generator.rb"
+    ],
+    "added": 33,
+    "removed": 8,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "0c44f825dde537b5bad71c77a90efc6b3ece54de",
+    "msg": "Fix ownership bug in var declaration.",
+    "files": [
+      "src/annotator.rb"
+    ],
+    "added": 3,
+    "removed": 10,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "92f26591aaf076a99a1d6d5a99de0b68d23c9297",
+    "msg": "Fix ownership bug in var declaration.",
+    "files": [
+      "src/annotator.rb"
+    ],
+    "added": 3,
+    "removed": 10,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "77879c5faa560201ea6611ca5c8a32e402a2f475",
+    "msg": "Fix bug to drop conditionally when return interrupts.",
+    "files": [
+      "src/annotator.rb",
+      "src/ast.rb",
+      "src/ownership_tracker.rb",
+      "src/scope.rb"
+    ],
+    "added": 36,
+    "removed": 16,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "27d88d1f48cfe8bf1a070f3d8f235aa88147bd3b",
+    "msg": "Fix bug to drop conditionally when return interrupts.",
+    "files": [
+      "src/annotator.rb",
+      "src/ast.rb",
+      "src/ownership_tracker.rb",
+      "src/scope.rb"
+    ],
+    "added": 36,
+    "removed": 16,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "ba77532d864ce6fdda033cb8434b0831b4e06a26",
+    "msg": "Fix memory leaks when adding strings / arrays (use frame by default).",
+    "files": [
+      "src/annotator.rb"
+    ],
+    "added": 5,
+    "removed": 0,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "f2addec93118e43eeb11f4ba056c57ecc47a6a38",
+    "msg": "Fixed and tested error handling.",
+    "files": [
+      "spec/vm_spec.rb",
+      "src/compiler.rb",
+      "src/source_error.rb"
+    ],
+    "added": 207,
+    "removed": 17,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "6e750fe0a33c495c1f5578d825ccb531eaea97cf",
+    "msg": "Fixed and tested error handling.",
+    "files": [
+      "spec/vm_spec.rb",
+      "src/compiler.rb",
+      "src/source_error.rb"
+    ],
+    "added": 207,
+    "removed": 17,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "b5f393e0dc3385a150ae22a205a6bfe88c7b3c39",
+    "msg": "Fix struct error, prepare VM for MOCK Arena-based memory management.",
+    "files": [
+      "examples/prog.flux",
+      "src/vm.rb"
+    ],
+    "added": 4,
+    "removed": 4,
+    "subproject": "new_compiler"
+  },
+  {
+    "sha": "5905c4bd486e6f5656209940240eba034200d834",
+    "msg": "fix: nil-kill collect - FrozenError crash zeroed traced evidence on frozen collections",
+    "files": [
+      "gems/nil-kill/lib/nil_kill/runtime_trace.rb"
+    ],
+    "added": 6,
+    "removed": 3,
+    "subproject": "nil-kill"
+  },
+  {
+    "sha": "5ed5e219d470a5a756a1d3f4ea5eed7591616f41",
+    "msg": "fix: nil-kill @objects unbounded-memory leak (finalizer eviction) + regression gate",
+    "files": [
+      "gems/nil-kill/lib/nil_kill/runtime_trace.rb",
+      "gems/nil-kill/spec/runtime_trace_spec.rb"
+    ],
+    "added": 56,
+    "removed": 1,
+    "subproject": "nil-kill"
+  },
+  {
+    "sha": "7fe32919bd18140be94ebcb8424319ebc7273d65",
+    "msg": "fix(minivm): bc_run.rb fails loudly on bc_runner build errors",
+    "files": [
+      "examples/minivm/bc_run.rb"
+    ],
+    "added": 12,
+    "removed": 5,
+    "subproject": "minivm"
+  },
+  {
+    "sha": "3ad721f5409f09da2aa5f5ca4dfc00ecf81d7fda",
+    "msg": "fix(minivm): bc_run.rb tolerates timeout-killed runner without IOError",
+    "files": [
+      "examples/minivm/bc_run.rb"
+    ],
+    "added": 17,
+    "removed": 2,
+    "subproject": "minivm"
+  },
+  {
+    "sha": "e293b71ffa29bb2dd49503726dc0a3a06d376528",
+    "msg": "fix(minivm): unified chain-set walks FieldGet/IndexGet to root, fixes nested mutation (+1 test)",
+    "files": [
+      "examples/minivm/bc_emitter.rb"
+    ],
+    "added": 113,
+    "removed": 27,
+    "subproject": "minivm"
+  },
+  {
+    "sha": "6bce26b22d10606a26ab54efdb85fab1064f5958",
+    "msg": "fix(minivm): MIR::TryExpr propagates Value.Error via early BC_RET (+1 test)",
+    "files": [
+      "examples/minivm/bc_emitter.rb"
+    ],
+    "added": 30,
+    "removed": 1,
+    "subproject": "minivm"
+  },
+  {
+    "sha": "5498f7c62f14756b062671bfb757036e9d1f468e",
+    "msg": "fix(minivm): correctly parse std.debug.print template args (commas in nested calls)",
+    "files": [
+      "examples/minivm/bc_emitter.rb"
+    ],
+    "added": 80,
+    "removed": 5,
+    "subproject": "minivm"
+  },
+  {
+    "sha": "f072f4d57ea42aa9c9024d06c1a77f32b3c8c4ed",
+    "msg": "fix(minivm): WHERE/COUNT/FIND inversion + BREAK + list.remove + .toList (Task #22)",
+    "files": [
+      "examples/minivm/bc_emitter.rb"
+    ],
+    "added": 142,
+    "removed": 8,
+    "subproject": "minivm"
+  },
+  {
+    "sha": "993ae0839072fab6ac9fa0cb2fb8584fa1388d18",
+    "msg": "fix(minivm): GetIndex / IndexAssign — recognize HashMap by AST type info (Task #21)",
+    "files": [
+      "examples/minivm/bc_emitter.rb"
+    ],
+    "added": 25,
+    "removed": 4,
+    "subproject": "minivm"
+  },
+  {
+    "sha": "ed65ebe64f414edb96a613f270b3dba4c5a4a2a0",
+    "msg": "fix(minivm): wire OR RAISE / PASS / EXIT / PRUNE / BREAK markers (Task #20)",
+    "files": [
+      "examples/minivm/bc_emitter.rb"
+    ],
+    "added": 27,
+    "removed": 1,
+    "subproject": "minivm"
+  },
+  {
+    "sha": "34b858bbfc8a999d09c46e8fcf426bc351ee3abd",
+    "msg": "fix(minivm): WRAP_/CHECK_ arithmetic — box typed-stack operands when types mixed (Task #9)",
+    "files": [
+      "examples/minivm/bc_emitter.rb"
+    ],
+    "added": 12,
+    "removed": 3,
+    "subproject": "minivm"
+  },
+  {
+    "sha": "2f04795237c8e095b41059fc67bb73aed2b35268",
+    "msg": "fix(minivm): UFCS append(coll, value) → coll.append(value) (Task #11)",
+    "files": [
+      "examples/minivm/bc_emitter.rb"
+    ],
+    "added": 7,
+    "removed": 0,
+    "subproject": "minivm"
+  },
+  {
+    "sha": "2277a08a483a0bfba9a29289f71628717c95a9f9",
+    "msg": "fix(minivm): HashMap<T> no longer mis-detected as :str slot (Task #13)",
+    "files": [
+      "examples/minivm/bc_emitter.rb"
+    ],
+    "added": 5,
+    "removed": 2,
+    "subproject": "minivm"
+  },
+  {
+    "sha": "106e086d82ea49a7040ae38fad47230b048d22b0",
+    "msg": "fix(minivm): OR_RESCUE actually evaluates the fallback (Task #12)",
+    "files": [
+      "examples/minivm/bc_emitter.rb"
+    ],
+    "added": 20,
+    "removed": 1,
+    "subproject": "minivm"
+  }
+]

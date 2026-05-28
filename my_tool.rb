@@ -1,0 +1,315 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Code Navigator Tool — `my_tool`
+#
+# Usage:
+#   my_tool src/example.rb:foo         # Print function foo from the file
+#   my_tool src/example.rb#72          # Print the function containing line 72
+#   my_tool src/example.rb:foo debug   # Print function + types + deps + members
+#   my_tool src/example.rb#72 debug    # Same, by line number
+#
+# Prints:
+#   - The full function body
+#   - The class/module it belongs to (if any)
+#   - In debug mode: params with types, local methods, member vars, callee sigs
+
+require 'prism'
+
+REPO = File.expand_path(ARGV[0] ? Dir.pwd : '~/cheat')
+
+Component = Struct.new(:type, :name, :start_line, :end_line, :body, :slice, :children, keyword_init: true)
+
+def parse_file(file_path)
+  full_path = File.expand_path(file_path, REPO)
+  return nil, "File not found: #{full_path}" unless File.exist?(full_path)
+  
+  source = File.read(full_path)
+  parsed = Prism.parse(source)
+  return nil, "Parse error: #{parsed.errors.first&.message}" unless parsed.success?
+  
+  [source, parsed.value]
+end
+
+def build_tree(node, nesting = '')
+  return [] unless node.respond_to?(:child_nodes)
+  
+  results = []
+  
+  if node.is_a?(Prism::DefNode)
+    name = nesting.empty? ? node.name.to_s : "#{nesting}.#{node.name}"
+    results << Component.new(
+      type: :def,
+      name: name,
+      start_line: node.location.start_line,
+      end_line: node.location.end_line,
+      body: (node.body&.slice || ''),
+      slice: node.slice,
+      children: node.body ? build_tree(node.body, name) : []
+    )
+  elsif node.is_a?(Prism::ClassNode) || node.is_a?(Prism::ModuleNode)
+    name = node.constant_path&.slice || node.name.to_s
+    full_name = nesting.empty? ? name : "#{nesting}::#{name}"
+    children = node.body ? build_tree(node.body, full_name) : []
+    results << Component.new(
+      type: node.is_a?(Prism::ClassNode) ? :class : :module,
+      name: full_name,
+      start_line: node.location.start_line,
+      end_line: node.location.end_line,
+      body: node.body&.slice || '',
+      slice: node.slice,
+      children: children
+    )
+  else
+    node.child_nodes&.compact&.each { |c| results.concat(build_tree(c, nesting)) }
+  end
+  
+  results
+end
+
+def find_function(tree, name_or_line)
+  # Search by name
+  if name_or_line.is_a?(String)
+    tree.each do |component|
+      result = search_by_name(component, name_or_line)
+      return result if result
+    end
+  end
+  
+  # Search by line number
+  if name_or_line.is_a?(Integer)
+    tree.each do |component|
+      result = search_by_line(component, name_or_line)
+      return result if result
+    end
+  end
+  
+  nil
+end
+
+def search_by_name(component, name)
+  if component.type == :def && component.name.end_with?(".#{name}") || component.name == name
+    return component
+  end
+  component.children.each do |child|
+    result = search_by_name(child, name)
+    return result if result
+  end
+  nil
+end
+
+def search_by_line(component, line)
+  if component.type == :def && component.start_line <= line && component.end_line >= line
+    return component
+  end
+  component.children.each do |child|
+    result = search_by_line(child, line)
+    return result if result
+  end
+  nil
+end
+
+def find_parent_class(tree, fn_component)
+  tree.each do |component|
+    if component.type == :class || component.type == :module
+      if component.start_line <= fn_component.start_line && component.end_line >= fn_component.end_line
+        # Check if fn is directly inside this class (not nested in another class)
+        component.children.each do |child|
+          if child.type == :def && child.name == fn_component.name
+            return component
+          end
+        end
+        # Recursively check nested classes
+        result = find_parent_class(component.children, fn_component)
+        return result || component if result || component.start_line <= fn_component.start_line
+      end
+    end
+  end
+  nil
+end
+
+def extract_params(fn_component, source)
+  # Parse the def line to get parameters
+  lines = source.split("\n")
+  def_line = lines[fn_component.start_line - 1]
+  
+  # Extract parameters between parentheses
+  params = []
+  if def_line =~ /def\s+\w+[?!]?\s*\(([^)]*)\)/
+    $1.split(',').each do |p|
+      p = p.strip
+      next if p.empty?
+      if p =~ /(\w+)\s*:\s*(\S+)/
+        params << { name: $1, type: $2 }
+      elsif p =~ /(\w+)/
+        params << { name: $1, type: 'T.untyped' }
+      end
+    end
+  end
+  params
+end
+
+def extract_members(fn_component)
+  body = fn_component.body || ''
+  members = body.scan(/@(\w+)/).flatten.uniq.sort
+  members.map { |m| "@#{m}" }
+end
+
+def extract_local_methods(fn_component, source)
+  lines = source.split("\n")
+  body_lines = lines[(fn_component.start_line)..(fn_component.end_line - 2)] || []
+  methods = []
+  body_lines.each do |line|
+    if line =~ /\.(\w+[?!]?)\s*\(/
+      methods << $1
+    elsif line =~ /(\w+[?!]?)\s*\(/
+      methods << $1
+    end
+  end
+  methods.uniq.sort
+end
+
+def find_callee_sig(callee_name, file_path, source)
+  # Search the file for a function definition matching callee_name
+  parsed = Prism.parse(source)
+  return nil unless parsed.success?
+  
+  fn = nil
+  walk = ->(node, nesting = '') {
+    return unless node.respond_to?(:child_nodes)
+    if node.is_a?(Prism::DefNode)
+      name = nesting.empty? ? node.name.to_s : "#{nesting}.#{node.name}"
+      if name.end_with?(".#{callee_name}") || name == callee_name
+        fn = { name: name, start_line: node.location.start_line, slice: node.slice.lines.first(3).join.strip }
+      end
+      walk.call(node.body, name) if node.body
+    elsif node.is_a?(Prism::ClassNode) || node.is_a?(Prism::ModuleNode)
+      cn = node.constant_path&.slice || node.name.to_s
+      walk.call(node.body, "#{nesting}::#{cn}") if node.body
+    else
+      node.child_nodes&.compact&.each { |c| walk.call(c, nesting) }
+    end
+  }
+  walk.call(parsed.value)
+  fn
+end
+
+# === Main ===
+
+if ARGV.empty? || ARGV[0] == '--help'
+  puts "Usage:"
+  puts "  ruby #{$0} <file>:<function_name> [debug]"
+  puts "  ruby #{$0} <file>#<line_number> [debug]"
+  puts ""
+  puts "Examples:"
+  puts "  ruby #{$0} src/mir/hoist.rb:hoist_body!         # Print function body"
+  puts "  ruby #{$0} src/mir/hoist.rb#142                  # Print function at line 142"
+  puts "  ruby #{$0} src/mir/hoist.rb:hoist_body! debug    # Print with context"
+  exit 0
+end
+
+arg = ARGV[0]
+debug_mode = ARGV[1] == 'debug'
+
+# Parse the argument
+if arg =~ /^(.+?):(\w+[?!]?)$/
+  file_path = $1
+  fn_name = $2
+elsif arg =~ /^(.+?)#(\d+)$/
+  file_path = $1
+  line_number = $2.to_i
+  fn_name = line_number
+else
+  puts "Usage: my_tool <file>:<function> or my_tool <file>#<line>"
+  exit 1
+end
+
+# Parse the file
+source, tree = parse_file(file_path)
+unless tree
+  puts "Error: #{source}"
+  exit 1
+end
+
+# Build component tree
+components = build_tree(tree)
+
+# Find the target function
+fn = find_function(components, fn_name)
+unless fn
+  type_name = fn_name.is_a?(String) ? "function '#{fn_name}'" : "function at line #{fn_name}"
+  puts "Error: #{type_name} not found in #{file_path}"
+  exit 1
+end
+
+# Find parent class
+parent_class = find_parent_class(components, fn)
+
+# Print results
+puts "=" * 60
+puts "File: #{file_path}"
+puts "Function: #{fn.name}"
+if parent_class
+  puts "Class: #{parent_class.name} (#{parent_class.type})"
+  puts "Class lines: #{parent_class.start_line}-#{parent_class.end_line}"
+end
+puts "Function lines: #{fn.start_line}-#{fn.end_line}"
+puts ""
+
+# Print the function body
+puts "--- Body ---"
+puts fn.slice
+
+if debug_mode
+  puts ""
+  puts "=" * 60
+  puts "DEBUG CONTEXT"
+  puts "=" * 60
+  
+  # Parameters with types
+  params = extract_params(fn, source)
+  if params.any?
+    puts ""
+    puts "--- Parameters ---"
+    params.each { |p| puts "  #{p[:name]}: #{p[:type]}" }
+  end
+  
+  # Member variables used
+  members = extract_members(fn)
+  if members.any?
+    puts ""
+    puts "--- Members Accessed ---"
+    members.each { |m| puts "  #{file_path}:#{m}" }
+  end
+  
+  # Local methods called
+  callees = extract_local_methods(fn, source)
+  if callees.any?
+    puts ""
+    puts "--- Methods Called ---"
+    full_source = File.read(File.expand_path(file_path, REPO))
+    callees.each do |callee|
+      sig = find_callee_sig(callee, file_path, full_source)
+      if sig
+        puts "  #{file_path}:#{sig[:name]}(...)  -- line #{sig[:start_line]}"
+        puts "    #{sig[:slice]}"
+      else
+        puts "  #{callee}(...)  -- (external or in another file)"
+      end
+    end
+  end
+  
+  # Class methods (if in a class)
+  if parent_class
+    sibling_methods = parent_class.children.select { |c| c.type == :def && c.name != fn.name }
+    if sibling_methods.any?
+      puts ""
+      puts "--- Sibling Methods in #{parent_class.name} ---"
+      sibling_methods.each do |sm|
+        sig_line = source.split("\n")[sm.start_line - 1]&.strip || ''
+        puts "  #{file_path}:#{sm.name}(...)  -- line #{sm.start_line}"
+        puts "    #{sig_line[0..80]}"
+      end
+    end
+  end
+end
