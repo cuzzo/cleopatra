@@ -4,9 +4,9 @@
 # baseline-test.rb — Measure fix rates with and without ideal context.
 #
 # Usage:
-#   ruby baseline-test.rb qwen2.5-coder:3b    # Ollama model
-#   ruby baseline-test.rb Qwen/Qwen2.5-Coder-3B-Instruct  # HF model
-#   ruby baseline-test.rb qwen2.5-coder:3b --count 200
+#   ruby src/baseline-test.rb qwen2.5-coder:3b    # Ollama model
+#   ruby src/baseline-test.rb Qwen/Qwen2.5-Coder-3B-Instruct  # HF model
+#   ruby src/baseline-test.rb qwen2.5-coder:3b --count 200
 #
 # Tests two scenarios per bug:
 #   A = prompt only (model must find context itself)
@@ -19,7 +19,8 @@ require 'json'
 require 'net/http'
 require 'uri'
 
-BUGS_FILE = File.join(__dir__, 'bugs.jsonl')
+ROOT = File.expand_path('..', __dir__)
+BUGS_FILE = File.join(ROOT, 'bugs.jsonl')
 COUNT = (ARGV[ARGV.index('--count') + 1] rescue 200).to_i
 MODEL = (ARGV[0] rescue 'qwen2.5-coder:3b')
 OLLAMA_URL = "http://localhost:11434/api/generate"  # default Ollama

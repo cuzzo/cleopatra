@@ -7,7 +7,7 @@
 # to Ruby functions parsed via Prism. Each bug gets 5 tool-calling
 # trajectories computed from the bug's metadata:
 #   1. y_clean       (ideal tool calls, walks stack trace)
-#   2. y_broken_wrong_fn (calls my_tool on wrong function)
+#   2. y_broken_wrong_fn (calls ctx on wrong function)
 #   3. y_sloppy_over (over-calls, too much context)
 #   4. y_sloppy_under (under-calls, too little or too much noise)
 #   5. y_blind_native (no tool calls, pure guess)
@@ -22,16 +22,17 @@ require 'securerandom'
 require 'tempfile'
 require 'timeout'
 
-DEFAULT_BUNDLE = File.expand_path('archives/cheat.bundle', __dir__)
-DEFAULT_REPO = File.expand_path('.eval/cheat', __dir__)
-DEFAULT_OUT = File.join(__dir__, 'bugs.jsonl')
+ROOT = File.expand_path('..', __dir__)
+DEFAULT_BUNDLE = File.expand_path('archives/cheat.bundle', ROOT)
+DEFAULT_REPO = File.expand_path('.eval/cheat', ROOT)
+DEFAULT_OUT = File.join(ROOT, 'bugs.jsonl')
 
 OPTIONS = {
   repo: DEFAULT_REPO,
   bundle: DEFAULT_BUNDLE,
   ref: 'refs/remotes/bundle/master',
   out: DEFAULT_OUT,
-  failure_log: File.join(__dir__, 'bug_generation_failures.jsonl'),
+  failure_log: File.join(ROOT, 'bug_generation_failures.jsonl'),
   total: 1200,
   subprojects: nil,
   verify_tests: true,
@@ -44,7 +45,7 @@ OPTIONS = {
 
 opts = OPTIONS.dup
 OptionParser.new do |o|
-  o.banner = 'Usage: ruby mutant-bug-gen.rb [options]'
+  o.banner = 'Usage: ruby src/mutant-bug-gen.rb [options]'
   o.on('--repo PATH', 'Local restored repo checkout to generate from') { |v| opts[:repo] = File.expand_path(v) }
   o.on('--bundle PATH', 'Git bundle used to restore the repo') { |v| opts[:bundle] = File.expand_path(v) }
   o.on('--ref REF', 'Bundle/restored repo ref to pin for generation') { |v| opts[:ref] = v }
@@ -181,7 +182,7 @@ def prepare_repo(repo_path, bundle_path, ref)
   commit = run_cmd('git', 'rev-parse', 'HEAD', chdir: repo_path).strip
   tree = run_cmd('git', 'rev-parse', 'HEAD^{tree}', chdir: repo_path).strip
   {
-    'bundle' => bundle_path.sub("#{__dir__}/", ''),
+    'bundle' => bundle_path.sub("#{ROOT}/", ''),
     'repo_path' => repo_path,
     'ref' => ref,
     'commit' => commit,
@@ -205,7 +206,7 @@ def apply_mutation_to_file(fn, mutated_body)
     tmp.close
     out, err, status = Open3.capture3(
       'ruby',
-      File.join(__dir__, 'bugfix', 'apply_mutation.rb'),
+      File.join(ROOT, 'src', 'apply_mutation.rb'),
       fn[:file],
       tmp.path,
       fn[:name],
@@ -683,7 +684,7 @@ def make_trajectories(fn, difficulty)
     clean_steps << { 'action' => 'fix', 'code' => '...correct fix...', 'decomplex_score' => 85 }
   end
 
-  # Variant 2: y_broken_wrong_fn — call my_tool on a random callee instead of the buggy fn
+  # Variant 2: y_broken_wrong_fn — call ctx on a random callee instead of the buggy fn
   wrong_fn = callees[0] || short
   wrong_steps = [
     { 'action' => 'tool_call', 'tool' => 'ctx',
@@ -730,8 +731,8 @@ def make_trajectories(fn, difficulty)
 
   {
     'y_clean'           => { 'label' => 'y_clean',           'reward' => 10,  'description' => 'Called exactly the right tools - ideal context',          'tool_calls' => clean_calls,              'steps' => clean_steps },
-    'y_broken_wrong_fn' => { 'label' => 'y_broken_wrong_fn', 'reward' => -5,  'description' => 'Called my_tool on wrong function',                         'tool_calls' => 1,                         'steps' => wrong_steps },
-    'y_sloppy_over'     => { 'label' => 'y_sloppy_over',     'reward' => 2,   'description' => 'Called my_tool on too many functions - over-context',     'tool_calls' => 1 + callees.size + 1,      'steps' => over_steps },
+    'y_broken_wrong_fn' => { 'label' => 'y_broken_wrong_fn', 'reward' => -5,  'description' => 'Called ctx on wrong function',                         'tool_calls' => 1,                         'steps' => wrong_steps },
+    'y_sloppy_over'     => { 'label' => 'y_sloppy_over',     'reward' => 2,   'description' => 'Called ctx on too many functions - over-context',     'tool_calls' => 1 + callees.size + 1,      'steps' => over_steps },
     'y_sloppy_under'    => { 'label' => 'y_sloppy_under',    'reward' => -5,  'description' => 'Called too few tools - under-context',                      'tool_calls' => 1,                         'steps' => under_steps },
     'y_blind_native'    => { 'label' => 'y_blind_native',    'reward' => -10, 'description' => 'No tool calls - model guesses without context',             'tool_calls' => 0,                         'steps' => native_steps },
   }

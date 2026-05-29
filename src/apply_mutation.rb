@@ -9,7 +9,7 @@ body_path = ARGV[1]
 target_function = ARGV[2]
 
 unless source_path && body_path && target_function
-  warn 'Usage: ruby bugfix/apply_mutation.rb SOURCE BODY TARGET_FUNCTION'
+  warn 'Usage: ruby src/apply_mutation.rb SOURCE BODY TARGET_FUNCTION'
   exit 2
 end
 

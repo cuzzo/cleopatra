@@ -4,7 +4,8 @@ import json, os, random, requests
 
 API_KEY = "REPLACE_WITH_YOUR_KEY"
 MODEL = "qwen/qwen3-coder-30b-a3b-instruct"
-BUGS_FILE = os.path.join(os.path.dirname(__file__), 'bugs.jsonl')
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BUGS_FILE = os.path.join(ROOT, 'bugs.jsonl')
 
 def query(prompt):
     resp = requests.post(

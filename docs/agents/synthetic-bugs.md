@@ -13,7 +13,7 @@ repo, not from a live development checkout such as `~/cheat`.
 Default source:
 
 ```bash
-ruby mutant-bug-gen.rb \
+ruby src/mutant-bug-gen.rb \
   --bundle archives/cheat.bundle \
   --repo .eval/cheat \
   --ref refs/remotes/bundle/master \

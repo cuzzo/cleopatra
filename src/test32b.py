@@ -5,7 +5,8 @@ import json, sys, os, subprocess, tempfile, re
 API_KEY = "REPLACE_WITH_YOUR_KEY"
 MODEL = "qwen/qwen-2.5-coder-32b-instruct"
 CHEAT = os.path.expanduser("~/cheat")
-BUGS_FILE = os.path.join(os.path.dirname(__file__), 'bugs.jsonl')
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BUGS_FILE = os.path.join(ROOT, 'bugs.jsonl')
 
 import requests
 def query(prompt, sysmsg="You are a senior Ruby developer. Fix the bug. Return ONLY fixed Ruby code."):

@@ -6,7 +6,7 @@ import os
 import random
 import subprocess
 
-ROOT = '/home/yahn/cleopatra'
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BUGS = os.path.join(ROOT, 'bugs.jsonl')
 
 parser = argparse.ArgumentParser()

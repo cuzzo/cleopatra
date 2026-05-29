@@ -9,11 +9,11 @@ import subprocess
 import tempfile
 import time
 
-ROOT = '/home/yahn/cleopatra'
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BUGS = os.path.join(ROOT, 'bugs.jsonl')
 DEFAULT_REPO = os.path.join(ROOT, '.eval', 'cheat')
-APPLY_RESPONSE = os.path.join(ROOT, 'bugfix', 'apply_response.rb')
-APPLY_MUTATION = os.path.join(ROOT, 'bugfix', 'apply_mutation.rb')
+APPLY_RESPONSE = os.path.join(ROOT, 'src', 'apply_response.rb')
+APPLY_MUTATION = os.path.join(ROOT, 'src', 'apply_mutation.rb')
 DEFAULT_BUNDLE_PATH = '/home/yahn/cheat/vendor/bundle'
 
 with open(BUGS) as f:

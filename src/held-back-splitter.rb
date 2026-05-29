@@ -2,12 +2,13 @@
 # frozen_string_literal: true
 
 # held-back-splitter.rb — Splits bugs into train/validation/holdback sets
-# following the 5:3:2 ratio defined in synthetic-bugs.md.
+# following the 5:3:2 ratio defined in docs/agents/synthetic-bugs.md.
 
-BUGS_FILE = File.join(__dir__, 'bugs.jsonl')
-TRAINING_DIR = File.join(__dir__, 'training')
-VALIDATION_DIR = File.join(__dir__, 'validation')
-HELD_BACK_DIR = File.join(__dir__, 'held_back')
+ROOT = File.expand_path('..', __dir__)
+BUGS_FILE = File.join(ROOT, 'bugs.jsonl')
+TRAINING_DIR = File.join(ROOT, 'training')
+VALIDATION_DIR = File.join(ROOT, 'validation')
+HELD_BACK_DIR = File.join(ROOT, 'held_back')
 
 require 'json'
 

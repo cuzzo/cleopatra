@@ -149,8 +149,8 @@ if ARGV[0] == '--history'
   func = ARGV[2]
   
   unless file && func
-    puts "Usage: ruby function_history.rb --history <file> <function_name>"
-    puts "Example: ruby function_history.rb --history src/mir/hoist.rb Hoist.hoist_body!"
+    puts "Usage: ruby src/function_history.rb --history <file> <function_name>"
+    puts "Example: ruby src/function_history.rb --history src/mir/hoist.rb Hoist.hoist_body!"
     exit 1
   end
   
@@ -242,9 +242,9 @@ elsif ARGV[0] == '--scan-all'
 else
   # Demo mode: show a few functions with their history
   puts "Usage:"
-  puts "  ruby function_history.rb --history <file> <function>  # Show all versions of a function"
-  puts "  ruby function_history.rb --check-tasks [file.json]    # Check tasks for history"
-  puts "  ruby function_history.rb --scan-all                   # Scan all task files"
+  puts "  ruby src/function_history.rb --history <file> <function>  # Show all versions of a function"
+  puts "  ruby src/function_history.rb --check-tasks [file.json]    # Check tasks for history"
+  puts "  ruby src/function_history.rb --scan-all                   # Scan all task files"
   puts ""
   puts "Demo: Hoist.hoist_body! in src/mir/hoist.rb"
   versions = get_function_history("src/mir/hoist.rb", "Hoist.hoist_body!")

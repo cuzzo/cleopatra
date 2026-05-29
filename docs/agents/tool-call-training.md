@@ -101,7 +101,7 @@ Ruby bugs are generated from git bundles stored in `archives/`, not from live
 developer checkouts. The default synthetic mutant source is:
 
 ```bash
-ruby mutant-bug-gen.rb \
+ruby src/mutant-bug-gen.rb \
   --bundle archives/cheat.bundle \
   --repo .eval/cheat \
   --ref refs/remotes/bundle/master \

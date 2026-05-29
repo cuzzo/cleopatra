@@ -12,8 +12,9 @@
 require 'json'
 require 'fileutils'
 
-BUGS_FILE = File.join(__dir__, 'bugs.jsonl')
-OUTDIR = File.join(__dir__, 'training_data')
+ROOT = File.expand_path('..', __dir__)
+BUGS_FILE = File.join(ROOT, 'bugs.jsonl')
+OUTDIR = File.join(ROOT, 'training_data')
 FileUtils.mkdir_p(OUTDIR)
 
 # === Special tokens for tool calling ===

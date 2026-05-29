@@ -1,13 +1,13 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# Code Navigator Tool — `my_tool`
+# Code Navigator Tool — `ctx`
 #
 # Usage:
-#   my_tool src/example.rb:foo         # Print function foo from the file
-#   my_tool src/example.rb#72          # Print the function containing line 72
-#   my_tool src/example.rb:foo debug   # Print function + types + deps + members
-#   my_tool src/example.rb#72 debug    # Same, by line number
+#   ctx src/example.rb:foo         # Print function foo from the file
+#   ctx src/example.rb#72          # Print the function containing line 72
+#   ctx src/example.rb:foo debug   # Print function + types + deps + members
+#   ctx src/example.rb#72 debug    # Same, by line number
 #
 # Prints:
 #   - The full function body
@@ -283,7 +283,7 @@ elsif arg =~ /^(.+?)#(\d+)$/
   line_number = $2.to_i
   fn_name = line_number
 else
-  puts "Usage: my_tool <file>:<function> or my_tool <file>#<line>"
+  puts "Usage: ctx <file>:<function> or ctx <file>#<line>"
   exit 1
 end
 

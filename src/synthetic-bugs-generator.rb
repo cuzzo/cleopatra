@@ -7,8 +7,9 @@
 require "json"
 require "securerandom"
 
-BUGS_FILE = File.join(__dir__, "bugs.jsonl")
-HELD_BACK_DIR = File.join(__dir__, "held_back")
+ROOT = File.expand_path('..', __dir__)
+BUGS_FILE = File.join(ROOT, "bugs.jsonl")
+HELD_BACK_DIR = File.join(ROOT, "held_back")
 Dir.mkdir(HELD_BACK_DIR) unless Dir.exist?(HELD_BACK_DIR)
 
 # === Load existing bugs ===
@@ -166,25 +167,25 @@ def generate_ideal_tool_calls(subproject)
   # Ideal: 3-5 tool calls walking up the stack trace
   case subproject
   when "src"
-    [{ "tool" => "my_tool", "args" => "src/annotator.rb#122" },
-     { "tool" => "my_tool", "args" => "src/annotator.rb#122 debug" },
-     { "tool" => "my_tool", "args" => "src/annotator.rb:annotate! debug" }]
+    [{ "tool" => "ctx", "args" => "src/annotator.rb#122" },
+     { "tool" => "ctx", "args" => "src/annotator.rb#122 debug" },
+     { "tool" => "ctx", "args" => "src/annotator.rb:annotate! debug" }]
   when "nil-kill"
-    [{ "tool" => "my_tool", "args" => "gems/nil-kill/lib/nil_kill/apply.rb#42" },
-     { "tool" => "my_tool", "args" => "gems/nil-kill/lib/nil_kill/apply.rb:apply! debug" }]
+    [{ "tool" => "ctx", "args" => "gems/nil-kill/lib/nil_kill/apply.rb#42" },
+     { "tool" => "ctx", "args" => "gems/nil-kill/lib/nil_kill/apply.rb:apply! debug" }]
   when "minivm"
-    [{ "tool" => "my_tool", "args" => "gems/minivm/lib/minivm/vm.rb#95" },
-     { "tool" => "my_tool", "args" => "gems/minivm/lib/minivm/vm.rb:vm_step! debug" }]
+    [{ "tool" => "ctx", "args" => "gems/minivm/lib/minivm/vm.rb#95" },
+     { "tool" => "ctx", "args" => "gems/minivm/lib/minivm/vm.rb:vm_step! debug" }]
   when "puck"
-    [{ "tool" => "my_tool", "args" => "examples/puck/lib/puck/bc.rb#77" },
-     { "tool" => "my_tool", "args" => "examples/puck/lib/puck/bc.rb:bc_step! debug" }]
+    [{ "tool" => "ctx", "args" => "examples/puck/lib/puck/bc.rb#77" },
+     { "tool" => "ctx", "args" => "examples/puck/lib/puck/bc.rb:bc_step! debug" }]
   when "decomplex"
-    [{ "tool" => "my_tool", "args" => "gems/decomplex/lib/decomplex/gram.rb#133" },
-     { "tool" => "my_tool", "args" => "gems/decomplex/lib/decomplex/gram.rb:gram_step! debug" }]
+    [{ "tool" => "ctx", "args" => "gems/decomplex/lib/decomplex/gram.rb#133" },
+     { "tool" => "ctx", "args" => "gems/decomplex/lib/decomplex/gram.rb:gram_step! debug" }]
   when "slopcop"
-    [{ "tool" => "my_tool", "args" => "gems/slopcop/lib/slopcop/slop.rb#22" }]
+    [{ "tool" => "ctx", "args" => "gems/slopcop/lib/slopcop/slop.rb#22" }]
   when "boobytrap"
-    [{ "tool" => "my_tool", "args" => "gems/boobytrap/lib/boobytrap/trap.rb#11" }]
+    [{ "tool" => "ctx", "args" => "gems/boobytrap/lib/boobytrap/trap.rb#11" }]
   else
     []
   end
@@ -197,47 +198,47 @@ def generate_trajectories(subproject, count)
     case subproject
     when "src"
       trajs << {
-        "y_clean" => { "tool_calls" => 3, "steps" => [{"action":"tool_call","tool":"my_tool","args":"src/annotator.rb#122"},{"action":"decide","decision":"enough_context"},{"action":"fix","code":"...fix..."}] },
-        "y_sloppy_1" => { "tool_calls" => 7, "steps" => [{"action":"tool_call","tool":"my_tool","args":"src/annotator.rb#122"},{"action":"tool_call","tool":"my_tool","args":"src/annotator.rb#122 debug"},{"action":"tool_call","tool":"my_tool","args":"src/annotator.rb#122 debug"},{"action":"tool_call","tool":"my_tool","args":"src/annotator.rb#122 debug"},{"action":"tool_call","tool":"my_tool","args":"src/annotator.rb#122 debug"},{"action":"decide","decision":"enough_context"},{"action":"fix","code":"...fix..."}] },
-        "y_sloppy_2" => { "tool_calls" => 1, "steps" => [{"action":"tool_call","tool":"my_tool","args":"src/annotator.rb#122"},{"action":"decide","decision":"not_enough_context"},{"action":"fix","code":"...partial fix..."}] },
+        "y_clean" => { "tool_calls" => 3, "steps" => [{"action":"tool_call","tool":"ctx","args":"src/annotator.rb#122"},{"action":"decide","decision":"enough_context"},{"action":"fix","code":"...fix..."}] },
+        "y_sloppy_1" => { "tool_calls" => 7, "steps" => [{"action":"tool_call","tool":"ctx","args":"src/annotator.rb#122"},{"action":"tool_call","tool":"ctx","args":"src/annotator.rb#122 debug"},{"action":"tool_call","tool":"ctx","args":"src/annotator.rb#122 debug"},{"action":"tool_call","tool":"ctx","args":"src/annotator.rb#122 debug"},{"action":"tool_call","tool":"ctx","args":"src/annotator.rb#122 debug"},{"action":"decide","decision":"enough_context"},{"action":"fix","code":"...fix..."}] },
+        "y_sloppy_2" => { "tool_calls" => 1, "steps" => [{"action":"tool_call","tool":"ctx","args":"src/annotator.rb#122"},{"action":"decide","decision":"not_enough_context"},{"action":"fix","code":"...partial fix..."}] },
         "y_broken_1" => { "tool_calls" => 2, "steps" => [{"action":"tool_call","tool":"grep","args":"-r 'def annotate!' src/"},{"action":"decide","decision":"found_in_grep"},{"action":"fix","code":"...fix based on grep output..."}] },
         "y_broken_2" => { "tool_calls" => 1, "steps" => [{"action":"tool_call","tool":"cat","args":"src/annotator.rb"},{"action":"decide","decision":"dumped_entire_file"},{"action":"fix","code":"...fix based on full file dump..."}] }
       }
     when "nil-kill"
       trajs << {
-        "y_clean" => { "tool_calls" => 2, "steps" => [{"action":"tool_call","tool":"my_tool","args":"gems/nil-kill/lib/nil_kill/apply.rb#42"},{"action":"decide","decision":"enough_context"},{"action":"fix","code":"...fix..."}] },
-        "y_sloppy_1" => { "tool_calls" => 5, "steps" => [{"action":"tool_call","tool":"my_tool","args":"gems/nil-kill/lib/nil_kill/apply.rb#42"},{"action":"tool_call","tool":"my_tool","args":"gems/nil-kill/lib/nil_kill/apply.rb#42 debug"},{"action":"tool_call","tool":"my_tool","args":"gems/nil-kill/lib/nil_kill/apply.rb#42 debug"},{"action":"decide","decision":"enough_context"},{"action":"fix","code":"...fix..."}] },
-        "y_sloppy_2" => { "tool_calls" => 1, "steps" => [{"action":"tool_call","tool":"my_tool","args":"gems/nil-kill/lib/nil_kill/apply.rb#42"},{"action":"decide","decision":"not_enough_context"},{"action":"fix","code":"...partial fix..."}] },
+        "y_clean" => { "tool_calls" => 2, "steps" => [{"action":"tool_call","tool":"ctx","args":"gems/nil-kill/lib/nil_kill/apply.rb#42"},{"action":"decide","decision":"enough_context"},{"action":"fix","code":"...fix..."}] },
+        "y_sloppy_1" => { "tool_calls" => 5, "steps" => [{"action":"tool_call","tool":"ctx","args":"gems/nil-kill/lib/nil_kill/apply.rb#42"},{"action":"tool_call","tool":"ctx","args":"gems/nil-kill/lib/nil_kill/apply.rb#42 debug"},{"action":"tool_call","tool":"ctx","args":"gems/nil-kill/lib/nil_kill/apply.rb#42 debug"},{"action":"decide","decision":"enough_context"},{"action":"fix","code":"...fix..."}] },
+        "y_sloppy_2" => { "tool_calls" => 1, "steps" => [{"action":"tool_call","tool":"ctx","args":"gems/nil-kill/lib/nil_kill/apply.rb#42"},{"action":"decide","decision":"not_enough_context"},{"action":"fix","code":"...partial fix..."}] },
         "y_broken_1" => { "tool_calls" => 2, "steps" => [{"action":"tool_call","tool":"grep","args":"-r 'def apply!' gems/nil-kill/"},{"action":"decide","decision":"found_in_grep"},{"action":"fix","code":"...fix based on grep..."}] },
         "y_broken_2" => { "tool_calls" => 1, "steps" => [{"action":"tool_call","tool":"cat","args":"gems/nil-kill/lib/nil_kill/apply.rb"},{"action":"decide","decision":"dumped_entire_file"},{"action":"fix","code":"...fix based on full dump..."}] }
       }
     when "minivm"
       trajs << {
-        "y_clean" => { "tool_calls" => 2, "steps" => [{"action":"tool_call","tool":"my_tool","args":"gems/minivm/lib/minivm/vm.rb#95"},{"action":"decide","decision":"enough_context"},{"action":"fix","code":"...fix..."}] },
-        "y_sloppy_1" => { "tool_calls" => 4, "steps" => [{"action":"tool_call","tool":"my_tool","args":"gems/minivm/lib/minivm/vm.rb#95"},{"action":"tool_call","tool":"my_tool","args":"gems/minivm/lib/minivm/vm.rb#95 debug"},{"action":"decide","decision":"enough_context"},{"action":"fix","code":"...fix..."}] },
-        "y_sloppy_2" => { "tool_calls" => 1, "steps" => [{"action":"tool_call","tool":"my_tool","args":"gems/minivm/lib/minivm/vm.rb#95"},{"action":"decide","decision":"not_enough_context"},{"action":"fix","code":"...partial fix..."}] },
+        "y_clean" => { "tool_calls" => 2, "steps" => [{"action":"tool_call","tool":"ctx","args":"gems/minivm/lib/minivm/vm.rb#95"},{"action":"decide","decision":"enough_context"},{"action":"fix","code":"...fix..."}] },
+        "y_sloppy_1" => { "tool_calls" => 4, "steps" => [{"action":"tool_call","tool":"ctx","args":"gems/minivm/lib/minivm/vm.rb#95"},{"action":"tool_call","tool":"ctx","args":"gems/minivm/lib/minivm/vm.rb#95 debug"},{"action":"decide","decision":"enough_context"},{"action":"fix","code":"...fix..."}] },
+        "y_sloppy_2" => { "tool_calls" => 1, "steps" => [{"action":"tool_call","tool":"ctx","args":"gems/minivm/lib/minivm/vm.rb#95"},{"action":"decide","decision":"not_enough_context"},{"action":"fix","code":"...partial fix..."}] },
         "y_broken_1" => { "tool_calls" => 2, "steps" => [{"action":"tool_call","tool":"grep","args":"-r 'def vm_step!' gems/minivm/"},{"action":"decide","decision":"found_in_grep"},{"action":"fix","code":"...fix based on grep..."}] },
         "y_broken_2" => { "tool_calls" => 1, "steps" => [{"action":"tool_call","tool":"cat","args":"gems/minivm/lib/minivm/vm.rb"},{"action":"decide","decision":"dumped_entire_file"},{"action":"fix","code":"...fix based on full dump..."}] }
       }
     when "puck"
       trajs << {
-        "y_clean" => { "tool_calls" => 2, "steps" => [{"action":"tool_call","tool":"my_tool","args":"examples/puck/lib/puck/bc.rb#77"},{"action":"decide","decision":"enough_context"},{"action":"fix","code":"...fix..."}] },
-        "y_sloppy_1" => { "tool_calls" => 4, "steps" => [{"action":"tool_call","tool":"my_tool","args":"examples/puck/lib/puck/bc.rb#77"},{"action":"tool_call","tool":"my_tool","args":"examples/puck/lib/puck/bc.rb#77 debug"},{"action":"decide","decision":"enough_context"},{"action":"fix","code":"...fix..."}] },
-        "y_sloppy_2" => { "tool_calls" => 1, "steps" => [{"action":"tool_call","tool":"my_tool","args":"examples/puck/lib/puck/bc.rb#77"},{"action":"decide","decision":"not_enough_context"},{"action":"fix","code":"...partial fix..."}] },
+        "y_clean" => { "tool_calls" => 2, "steps" => [{"action":"tool_call","tool":"ctx","args":"examples/puck/lib/puck/bc.rb#77"},{"action":"decide","decision":"enough_context"},{"action":"fix","code":"...fix..."}] },
+        "y_sloppy_1" => { "tool_calls" => 4, "steps" => [{"action":"tool_call","tool":"ctx","args":"examples/puck/lib/puck/bc.rb#77"},{"action":"tool_call","tool":"ctx","args":"examples/puck/lib/puck/bc.rb#77 debug"},{"action":"decide","decision":"enough_context"},{"action":"fix","code":"...fix..."}] },
+        "y_sloppy_2" => { "tool_calls" => 1, "steps" => [{"action":"tool_call","tool":"ctx","args":"examples/puck/lib/puck/bc.rb#77"},{"action":"decide","decision":"not_enough_context"},{"action":"fix","code":"...partial fix..."}] },
         "y_broken_1" => { "tool_calls" => 2, "steps" => [{"action":"tool_call","tool":"grep","args":"-r 'def bc_step!' examples/puck/"},{"action":"decide","decision":"found_in_grep"},{"action":"fix","code":"...fix based on grep..."}] },
         "y_broken_2" => { "tool_calls" => 1, "steps" => [{"action":"tool_call","tool":"cat","args":"examples/puck/lib/puck/bc.rb"},{"action":"decide","decision":"dumped_entire_file"},{"action":"fix","code":"...fix based on full dump..."}] }
       }
     when "decomplex"
       trajs << {
-        "y_clean" => { "tool_calls" => 2, "steps" => [{"action":"tool_call","tool":"my_tool","args":"gems/decomplex/lib/decomplex/gram.rb#133"},{"action":"decide","decision":"enough_context"},{"action":"fix","code":"...fix..."}] },
-        "y_sloppy_1" => { "tool_calls" => 4, "steps" => [{"action":"tool_call","tool":"my_tool","args":"gems/decomplex/lib/decomplex/gram.rb#133"},{"action":"tool_call","tool":"my_tool","args":"gems/decomplex/lib/decomplex/gram.rb#133 debug"},{"action":"decide","decision":"enough_context"},{"action":"fix","code":"...fix..."}] },
-        "y_sloppy_2" => { "tool_calls" => 1, "steps" => [{"action":"tool_call","tool":"my_tool","args":"gems/decomplex/lib/decomplex/gram.rb#133"},{"action":"decide","decision":"not_enough_context"},{"action":"fix","code":"...partial fix..."}] },
+        "y_clean" => { "tool_calls" => 2, "steps" => [{"action":"tool_call","tool":"ctx","args":"gems/decomplex/lib/decomplex/gram.rb#133"},{"action":"decide","decision":"enough_context"},{"action":"fix","code":"...fix..."}] },
+        "y_sloppy_1" => { "tool_calls" => 4, "steps" => [{"action":"tool_call","tool":"ctx","args":"gems/decomplex/lib/decomplex/gram.rb#133"},{"action":"tool_call","tool":"ctx","args":"gems/decomplex/lib/decomplex/gram.rb#133 debug"},{"action":"decide","decision":"enough_context"},{"action":"fix","code":"...fix..."}] },
+        "y_sloppy_2" => { "tool_calls" => 1, "steps" => [{"action":"tool_call","tool":"ctx","args":"gems/decomplex/lib/decomplex/gram.rb#133"},{"action":"decide","decision":"not_enough_context"},{"action":"fix","code":"...partial fix..."}] },
         "y_broken_1" => { "tool_calls" => 2, "steps" => [{"action":"tool_call","tool":"grep","args":"-r 'def gram_step!' gems/decomplex/"},{"action":"decide","decision":"found_in_grep"},{"action":"fix","code":"...fix based on grep..."}] },
         "y_broken_2" => { "tool_calls" => 1, "steps" => [{"action":"tool_call","tool":"cat","args":"gems/decomplex/lib/decomplex/gram.rb"},{"action":"decide","decision":"dumped_entire_file"},{"action":"fix","code":"...fix based on full dump..."}] }
       }
     else
       trajs << {
-        "y_clean" => { "tool_calls" => 1, "steps" => [{"action":"tool_call","tool":"my_tool","args":"gems/#{subproject}/lib/#{subproject}/#{subproject}.rb#1"},{"action":"decide","decision":"enough_context"},{"action":"fix","code":"...fix..."}] }
+        "y_clean" => { "tool_calls" => 1, "steps" => [{"action":"tool_call","tool":"ctx","args":"gems/#{subproject}/lib/#{subproject}/#{subproject}.rb#1"},{"action":"decide","decision":"enough_context"},{"action":"fix","code":"...fix..."}] }
       }
     end
   end

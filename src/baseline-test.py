@@ -2,7 +2,7 @@
 """baseline-test.py — Measure fix rates with/without ideal context using llama-cpp-python.
 
 Usage:
-  python3 baseline-test.py [--count 100] [--model data/models/qwen2.5-coder-3b-instruct.gguf]
+  python3 src/baseline-test.py [--count 100] [--model data/models/qwen2.5-coder-3b-instruct.gguf]
 
 Tests two scenarios per bug:
   A = prompt only (model must find context itself)
@@ -17,10 +17,11 @@ import os
 import random
 import math
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '.venv', 'lib', 'python3.12', 'site-packages'))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, '.venv', 'lib', 'python3.12', 'site-packages'))
 
 COUNT = 100
-MODEL_PATH = os.path.join(os.path.dirname(__file__), 'data/models/qwen2.5-coder-3b-instruct.gguf')
+MODEL_PATH = os.path.join(ROOT, 'data/models/qwen2.5-coder-3b-instruct.gguf')
 
 for i, arg in enumerate(sys.argv[1:]):
     if arg == '--count' and i + 1 < len(sys.argv):
@@ -28,7 +29,7 @@ for i, arg in enumerate(sys.argv[1:]):
     elif arg == '--model' and i + 1 < len(sys.argv):
         MODEL_PATH = sys.argv[i + 2]
 
-BUGS_FILE = os.path.join(os.path.dirname(__file__), 'bugs.jsonl')
+BUGS_FILE = os.path.join(ROOT, 'bugs.jsonl')
 INSTRUCT_TEMPLATE = "### Instruction:\n{prompt}\n\n### Response:\n"
 
 def load_model():

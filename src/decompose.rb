@@ -471,9 +471,9 @@ else
   sha = ARGV[0]
   if sha.nil? || sha.empty?
     puts "Usage:"
-    puts "  ruby decompose.rb <sha>          # Decompose a specific commit"
-    puts "  ruby decompose.rb --branch <name> # Decompose a pre-squash branch"
-    puts "  ruby decompose.rb --large         # Decompose all too-large commits"
+    puts "  ruby src/decompose.rb <sha>          # Decompose a specific commit"
+    puts "  ruby src/decompose.rb --branch <name> # Decompose a pre-squash branch"
+    puts "  ruby src/decompose.rb --large         # Decompose all too-large commits"
     exit 1
   end
   result = decompose_commit(sha)

@@ -44,7 +44,7 @@ python3 generate_training_data.py
 > **Note:** The Stack v2, OpenCodeReasoning-2, TACO, and CodeNet datasets
 > are no longer needed. The CLEAR codebase alone provides all training data
 > through commit mining, mutation testing, and synthetic deletion.
-> See PLAN.md for details.
+> See [PLAN.md](./PLAN.md) for details.
 
 ## Verify
 

@@ -4,25 +4,25 @@
 # Test Harness for GRAM model evaluation
 #
 # Tests a model's ability to:
-#   1. Use my_tool to discover context
+#   1. Use ctx to discover context
 #   2. Generate or fix code
 #   3. Improve based on decomplex feedback
 #
 # Usage:
-#   ruby test_harness.rb --task tasks/sample_task.json --model qwen3b
-#   ruby test_harness.rb --list-tasks
-#   ruby test_harness.rb --run-all --model qwen3b
+#   ruby src/test_harness.rb --task tasks/sample_task.json --model qwen3b
+#   ruby src/test_harness.rb --list-tasks
+#   ruby src/test_harness.rb --run-all --model qwen3b
 
 require 'json'
 require 'open3'
 require 'fileutils'
 
 REPO = File.expand_path('~/cheat')
-TOOL_PATH = File.expand_path('my_tool.rb', __dir__)
-RESULTS_DIR = File.expand_path('test_results', __dir__)
+TOOL_PATH = File.expand_path('../ctx', __dir__)
+RESULTS_DIR = File.expand_path('../test_results', __dir__)
 FileUtils.mkdir_p(RESULTS_DIR)
 
-TASKS_DIR = File.expand_path('tasks', __dir__)
+TASKS_DIR = File.expand_path('../tasks', __dir__)
 FileUtils.mkdir_p(TASKS_DIR)
 
 # === Task Definition ===
@@ -92,10 +92,10 @@ end
 
 # === Tool Interface ===
 
-class MyTool
+class CtxTool
   def self.call(query, debug: false)
     debug_flag = debug ? 'debug' : ''
-    cmd = "cd #{REPO} && ruby #{TOOL_PATH} '#{query}' #{debug_flag}"
+    cmd = "cd #{REPO} && #{TOOL_PATH} '#{query}' #{debug_flag}"
     stdout, stderr, status = Open3.capture3(cmd)
     { stdout: stdout, stderr: stderr, success: status.success? }
   end
@@ -106,7 +106,7 @@ end
 class DecomplexScorer
   def self.score(file, function)
     # Extract the function body from the file
-    result = MyTool.call("#{file}:#{function}")
+    result = CtxTool.call("#{file}:#{function}")
     return nil unless result[:success]
     
     body = result[:stdout]
@@ -160,8 +160,8 @@ class ModelRunner
   
   def extract_tool_calls(text)
     calls = []
-    text.scan(/my_tool\s+'([^']+)'/) { |m| calls << { tool: 'my_tool', args: m[0] } }
-    text.scan(/my_tool\s+"([^"]+)"/) { |m| calls << { tool: 'my_tool', args: m[0] } }
+    text.scan(/ctx\s+'([^']+)'/) { |m| calls << { tool: 'ctx', args: m[0] } }
+    text.scan(/ctx\s+"([^"]+)"/) { |m| calls << { tool: 'ctx', args: m[0] } }
     calls
   end
 end
@@ -182,11 +182,11 @@ class TestRunner
     puts '=' * 60
     
     # Step 1: Initial context (function + debug info)
-    puts "\n→ Calling my_tool for initial context..."
-    context = MyTool.call("#{task['file']}:#{task['function']}", debug: true)
+    puts "\n→ Calling ctx for initial context..."
+    context = CtxTool.call("#{task['file']}:#{task['function']}", debug: true)
     unless context[:success]
       puts "  Tool error: #{context[:stderr]}"
-      context = MyTool.call("#{task['file']}:#{task['function']}")
+      context = CtxTool.call("#{task['file']}:#{task['function']}")
     end
     
     # Step 2: Build prompt for the model
@@ -201,8 +201,8 @@ class TestRunner
     if tool_calls.any?
       puts "  Model made #{tool_calls.size} tool calls:"
       tool_calls.each do |tc|
-        puts "    my_tool #{tc[:args]}"
-        result = MyTool.call(tc[:args], debug: true)
+        puts "    ctx #{tc[:args]}"
+        result = CtxTool.call(tc[:args], debug: true)
         puts "    → #{result[:stdout].lines.first(3).join('    → ')}"
       end
     end
@@ -248,11 +248,11 @@ class TestRunner
     <<~PROMPT
       You are implementing a Ruby function. You have access to a tool:
       
-      `my_tool <file>:<function>` — shows the body of a function in the source code
-      `my_tool <file>:<function> debug` — same, plus parameter types, called methods, and sibling methods
-      `my_tool <file>#<line>` — shows the function at a specific line number
+      `ctx <file>:<function>` — shows the body of a function in the source code
+      `ctx <file>:<function> debug` — same, plus parameter types, called methods, and sibling methods
+      `ctx <file>#<line>` — shows the function at a specific line number
       
-      Call my_tool to explore the codebase before writing your solution.
+      Call ctx to explore the codebase before writing your solution.
       
       TASK: #{task['prompt']}
       
@@ -262,7 +262,7 @@ class TestRunner
       Current code context:
       #{context}
       
-      Write your implementation. Use `my_tool` to explore any types or functions you need to understand.
+      Write your implementation. Use `ctx` to explore any types or functions you need to understand.
     PROMPT
   end
 end
@@ -272,7 +272,7 @@ end
 case ARGV[0]
 when '--seed'
   seed_tasks
-  puts "Seeded tasks. Run with: ruby test_harness.rb --run-all --model qwen3b"
+  puts "Seeded tasks. Run with: ruby src/test_harness.rb --run-all --model qwen3b"
   
 when '--list-tasks'
   tasks = Dir[File.join(TASKS_DIR, '*.json')]
@@ -303,10 +303,10 @@ when '--run-all'
   
 else
   puts "Usage:"
-  puts "  ruby test_harness.rb --seed                    # Create seed tasks"
-  puts "  ruby test_harness.rb --list-tasks               # List available tasks"
-  puts "  ruby test_harness.rb --run <task.json> [model]  # Run one task"
-  puts "  ruby test_harness.rb --run-all [model]          # Run all tasks"
+  puts "  ruby src/test_harness.rb --seed                    # Create seed tasks"
+  puts "  ruby src/test_harness.rb --list-tasks               # List available tasks"
+  puts "  ruby src/test_harness.rb --run <task.json> [model]  # Run one task"
+  puts "  ruby src/test_harness.rb --run-all [model]          # Run all tasks"
   puts ""
   puts "Models: mock (default), qwen3b, qwen7b, qwen14b, llama3b, etc."
   puts "Mock model tests the harness without a real LLM."

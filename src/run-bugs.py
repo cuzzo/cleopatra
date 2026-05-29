@@ -5,16 +5,17 @@
 - ctx: stack trace + the buggy function body (simulating `ctx` tool output)
 
 Usage:
-  python3 run-bugs.py [--count 50] [--cats 3B-blind,3B-ctx]
+  python3 src/run-bugs.py [--count 50] [--cats 3B-blind,3B-ctx]
 """
 import json, os, sys, random, argparse, textwrap
 
-BUGS_FILE = os.path.join(os.path.dirname(__file__), 'bugs.jsonl')
-OUT = os.path.join(os.path.dirname(__file__), 'bugfix')
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '.venv', 'lib', 'python3.12', 'site-packages'))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BUGS_FILE = os.path.join(ROOT, 'bugs.jsonl')
+OUT = os.path.join(ROOT, 'bugfix')
+sys.path.insert(0, os.path.join(ROOT, '.venv', 'lib', 'python3.12', 'site-packages'))
 
-MODEL_PATH_3B = os.path.join(os.path.dirname(__file__), 'data/models/qwen2.5-coder-3b-instruct.gguf')
-MODEL_PATH_7B = os.path.join(os.path.dirname(__file__), 'data/models/qwen2.5-coder-7b-instruct.gguf')
+MODEL_PATH_3B = os.path.join(ROOT, 'data/models/qwen2.5-coder-3b-instruct.gguf')
+MODEL_PATH_7B = os.path.join(ROOT, 'data/models/qwen2.5-coder-7b-instruct.gguf')
 API_KEY = os.environ.get('OPENROUTER_API_KEY')
 MODEL_32B = 'qwen/qwen-2.5-coder-32b-instruct'
 
@@ -22,7 +23,7 @@ SYSTEM_PROMPT = 'You are a senior Ruby developer. Fix the bug in the code shown 
 
 def repo_path_for(bug):
     repo = bug.get('repo') or {}
-    return repo.get('repo_path') or os.path.join(os.path.dirname(__file__), '.eval', 'cheat')
+    return repo.get('repo_path') or os.path.join(ROOT, '.eval', 'cheat')
 
 def file_rel_for(bug):
     return bug.get('file_rel') or bug['file'].replace('/home/yahn/cheat/', '')
