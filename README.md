@@ -12,7 +12,7 @@ Ultimatley, I believe both of these will happen within 2 years.  The question is
 
 ## Reasoning
 
-Yan LeCun states both that:
+Yann LeCun states both that:
 
  1. LLMs are a dead end because they can't understand the consequences of their actions before they act.
  2. LLMs are specifically great where language IS the substrate of knowledge (coding & math).
