@@ -63,12 +63,35 @@ def source_path_for(bug)
 end
 
 def run_capture(cmd, chdir:, env: {}, timeout: 60)
-  Timeout.timeout(timeout) do
-    out, err, status = Open3.capture3(env, *cmd, chdir: chdir)
-    { out: out, err: err, status: status, timeout: false }
+  out = +''
+  err = +''
+  timed_out = false
+
+  Open3.popen3(env, *cmd, chdir: chdir, pgroup: true) do |stdin, stdout, stderr, wait_thr|
+    stdin.close
+    out_reader = Thread.new { stdout.read }
+    err_reader = Thread.new { stderr.read }
+
+    unless wait_thr.join(timeout)
+      timed_out = true
+      begin
+        Process.kill('TERM', -wait_thr.pid)
+      rescue Errno::ESRCH
+      end
+      sleep 0.5
+      if wait_thr.alive?
+        begin
+          Process.kill('KILL', -wait_thr.pid)
+        rescue Errno::ESRCH
+        end
+      end
+      wait_thr.join
+    end
+
+    out = out_reader.value.to_s
+    err = err_reader.value.to_s
+    { out: out, err: err, status: wait_thr.value, timeout: timed_out }
   end
-rescue Timeout::Error
-  { out: '', err: 'TIMEOUT', status: nil, timeout: true }
 end
 
 def reset_repo_for_bug(bug)
