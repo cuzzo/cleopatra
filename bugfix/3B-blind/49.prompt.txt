@@ -1,6 +1,200 @@
 File: src/ast/type.rb
 Function: ==
 
+Source file excerpt centered around `Type.==`:
+```ruby
+# ... file truncated before line 126; centered around Type.== lines 216-225 ...
+      left_coercion = (t_left != :String && safe_autocast?(t_left, :String)) ? :String : nil
+      right_coercion = (t_right != :String && safe_autocast?(t_right, :String)) ? :String : nil
+      return BinaryOpResult.new(type: HEAP_STRING_TYPE, left_coercion: left_coercion, right_coercion: right_coercion, storage: :frame)
+    end
+
+    # D. Array Concatenation
+    if left_type&.array? && right_type&.array?
+      return BinaryOpResult.new(type: t_left, storage: :frame)
+    end
+
+    BinaryOpResult.new(error: "Cannot add types: #{t_left} and #{t_right}")
+  end
+
+  def self.safe_autocast?(from_type, to_type)
+    return false if from_type.nil?
+    from_t = from_type.is_a?(Type) ? from_type : Type.new(from_type)
+    to_t   = to_type.is_a?(Type)   ? to_type   : Type.new(to_type)
+    return false if from_t.fn_type? || to_t.fn_type?
+    # Any numeric -> any numeric (implicit promotion/narrowing handled by Zig casts)
+    return true if from_t.numeric? && to_t.numeric?
+    # Original types that can auto-cast to strings
+    [:Float64, :Int64, :Bool, :Byte].include?(from_t.resolved)
+  end
+
+  public
+
+  def initialize(raw_input, ownership: nil, sync: nil, location: nil, collection: nil, shard_count: nil, stripe_count: nil) # stripe_count kept for backwards compat (ignored)
+    if raw_input.is_a?(Type)
+      # Copy constructor: preserve all parsed state from the source type
+      other = raw_input
+      @raw                = other.instance_variable_get(:@raw)
+      @ownership          = other.ownership
+      @sync               = other.sync
+      @collection         = other.instance_variable_get(:@collection)
+      @shard_count        = other.instance_variable_get(:@shard_count)
+      @soa                = other.instance_variable_get(:@soa)
+      @is_error_union     = other.instance_variable_get(:@is_error_union)
+      @payload_type_raw   = other.instance_variable_get(:@payload_type_raw)
+      @is_optional        = other.instance_variable_get(:@is_optional)
+      @wrapped_type_raw   = other.instance_variable_get(:@wrapped_type_raw)
+      @is_array              = other.instance_variable_get(:@is_array)
+      @element_type_raw      = other.instance_variable_get(:@element_type_raw)
+      @is_map                = other.instance_variable_get(:@is_map)
+      @key_type_raw          = other.instance_variable_get(:@key_type_raw)
+      @value_type_raw        = other.instance_variable_get(:@value_type_raw)
+      @capacity              = other.capacity
+      @resolved_cache        = other.instance_variable_get(:@resolved_cache)
+      @is_generic_instance   = other.instance_variable_get(:@is_generic_instance)
+      @generic_base_raw      = other.instance_variable_get(:@generic_base_raw)
+      @generic_args_raw      = other.instance_variable_get(:@generic_args_raw)
+      @is_tense              = other.instance_variable_get(:@is_tense)
+      @tense_type_raw        = other.instance_variable_get(:@tense_type_raw)
+      @elem_ownership        = other.elem_ownership
+      @elem_sync             = other.elem_sync
+      @link_source           = other.link_source
+      @provenance            = other.provenance
+    else
+      @raw = raw_input
+      parse_raw_input
+    end
+
+    # Capability fields — set after parse/copy so they can override.
+    @provenance = location if location && location != :stack
+    @ownership = ownership if ownership
+    @sync      = sync      if sync
+    # Sync types need a stable heap address.
+    # :raw and :symbol are data-access modes, not locks — they don't force heap provenance.
+    @provenance = :heap if @sync && @sync != :raw && @sync != :symbol && @ownership == :affine
+    # Symbol strings live in static read-only memory — always rodata, never heap/frame.
+    @provenance = :rodata if @sync == :symbol
+    # Pool collection always lives on the heap (owns internal slot array).
+    if collection
+      @collection = collection
+      @zig_type_cache = nil
+      @provenance = :heap if collection == :pool
+    end
+    @shard_count = shard_count if shard_count
+  end
+
+  # Delegate [] to the raw value for Hash-typed raws (function signatures).
+  def [](key)
+    @raw[key] if @raw.is_a?(Hash)
+  end
+
+  # -----------------------------------------------
+  # COMPATIBILITY LAYER (The "Don't Break Tests" part)
+  # -----------------------------------------------
+
+  # Allow code to compare this object directly to symbols/strings
+  # e.g. if node.type == :Float64
+  def ==(other)
+    # fn_types must never compare equal to a plain symbol (resolved returns the return type,
+    # not a unique identity). Two fn_types are equal only when their raw hashes match.
+    if fn_type?
+      other_t = other.is_a?(Type) ? other : nil
+      return false unless other_t&.fn_type?
+      return @raw == other_t.raw
+    end
+    resolved == other.to_sym && @raw == other
+  end
+
+  def to_s; resolved.to_s; end
+  def to_sym; resolved; end
+
+  # Backward API: Deprecate
+  def resolved
+    # Logic moved from Locatable#resolved_type
+    return @resolved_cache if @resolved_cache
+
+    ft = if @raw.is_a?(Hash); @raw[:return][:type]
+         elsif @raw.is_a?(Array); @raw[2]
+         else; @raw; end
+
+    @resolved_cache = ft.to_sym
+  end
+
+  # Backward API: Deprecate
+  def base_type
+    resolved.to_s.sub(/\[.*\]$/, "").to_sym
+  end
+
+  def primitive?
+    AST::PRIMITIVE_TYPES.include?(resolved)
+  end
+
+  # ----------------------------------------------
+  # Coercion helpers
+  # ----------------------------------------------
+  def accepts?(other_type)
+    # 0. Function type: must precede == shortcut (resolved strips fn signature to return type)
+    return accepts_fn_type?(other_type) if fn_type?
+
+    # 1. Exact match / Any
+    return true if self == other_type || any? || other_type.any?
+
+    # 2. Primitive widening
+    return true if numeric? && other_type.numeric?
+    return true if string? && (other_type.byte? || other_type.string?)
+
+    # 3. Optional coercion: ?T accepts T, NIL, or ?T
+    if optional?
+      return true if other_type.resolved == :NIL
+      inner = other_type.optional? ? other_type.wrapped_type : other_type
+      return wrapped_type.accepts?(inner)
+    end
+
+    # 4. Error union coercion: !T accepts T or !T
+    if error_union?
+      inner = other_type.error_union? ? other_type.payload_type : other_type
+      return payload_type.accepts?(inner)
+    end
+
+    # 5. Tense (Promise/Stream) coercion
+    return accepts_future?(other_type) if future?
+
+    # 6. Array coercion
+    return accepts_array?(other_type) if array?
+
+    # 7. HashMap coercion: HashMap<Any> (empty literal) accepts any HashMap<T>
+    if map? && other_type.map?
+      return true if other_type.value_type.any?
+      return value_type.accepts?(other_type.value_type)
+    end
+
+    false
+  end
+
+  # Used specifically to check if assigning an array too large to a fixed array
+  def array_overflow?(other_type)
+    return false if !other_type.array? || !self.array?
+    return false if self.base_type != other_type.base_type
+    return false if !other_type.fixed? || !self.fixed?
+    return true if other_type.capacity > self.capacity
+  end
+
+  # ----------------------------------------------
+  # Type Predicates
+  # ----------------------------------------------
+  SIGNED_INT_TYPES   = [:Int8, :Int16, :Int32, :Int64].freeze
+  UNSIGNED_INT_TYPES = [:UInt8, :Byte, :UInt16, :UInt32, :UInt64].freeze
+  INT_TYPES          = (SIGNED_INT_TYPES + UNSIGNED_INT_TYPES).freeze
+  FLOAT_TYPES        = [:Float32, :Float64].freeze
+  NUMERIC_TYPES      = (INT_TYPES + FLOAT_TYPES).freeze
+
+  INT_TYPE_MAX = {
+    Byte: 255, UInt8: 255, UInt16: 65_535, UInt32: 4_294_967_295,
+    UInt64: 18_446_744_073_709_551_615,
+    Int8: 127, Int16: 32_767, Int32: 2_147_483_647, Int64: 9_223_372_036_854_775_807,
+# ... file truncated after line 313; original file has 1674 lines ...
+```
+
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.
 
@@ -12,3 +206,4 @@ CI failing spec/affine_ownership_spec.rb:365.
 Fix the code.
 
 Return ONLY the corrected function `==` in a ```ruby block.
+

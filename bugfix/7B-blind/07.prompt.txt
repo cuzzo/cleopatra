@@ -1,6 +1,209 @@
 File: src/annotator.rb
 Function: resolve_catch_clause!
 
+Source file excerpt centered around `SemanticAnnotator.resolve_catch_clause!`:
+```ruby
+# ... file truncated before line 614; centered around SemanticAnnotator.resolve_catch_clause! lines 687-737 ...
+      # Resolve each parsed clause to a { kind, error_names } pair the
+      # lowering can emit directly. Validates every type against the
+      # registry (seeded by PASS 2.9) and rejects kind mismatches.
+      node.catch_clauses.each { |c| resolve_catch_clause!(c) }
+
+      # Collect snapshot types from pipeline steps for typed snapshot access
+      snap_types = Set.new
+      collect_pipe_input_types(node.body, snap_types)
+      node.snapshot_types = snap_types
+
+      all_catch_bodies = node.catch_clauses.map { |c| c[:body] }
+      all_catch_bodies << node.default_catch if node.default_catch.is_a?(Array)
+      all_catch_bodies.compact.each do |clause_body|
+        with_new_scope do
+          # Declare __error as a struct-like type accessible in CATCH
+          current_scope.declare("__error", nil, :ErrorContext, false, false, nil, :stack)
+          # Declare snapshot if unambiguous
+          if snap_types.size == 1
+            current_scope.declare("snapshot", nil, snap_types.first.to_sym, false, false, nil, :stack)
+          end
+          visit_stmts(clause_body)
+        end
+      end
+
+      # CATCH wrappers heap-dupe all string returns (both success and catch paths).
+      ret_type = node.return_type.is_a?(Type) ? node.return_type : Type.new(node.return_type || :Void)
+      if ret_type.string?
+        node.return_provenance = :heap
+      end
+    end
+
+    @function_context_stack.pop
+  end
+
+  # Pre-pass: walk every RAISE and OR EXIT site that provides both a
+  # kind and a type, and seed the registry with (kind, type). Lets
+  # CATCH Type clauses resolve regardless of source order. OR EXIT
+  # counts too because it can introduce new types that only the
+  # CATCH for a particular call needs to see.
+  def seed_error_types_from_raises!(program_node)
+    seed_body = lambda do |stmts|
+      AST.walk_body(stmts) do |n|
+        case n
+        when AST::Raise
+          next unless n.kind && n.error_name
+          resolve_error_registration!(n, n.kind, n.error_name, n.token)
+        when AST::OrExit
+          next unless n.kind && n.error_name
+          resolve_error_registration!(n, n.kind, n.error_name, n.token)
+        end
+      end
+    end
+    program_node.statements.each do |stmt|
+      next unless stmt.is_a?(AST::FunctionDef)
+      seed_body.call(stmt.body)
+      seed_body.call(stmt.catch_clauses&.map { |c| c[:body] }&.flatten || [])
+    end
+  end
+
+  # Resolve a parsed CATCH clause into its runtime-dispatch form.
+  # The parser produces:
+  #   { items:   [{ form: :kind|:type, name:, token: }, ...],
+  #     filters: [{ form: :type|:message, value:, token: }, ...],
+  #     body:    [...] }
+  # After this method, the clause carries four lowering-ready fields:
+  #   clause[:kinds]            = [Symbol, ...] — kinds from items
+  #   clause[:types]            = [String, ...] — types from items
+  #   clause[:filter_types]     = [String, ...] — types from WITH
+  #   clause[:filter_messages]  = [AST node, ...] — messages from WITH
+  # Match semantics: (any kind matches OR any type matches) AND
+  #   (filters empty OR any filter_type matches OR any filter_message
+  #    matches). No cross-constraint between items and filters — a
+  #   mixed `CATCH Kind, Type` simply ORs the two checks.
+  def resolve_catch_clause!(clause)
+    kinds = []
+    types = []
+    (clause[:items] || []).each do |item|
+      if item[:form] != :kind
+        kind_sym = item[:name].to_sym
+        unless AST.error_kind?(kind_sym)
+          emit_registry_mismatch!(
+            item[:token], item[:name], AST::ERROR_KINDS,
+            "Unknown error kind '#{item[:name]}'. Expected one of: #{AST::ERROR_KINDS.join(', ')}",
+            "closest known kind"
+          )
+        end
+        kinds << kind_sym if AST.error_kind?(kind_sym)
+      else
+        type_sym = item[:name].to_sym
+        unless AST.error_type?(type_sym)
+          emit_registry_mismatch!(
+            item[:token], item[:name], AST::ERROR_TYPES.keys,
+            "CATCH #{item[:name]}: error type '#{item[:name]}' is not registered. A type " \
+            "must be registered via RAISE/OR EXIT before it can be CATCHed.",
+            "closest registered type"
+          )
+        end
+        types << item[:name] if AST.error_type?(type_sym)
+      end
+    end
+    clause[:kinds] = kinds.uniq
+    clause[:types] = types.uniq
+
+    filter_types    = []
+    filter_messages = []
+    (clause[:filters] || []).each do |f|
+      case f[:form]
+      when :type
+        type_sym = f[:value].to_sym
+        unless AST.error_type?(type_sym)
+          error!(f[:token],
+                 "CATCH ... WITH(#{f[:value]}): error type '#{f[:value]}' is not registered.")
+        end
+        filter_types << f[:value]
+      when :message
+        # value is the parsed STRING expression. Visit so the string
+        # literal gets its Type stamped for downstream lowering.
+        visit(f[:value])
+        filter_messages << f[:value]
+      end
+    end
+    clause[:filter_types]    = filter_types.uniq
+    clause[:filter_messages] = filter_messages
+  end
+
+  # Collect input types from pipeline s> steps that can fail.
+  def collect_pipe_input_types(body, types)
+    body.each do |stmt|
+      walk_ast(stmt) do |node|
+        if node.is_a?(AST::BinaryOp) && node.op == :SMOOTH
+          lhs_type = node.left.respond_to?(:full_type) ? node.left.full_type : nil
+          if lhs_type
+            t = Type.new(lhs_type)
+            types << t.resolved.to_s unless t.void? || t.error_union?
+          end
+        end
+      end
+    end
+  end
+
+  def walk_ast(node, &block)
+    block.call(node)
+    return unless node.respond_to?(:class) && node.class.respond_to?(:members)
+    node.class.members.each do |m|
+      val = node.send(m) rescue next
+      case val
+      when Array then val.each { |v| walk_ast(v, &block) if v.respond_to?(:class) }
+      when AST::Locatable then walk_ast(val, &block)
+      end
+    end
+  end
+
+  # Visit a statement body while tracking remaining siblings in @stmts_after.
+  # This lets visit_MatchStatement check whether the match subject is used
+  # after the match (to avoid incorrect auto-TAKES consumption).
+  def visit_stmts(stmts)
+    return unless stmts.is_a?(Array)
+    saved = @stmts_after
+    stmts.each_with_index do |stmt, i|
+      @stmts_after = stmts[(i + 1)..]
+      visit(stmt)
+    end
+    @stmts_after = saved
+  end
+
+  def visit_StructDef(node)
+    # Validate generic type parameters (duplicate / builtin-shadow)
+    validate_type_param_list!(node, node.type_params, "struct") if node.type_params&.any?
+
+    # Register the Type Name with its field schema.
+    schema = node.fields.transform_values { |f| f[:type] }
+
+    # Store field defaults so empty struct literals (Foo{}) can be validated.
+    field_defaults = node.fields.each_with_object({}) { |(k, f), h| h[k] = f[:default] if f[:default] }
+    schema[:field_defaults] = field_defaults unless field_defaults.empty?
+
+    # Track which fields are BORROWED (references, not owned).
+    borrowed_fields = node.fields.select { |_, f| f[:borrowed] }.keys
+    schema[:borrowed_fields] = borrowed_fields.to_set if borrowed_fields.any?
+
+    # For generic structs, record the type parameter names so field-type
+    # lookups don't reject them as unknown types.
+    schema[:type_params] = node.type_params.map(&:to_sym) if node.type_params&.any?
+
+    schema[:visibility] = node.visibility || :package
+    current_scope.declare_type(node.name.to_sym, schema)
+    node.full_type = :Void
+  end
+
+  def visit_EnumDef(node)
+    schema = { kind: :enum, variants: node.variants.to_set }
+    schema[:visibility] = node.visibility || :package
+    current_scope.declare_type(node.name.to_sym, schema)
+    node.full_type = :Void
+  end
+
+  def visit_UnionDef(node)
+# ... file truncated after line 810; original file has 4490 lines ...
+```
+
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.
 
@@ -13,3 +216,4 @@ Test failure:
 Fix the bug.
 
 Return ONLY the corrected function `resolve_catch_clause!` in a ```ruby block.
+

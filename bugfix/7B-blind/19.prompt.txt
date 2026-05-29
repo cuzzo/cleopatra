@@ -1,6 +1,199 @@
 File: src/ast/type.rb
 Function: stream_element_type
 
+Source file excerpt centered around `Type.stream_element_type`:
+```ruby
+# ... file truncated before line 727; centered around Type.stream_element_type lines 817-824 ...
+  end
+
+  # Tense (Promise) types: ~T — a background task that will produce T
+  def tense?
+    !!@is_tense
+  end
+
+  # Preferred predicate name for ~T / stream-like future values.
+  def future?
+    tense?
+  end
+
+  def tense_type
+    return nil unless future?
+    @tense_type_obj ||= Type.new(@tense_type_raw || :Void)
+  end
+
+  # Finite dynamic stream: ~T[].
+  # Used for lazy finite producers like ranges. NEXT returns ?T until exhausted.
+  def dynamic_stream?
+    future? && tense_type.dynamic? && !tense_type.optional? && !list_collection?
+  end
+
+  # New syntax alias: ~?T[] means an open stream of T (NEXT returns ?T).
+  # Parsed as future of ?T[] by the general type parser, then reinterpreted here.
+  def optional_stream_shape_type
+    return nil unless future? && tense_type.optional?
+    wrapped = tense_type.wrapped_type
+    wrapped if wrapped&.array?
+  end
+
+  def open_stream_alias?
+    shape = optional_stream_shape_type
+    shape&.dynamic? || false
+  end
+
+  def stream?
+    dynamic_stream? || bounded_stream? || open_stream? || inf_stream? || split_open_stream?
+  end
+
+  def split_open_stream?
+    split? && open_stream?
+  end
+
+  # Bounded stream: ~T[N] or ~?T[N] — a fixed stream of N elements consumed via NEXT.
+  # Distinct from a single promise (~T): NEXT can be called N times, not exactly once.
+  def bounded_stream?
+    # ~T[N] is a bounded stream of N elements. ~String is NOT a bounded stream
+    # even though String is internally []const u8 (a fixed array) - it's a Promise.
+    !!(future? && (
+      (tense_type.fixed? && !tense_type.string?) ||
+      (optional_stream_shape_type&.fixed? && !optional_stream_shape_type.string?)
+    ))
+  end
+
+  # Shared promise: ~T@shared — a memoized promise backed by Arc-style ref counting.
+  # Multiple holders can call NEXT independently; NEXT is idempotent per handle.
+  # NOT linearly affine — can be retained (cloned) without consuming it.
+  def shared_promise?
+    future? && shared?
+  end
+
+  # Open stream: ~?T[] (preferred) or legacy ~T[?].
+  # Generator-backed stream; NEXT returns ?T (nil when exhausted).
+  # Resource semantics: call deinit() to free the heap-allocated buffer.
+  def open_stream?
+    future? && (tense_type.open_stream_marker? || open_stream_alias?)
+  end
+
+  # The element type T in ~?T[] / ~T[?].
+  def open_stream_element_type
+    return nil unless open_stream?
+    return optional_stream_shape_type.element_type if open_stream_alias?
+    tense_type.element_type
+  end
+
+  # Infinite stream: ~T[INF] — a lazy rendezvous generator; NEXT returns T (never nil).
+  # Generator and consumer rendezvous on each value: push() blocks until next() reads it.
+  # Resource semantics: call deinit() to free the heap-allocated Inner.
+  def inf_stream?
+    future? && tense_type.inf_stream_marker?
+  end
+
+  # The element type T in ~T[INF].
+  def inf_stream_element_type
+    return nil unless inf_stream?
+    tense_type.element_type
+  end
+
+  # The element type T in ~T[N], or ?T in ~?T[N].
+  def stream_element_type
+    return nil unless bounded_stream?
+    if optional_stream_shape_type&.fixed?
+      Type.new(:"?#{optional_stream_shape_type.element_type.to_sym}")
+      tense_type.element_type
+    end
+  end
+
+  # The capacity N in ~T[N] / ~?T[N].
+  def stream_capacity
+    return nil unless bounded_stream?
+    optional_stream_shape_type&.capacity || tense_type.capacity
+  end
+
+  def element_type
+    return nil unless array?
+    # Uses the capture from parse_raw_input, ensuring "Number[3]" becomes "Float64"
+    @element_type_obj ||= begin
+      t = Type.new(@element_type_raw || :Any)
+      t.ownership = @elem_ownership if @elem_ownership
+      t.sync = @elem_sync if @elem_sync
+      t
+    end
+  end
+
+  def slot_size(lookup_arg = nil, &lookup_block)
+    resolver = lookup_arg || lookup_block
+
+    # 1. Primitives / Pointers (Heap objects are 1 slot pointers; Rc/Arc/Locked are also pointer-sized)
+    # Generic instances (e.g. Id<T>) are intrinsic scalar types — always 1 slot.
+    return 1 if primitive? || heap? || dynamic? || any? || multiowned? || shared? || any_sync? || generic_instance?
+
+    # 2. Fixed Arrays (Recursion)
+    if fixed?
+      return capacity * element_type.slot_size(resolver)
+    end
+
+    # 3. Structs (The tricky part)
+    if struct?
+      raise "Need lookup context for struct size" unless resolver
+      schema = resolver.call(resolved)
+      return 1 unless schema # Treat unknown/nil schemas as 1 slot (default for pointers/unknown structs)
+      # Enum/Union/Resource types — treat as slot size 1.
+      return 1 if schema.is_a?(Hash) && (schema[:kind] == :enum || schema[:kind] == :union || schema[:kind] == :resource)
+      # Generic structs: treat as 1 slot (size depends on type args, unknown at this point)
+      return 1 if schema.is_a?(Hash) && schema[:type_params]
+      # Only sum field entries (string keys). Skip metadata (symbol keys like :type_params, :extern_module).
+      return schema.select { |k, _| k.is_a?(String) }.values.sum { |t| Type.new(t).slot_size(resolver) }
+    end
+
+    1 # Default
+  end
+
+  # TODO: In future, need to be able to call slot-size for small structs.
+  def requires_move?
+    return false if fn_type?                # Function pointers are pointer-sized; no move semantics
+    return false if bounded_stream?         # Bounded streams are consumed incrementally — not linearly affine
+    return false if shared_promise?         # Shared promises are non-affine — multiple NEXT calls allowed
+    return false if open_stream?            # Open streams are resources with deinit cleanup, not linear
+    return false if inf_stream?             # Infinite streams are resources with deinit cleanup, not linear
+    return false if split_open_stream?      # Split streams are shared replay handles with deinit cleanup
+    return false if list_collection? || pool? || set_collection?  # @list/@pool/@set are arena/heap-managed via defer deinit — not linearly affine
+    return false if map?                       # @map is cleaned up via mapDeinit/numericMapDeinit — not linearly affine
+    return true if tense?                   # Single promises are linear — must be consumed exactly once
+    return false if multiowned? || shared?  # Rc/Arc use retain/release, not linear move semantics
+    return false if any_sync?               # Sync vars manage their own lifecycle
+    return true if heap?
+    return true if array?
+    !primitive?
+  end
+
+  def copyable?(lookup_arg = nil, &lookup_block)
+    return true if primitive?
+    return true if string?  # Zig strings ([]const u8) are trivially copyable (pointer + length)
+    return false if array?  # Arrays are not explicitly copyable (use slicing or @list)
+    return false if multiowned? || shared? || any_sync?  # Rc/Arc/Locked must not be silently copied
+    return false if heap?                   # Heap-allocated types are not copyable
+    return false if frame? && struct?       # Frame-allocated struct pointers are not copyable
+    return false if map?                    # Maps are not copyable
+
+    # Structs: copyable if all fields are copyable (for explicit COPY keyword)
+    if struct?
+      resolver = lookup_arg || lookup_block
+      return false unless resolver
+      schema = resolver.is_a?(Proc) ? resolver.call(resolved) : (resolver[resolved] rescue nil)
+      return false unless schema
+      return schema.values.all? { |t| Type.new(t).copyable?(resolver) }
+    end
+
+    false
+  end
+
+  # Implicitly copyable: used for branch merge and loop checks.
+  # Same as copyable? but excludes user structs — structs need explicit COPY.
+  # Primitives, strings, slices, enums, and unions are implicitly copyable.
+  def implicitly_copyable?(lookup_arg = nil, &lookup_block)
+    return true if primitive?
+# ... file truncated after line 913; original file has 1673 lines ...
+```
+
 A mutant/regression test is failing after local source edits.
 Active source edits exist; inspect dirty changed lines first.
 
@@ -9,3 +202,4 @@ Something wrong in `stream_element_type`. forgotten line: 'else'
 Fix it.
 
 Return ONLY the corrected function `stream_element_type` in a ```ruby block.
+

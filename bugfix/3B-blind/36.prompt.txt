@@ -1,6 +1,244 @@
 File: src/ast/scope.rb
 Function: initialize
 
+Source file excerpt centered around `Scope.initialize`:
+```ruby
+# ... file truncated before line 1; centered around Scope.initialize lines 8-13 ...
+require "set"
+require_relative "./symbol_entry"
+
+class Scope
+  attr_accessor :locals, :dependencies, :owned_names
+  attr_reader   :types
+
+  def initialize
+    @locals = {}
+    @dependencies = {}
+    @owned_names = Set.new  # Variables declared in THIS scope (not inherited from parent)
+  end
+
+  def declare(name, reg, type, is_mutable = true, is_rebindable = false, size = nil, storage = :stack, capabilities = Set.new, _borrowed_paths = [], sync: nil, resource: nil, close_zig: nil)
+    @owned_names.add(name)
+    entry = SymbolEntry.new(
+      reg: reg,
+      type: type,
+      mutable: is_mutable,
+      storage: storage,
+      sync: sync,
+      rebindable: is_rebindable,
+      size: size || 0,
+      capabilities: capabilities,
+      resource: resource,
+      close_zig: close_zig,
+    )
+    entry.scope = self
+    @locals[name] = entry
+  end
+
+  # Deep-copy contract (read before adding a pass that mutates SymbolEntry):
+  #
+  # `Scope.dup` deep-copies every entry in @locals. This is intentional --
+  # nested scopes mutate scope-local fields like `live`, `moved`,
+  # `borrowed_alias`, `valid` independently of the parent. Without the
+  # deep copy, an `if`/`with`/`bg` body would scribble its borrow state
+  # back onto the function-level entry, and ownership analysis would
+  # blow up.
+  #
+  # The cost: storage / sync / type changes that happen AFTER the body
+  # has been visited (notably `EscapeAnalysis.propagate_caller_sync!`,
+  # which mutates `param[:symbol]`) do NOT propagate to the deep-copied
+  # entries inside nested scopes. A pass that reads `node.symbol.storage`
+  # off an Identifier inside a nested scope sees the pre-propagation
+  # value.
+  #
+  # The rule for any post-annotation pass that needs a param's CURRENT
+  # storage / sync:
+  #
+  #   * mutate `param[:symbol]` (the function-level entry)
+  #   * read against `Scope.live_param_syms(fn)` to refresh stale
+  #     references
+  #
+  # See `BgCaptureClassifier.classify_one!` for the canonical example
+  # (refreshes `capture_analysis.capture_symbols` against the live param
+  # entries before reading sync/storage). See
+  # `docs/agents/sync-boundary-unification.md` Gap C for the full
+  # rationale and alternative options (B: shared boxed entries, C:
+  # split scope-local vs global fields). Option A (this contract +
+  # helper) is the current choice.
+  def initialize_copy(original)
+    super
+
+    # 1. Deep Copy Locals
+    # We must dup the Hash AND the values inside it (the entries)
+    # AND mutable objects inside the entries (like the capabilities Set)
+    @locals = original.locals.transform_values do |entry|
+      new_entry = entry.dup
+      # Sets/Arrays inside the entry must be duped too, or they remain shared
+      new_entry.capabilities = entry.capabilities.dup
+      new_entry.scope = self  # Point to the new (copied) scope
+      new_entry
+    end
+
+    # 2. Copy State Maps (var state lives on entries, already duped above)
+    @dependencies = original.dependencies.dup
+    @types = original.types.dup
+    # Child scopes inherit variables but don't own them — start with empty owned_names.
+    # Only variables declared in this scope (via `declare`) are in @owned_names.
+    @owned_names = Set.new
+
+    # 3. Types are usually static definitions, so a shallow copy is fine
+    @types = original.instance_variable_get(:@types).dup
+  end
+
+  # Build a {param_name => live SymbolEntry} map from a FunctionDef.
+  #
+  # The "live" entry is the one stored on `param[:symbol]` -- the entry
+  # that lives at the function scope and that `propagate_caller_sync!`
+  # mutates in place. Any pass that has a `capture_symbols` (or similar)
+  # cache of SymbolEntry references collected during annotation should
+  # refresh those references through this helper before querying
+  # storage / sync, otherwise it sees the pre-propagation snapshot
+  # captured by `Scope.dup`.
+  #
+  # See the deep-copy contract on `Scope#initialize_copy` for why.
+  def self.live_param_syms(fn)
+    return {} unless fn&.respond_to?(:params)
+    (fn.params || []).each_with_object({}) do |p, h|
+      h[p[:name].to_s] = p[:symbol] if p[:symbol]
+    end
+  end
+
+  def declare_type(name, schema)
+    @types[name] = {
+      schema: schema,
+      # Might add metadata here later (e.g., is_packed, alignment)
+    }
+  end
+
+  def resolve_type_definition(name)
+    entry = @types[name]
+    entry ? entry[:schema] : nil
+  end
+
+  # Returns a Type carrying the variable's base type plus storage-derived capabilities.
+  def resolve_full_type(name)
+    entry = @locals[name]
+    return Type.new(:Any) if entry.nil?
+
+    stored = entry.type
+
+    # If already a Type (e.g. from parse_type_annotation), clone and overlay storage
+    # If a non-Symbol (e.g. a function signature Hash), wrap as-is
+    base_type = stored.is_a?(Type) ? stored : Type.new(stored)
+
+    # Overlay storage-derived capabilities onto the type
+    case entry.storage
+    when :frozen
+      base_type.ownership = :frozen
+    when :multiowned
+      base_type.ownership = :multiowned
+    when :shared
+      base_type.ownership = :shared
+    when :link
+      base_type.ownership = :link
+      base_type.link_source = entry.link_source
+    when :rodata
+      base_type.provenance = :rodata  # string literal: static data, never freed
+    when :frame
+      base_type.provenance = :frame   # large local var: arena pointer (*T in Zig)
+    when :heap
+      if entry.sync == :locked
+        base_type.sync = :locked
+      elsif entry.sync == :write_locked
+        base_type.sync = :write_locked
+      else
+        base_type.provenance = :heap
+      end
+    end
+
+    # Always propagate sync — it may coexist with an ownership wrapper (e.g. @shared:locked
+    # has storage=:shared AND sync=:locked; the case above only sets ownership).
+    base_type.sync = entry.sync if entry.sync && !base_type.sync
+
+    base_type
+  end
+
+  def resolve_type(name)
+    entry = @locals[name]
+    entry ? entry.type : :Any
+  end
+
+  def is_mutable?(name)
+    entry = @locals[name]
+    entry ? entry.mutable : true
+  end
+
+  def is_immutable?(name)
+    !is_mutable?(name)
+  end
+
+  def is_restricted?(name)
+    @locals[name]&.capabilities&.include?(:RESTRICT)
+  end
+
+  # Mark a variable as read (used as an r-value in user code).
+  def mark_read(name)
+    entry = @locals[name]
+    return unless entry
+    entry.read = true
+    entry.reg&.tap { |r| r.var_used = true if r.respond_to?(:var_used=) }
+  end
+
+  def declare_with_new_capability(capability)
+    name = capability[:var_node].name
+    local = capability[:old_scope].locals[name]
+    error!("Cannot add capability: #{name}") if local.nil?
+    local = local.dup
+    # Whole-variable or field restriction: add capability marker.
+    # Borrow conflict detection is handled by the OwnershipGraph.
+    local.capabilities << capability[:capability]
+    @locals[name] = local
+  end
+
+  def get_path_to_root(node)
+    path = []
+    curr = node
+    while curr.is_a?(AST::GetField) || curr.is_a?(AST::GetIndex)
+      if curr.is_a?(AST::GetField)
+        path.unshift(curr.field.to_sym)
+      elsif curr.is_a?(AST::GetIndex)
+        path.unshift(:*)
+      end
+      curr = curr.target
+    end
+    path.unshift(curr.name.to_sym)
+    path
+  end
+
+  def check_validity!(name)
+    entry = @locals[name]
+    return unless entry
+
+    if entry.valid == false
+      raise "Compile Error: Cannot use variable '#{name}'. Reason: #{entry.invalid_reason}"
+    end
+  end
+
+end
+
+# Helper module for scope stack management.
+# Include in classes that maintain @scope_stack.
+module ScopeHelper
+  def current_scope
+    @scope_stack.last
+  end
+
+  def lookup_scope_for(name)
+    # Search from Top (last) to Bottom (first)
+    @scope_stack.reverse_each do |scope|
+# ... file truncated after line 232; original file has 271 lines ...
+```
+
 A new unit test was added and is failing.
 A new failing unit test was added; use it to understand expected behavior.
 
@@ -26,3 +264,4 @@ Test failure:
 Fix the bug.
 
 Return ONLY the corrected function `initialize` in a ```ruby block.
+

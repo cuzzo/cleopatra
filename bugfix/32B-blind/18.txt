@@ -1,9 +1,13 @@
 ```ruby
-def declare(node, owner)
-  if node.is_a?(Register)
-    @graph[node] = owner
-  else
-    raise ArgumentError, "Expected a Register, got a #{node.class}"
+def declare(path, kind: :affine, type_info: nil, scope_depth: , line: 0)
+  @nodes[path] = Node.new(
+    path: path, kind: kind, state: :live,
+    type_info: type_info, scope_depth: scope_depth, line: line
+  )
+  # Register as child of parent path (e.g., "x.child" is child of "x")
+  if path.include?('.')
+    parent = path.rpartition('.').first
+    @children[parent].add(path)
   end
 end
 ```

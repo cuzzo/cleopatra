@@ -1,6 +1,208 @@
 File: src/ast/ast.rb
 Function: walk_body
 
+Source file excerpt centered around `AST.walk_body`:
+```ruby
+# ... file truncated before line 1; centered around AST.walk_body lines 11-43 ...
+require_relative "type"
+
+# ==========================================
+# AST
+# ==========================================
+module AST
+  # Walk all statements in a body, recursing into control flow branches.
+  # Yields each statement node. Handles IfStatement, MatchStatement,
+  # WhileLoop, ForRange, ForEach, and generic nodes with .body.
+  # Adding a new control flow node type requires updating only this method.
+  def self.walk_body(body, &visitor)
+    return unless nodes
+    nodes = nodes.is_a?(Array) ? nodes : [nodes]
+    nodes.each do |node|
+      yield node
+      case node
+      when IfStatement
+        walk_body(node.then_branch, &visitor)
+        walk_body(node.else_branch, &visitor)
+      when MatchStatement
+        (node.cases || []).each { |c| walk_body(c[:nodes], &visitor) }
+        walk_body(node.default_case, &visitor) if node.default_case
+      when WhileLoop, WhileBindLoop
+        walk_body(node.do_branch, &visitor)
+      when ForRange, ForEach
+        walk_body(node.nodes, &visitor)
+      when BgBlock, BgStreamBlock
+        walk_body(node.nodes, &visitor)
+      when WithBlock
+        walk_body(node.nodes, &visitor)
+      when DoBlock
+        (node.branches || []).each { |b| walk_body(b[:nodes], &visitor) }
+      when FunctionDef
+        walk_body(node.nodes, &visitor)
+      when TestBlock
+        walk_body(node.setup, &visitor)
+        node.whens&.each do |w|
+          walk_body(w.setup, &visitor)
+          w.tests&.each { |t| walk_body(t.nodes, &visitor) }
+        end
+      end
+    end
+  end
+
+  # Yield every BgBlock / BgStreamBlock reachable from `body`, including
+  # nested ones inside control flow (WHILE/MATCH/IF/FOR/WITH/DO),
+  # expression positions (VarDecl.value, FuncCall.args), and inside
+  # other BG bodies. Use this when classifying every BG in a function.
+  # The single source of truth replacing the parallel walkers in
+  # escape_analysis (e2_each_bg) and elsewhere.
+  def self.each_bg_block(body, &block)
+    return unless body
+    nodes = body.is_a?(Array) ? body : [body]
+    nodes.each { |n| _bg_visit_recursive(n, &block) }
+  end
+
+  def self._bg_visit_recursive(node, &block)
+    case node
+    when BgBlock, BgStreamBlock
+      yield node
+      each_bg_block(node.body, &block)
+    when IfStatement
+      each_bg_block(node.then_branch, &block)
+      each_bg_block(node.else_branch, &block)
+    when MatchStatement
+      (node.cases || []).each { |c| each_bg_block(c[:body], &block) }
+      each_bg_block(node.default_case, &block) if node.default_case
+    when WhileLoop, WhileBindLoop
+      each_bg_block(node.do_branch, &block)
+    when ForRange, ForEach
+      each_bg_block(node.body, &block)
+    when WithBlock
+      each_bg_block(node.body, &block)
+    when DoBlock
+      (node.branches || []).each { |b| each_bg_block(b[:body], &block) }
+    when FunctionDef
+      each_bg_block(node.body, &block)
+    when VarDecl, BindExpr, Assignment
+      _expr_each_bg_block_recursive(node.value, &block) if node.respond_to?(:value)
+    when FuncCall
+      node.args&.each { |a| _expr_each_bg_block_recursive(a, &block) }
+    when MethodCall
+      _expr_each_bg_block_recursive(node.object, &block)
+      node.args&.each { |a| _expr_each_bg_block_recursive(a, &block) }
+    when ReturnNode
+      _expr_each_bg_block_recursive(node.value, &block) if node.respond_to?(:value)
+    end
+  end
+
+  def self._expr_each_bg_block_recursive(expr, &block)
+    return unless expr
+    case expr
+    when BgBlock, BgStreamBlock
+      yield expr
+      each_bg_block(expr.body, &block)
+    when FuncCall
+      expr.args&.each { |a| _expr_each_bg_block_recursive(a, &block) }
+    when MethodCall
+      _expr_each_bg_block_recursive(expr.object, &block)
+      expr.args&.each { |a| _expr_each_bg_block_recursive(a, &block) }
+    end
+  end
+
+  # Yield ONLY the BgBlocks directly embedded in `stmt`'s expression
+  # positions -- does NOT descend into nested control-flow branches OR
+  # into the bodies of BGs found here. Use when emitting per-stmt MIR
+  # markers (MIR::SuppressCleanup, MIR::Promote): nested control flow
+  # gets its own transform_body call which handles its BGs separately;
+  # nested BGs capture from their parent BG body's scope, not this
+  # stmt's scope.
+  def self.each_bg_block_in_stmt(stmt, &block)
+    case stmt
+    when BgBlock, BgStreamBlock
+      yield stmt
+    when VarDecl, BindExpr, Assignment
+      _expr_each_bg_block_shallow(stmt.value, &block) if stmt.respond_to?(:value)
+    when FuncCall
+      stmt.args&.each { |a| _expr_each_bg_block_shallow(a, &block) }
+    when MethodCall
+      _expr_each_bg_block_shallow(stmt.object, &block)
+      stmt.args&.each { |a| _expr_each_bg_block_shallow(a, &block) }
+    when ReturnNode
+      _expr_each_bg_block_shallow(stmt.value, &block) if stmt.respond_to?(:value)
+    end
+  end
+
+  def self._expr_each_bg_block_shallow(expr, &block)
+    return unless expr
+    case expr
+    when BgBlock, BgStreamBlock
+      yield expr
+      # Stop here -- do not descend into BG body.
+    when FuncCall
+      expr.args&.each { |a| _expr_each_bg_block_shallow(a, &block) }
+    when MethodCall
+      _expr_each_bg_block_shallow(expr.object, &block)
+      expr.args&.each { |a| _expr_each_bg_block_shallow(a, &block) }
+    end
+  end
+
+  # Yield every CaptureAnalysis instance reachable from `body`. A
+  # CaptureAnalysis is attached to any "fiber-like context" -- BG block,
+  # BgStream block, DO block branch, or ConcurrentOp (CONCURRENT
+  # SELECT/WHERE/EACH/etc.). All four use the same `analyze_fiber_captures`
+  # machinery; this single walker lets BgCaptureClassifier process every
+  # one with one pass per function. Replaces the per-source-type
+  # iteration that used to live in lower_bg_block, lower_do_block, and
+  # the pipeline_host concurrent lowerings.
+  def self.each_capture_analysis(body, &block)
+    each_bg_block(body) do |bg|
+      yield bg.capture_analysis if bg.capture_analysis
+    end
+    walk_body(body) do |node|
+      if node.is_a?(DoBlock)
+        node.branches&.each do |b|
+          yield b[:capture_analysis] if b[:capture_analysis]
+        end
+      end
+      _expr_each_concurrent_capture(node, &block)
+    end
+  end
+
+  def self._expr_each_concurrent_capture(node, &block)
+    case node
+    when ConcurrentOp
+      yield node.capture_analysis if node.capture_analysis
+    when BinaryOp
+      # `x s> CONCURRENT EACH { ... }` parses as BinaryOp(op=:SMOOTH);
+      # the ConcurrentOp lives on .right. (Other binary ops can also
+      # contain ConcurrentOps in either side via nested expressions.)
+      _expr_each_concurrent_capture(node.left, &block) if node.respond_to?(:left)
+      _expr_each_concurrent_capture(node.right, &block) if node.respond_to?(:right)
+    when VarDecl, BindExpr, Assignment
+      _expr_each_concurrent_capture(node.value, &block) if node.respond_to?(:value)
+    when ReturnNode
+      _expr_each_concurrent_capture(node.value, &block) if node.respond_to?(:value)
+    when FuncCall
+      node.args&.each { |a| _expr_each_concurrent_capture(a, &block) }
+    when MethodCall
+      _expr_each_concurrent_capture(node.object, &block)
+      node.args&.each { |a| _expr_each_concurrent_capture(a, &block) }
+    end
+  end
+
+  module Locatable
+    def line; token.line; end
+    def column; token.column; end
+    def token_value; token.value; end
+
+    attr_reader :coerced_type_object
+    attr_reader :type_object
+    attr_accessor :zig_pattern
+    attr_accessor :matched_stdlib_def  # Hash from STD_LIB entry (for return_alloc etc.)
+    attr_accessor :stdlib_allocates  # true when matched stdlib entry has allocates: true
+    attr_accessor :mutates_receiver  # true when matched stdlib entry has mutates_receiver: true
+    attr_accessor :was_moved
+# ... file truncated after line 196; original file has 1026 lines ...
+```
+
 A new unit test was added and is failing.
 A new failing unit test was added; use it to understand expected behavior.
 
@@ -26,3 +228,4 @@ Issue: renamed variable: 'body' -> 'nodes'
 Fix it.
 
 Return ONLY the corrected function `walk_body` in a ```ruby block.
+

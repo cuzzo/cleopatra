@@ -1,0 +1,10 @@
+```ruby
+def collect_binding_moves(node, state)
+  return [] unless consumed
+  consumed = Set.new
+  collect_ownership_transfers(consumed, state, consumed)
+  consumed.to_a
+end
+```
+
+The corrected code renames the `node` variable to `consumed` to match the usage within the function.

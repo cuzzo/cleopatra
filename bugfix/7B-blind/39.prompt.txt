@@ -1,6 +1,240 @@
 File: src/ast/type.rb
 Function: stream?
 
+Source file excerpt centered around `Type.stream?`:
+```ruby
+# ... file truncated before line 650; centered around Type.stream? lines 763-765 ...
+      end
+      return [true, closes.join("; ")] if closes.any?
+    end
+
+    [false, nil]
+  end
+
+  # True when this is a list of promises: ~T[]@list — a dynamic list of BG tasks.
+  # Declared as `MUTABLE futures: ~T[]@list = []`; populated via append(futures, BG { ... }).
+  def promise_list?
+    future? && list_collection?
+  end
+
+  # True when the collection has a sharding topology modifier (@pool:sharded(N) / @list:sharded(N)).
+  def sharded?
+    !@shard_count.nil?
+  end
+
+  def soa?
+    !!@soa
+  end
+
+  # Fixed-size SOA array without collection wrapper (T[N]@soa).
+  def fixed_soa?
+    fixed? && soa? && !collection?
+  end
+
+  # A sharded collection with sync capability = lock-striped (skew-safe).
+  # Replaces the old :striped(N) keyword — now expressed via composition:
+  #   HashMap<V>:sharded(N) @locked → StripedStringMap
+  def striped?
+    sharded? && any_sync?
+  end
+
+  def value_type
+    return nil unless map?
+    @value_type_obj ||= Type.new(@value_type_raw || :Any)
+  end
+
+  # Generic struct instance: Pair<Number>, Map<String, Number>
+  def generic_instance?
+    !!@is_generic_instance
+  end
+
+  # The base type name of a generic instance: :"Pair<Number>" → :Pair
+  def generic_base
+    @generic_base_raw
+  end
+
+  # The type arguments as Type objects: [Type(:Float64), Type(:String)]
+  def generic_args
+    return nil unless @is_generic_instance
+    @generic_args_obj ||= @generic_args_raw.map { |a| Type.new(a) }
+  end
+
+  # TODO: keep metatype from ast, use that
+  def struct?
+    !primitive? && !any? && !void? && !string? && !array? && !map? && !optional? && !error_union? && !tense? && !fn_type?
+  end
+
+  def optional?
+    @is_optional
+  end
+
+  def wrapped_type
+    return nil unless optional?
+    @wrapped_type_obj ||= Type.new(@wrapped_type_raw || :Any)
+  end
+
+  # Error union types: !T (Zig-style error returns)
+  def error_union?
+    @is_error_union
+  end
+
+  def payload_type
+    return nil unless error_union?
+    @payload_type_obj ||= Type.new(@payload_type_raw || :Any)
+  end
+
+  # Tense (Promise) types: ~T — a background task that will produce T
+  def tense?
+    !!@is_tense
+  end
+
+  # Preferred predicate name for ~T / stream-like future values.
+  def future?
+    tense?
+  end
+
+  def tense_type
+    return nil unless future?
+    @tense_type_obj ||= Type.new(@tense_type_raw || :Void)
+  end
+
+  # Finite dynamic stream: ~T[].
+  # Used for lazy finite producers like ranges. NEXT returns ?T until exhausted.
+  def dynamic_stream?
+    future? && tense_type.dynamic? && !tense_type.optional? && !list_collection?
+  end
+
+  # New syntax alias: ~?T[] means an open stream of T (NEXT returns ?T).
+  # Parsed as future of ?T[] by the general type parser, then reinterpreted here.
+  def optional_stream_shape_type
+    return nil unless future? && tense_type.optional?
+    wrapped = tense_type.wrapped_type
+    wrapped if wrapped&.array?
+  end
+
+  def open_stream_alias?
+    shape = optional_stream_shape_type
+    shape&.dynamic? || false
+  end
+
+  def stream?
+    dynamic_stream? && bounded_stream? || open_stream? || inf_stream? || split_open_stream?
+  end
+
+  def split_open_stream?
+    split? && open_stream?
+  end
+
+  # Bounded stream: ~T[N] or ~?T[N] — a fixed stream of N elements consumed via NEXT.
+  # Distinct from a single promise (~T): NEXT can be called N times, not exactly once.
+  def bounded_stream?
+    # ~T[N] is a bounded stream of N elements. ~String is NOT a bounded stream
+    # even though String is internally []const u8 (a fixed array) - it's a Promise.
+    !!(future? && (
+      (tense_type.fixed? && !tense_type.string?) ||
+      (optional_stream_shape_type&.fixed? && !optional_stream_shape_type.string?)
+    ))
+  end
+
+  # Shared promise: ~T@shared — a memoized promise backed by Arc-style ref counting.
+  # Multiple holders can call NEXT independently; NEXT is idempotent per handle.
+  # NOT linearly affine — can be retained (cloned) without consuming it.
+  def shared_promise?
+    future? && shared?
+  end
+
+  # Open stream: ~?T[] (preferred) or legacy ~T[?].
+  # Generator-backed stream; NEXT returns ?T (nil when exhausted).
+  # Resource semantics: call deinit() to free the heap-allocated buffer.
+  def open_stream?
+    future? && (tense_type.open_stream_marker? || open_stream_alias?)
+  end
+
+  # The element type T in ~?T[] / ~T[?].
+  def open_stream_element_type
+    return nil unless open_stream?
+    return optional_stream_shape_type.element_type if open_stream_alias?
+    tense_type.element_type
+  end
+
+  # Infinite stream: ~T[INF] — a lazy rendezvous generator; NEXT returns T (never nil).
+  # Generator and consumer rendezvous on each value: push() blocks until next() reads it.
+  # Resource semantics: call deinit() to free the heap-allocated Inner.
+  def inf_stream?
+    future? && tense_type.inf_stream_marker?
+  end
+
+  # The element type T in ~T[INF].
+  def inf_stream_element_type
+    return nil unless inf_stream?
+    tense_type.element_type
+  end
+
+  # The element type T in ~T[N], or ?T in ~?T[N].
+  def stream_element_type
+    return nil unless bounded_stream?
+    if optional_stream_shape_type&.fixed?
+      Type.new(:"?#{optional_stream_shape_type.element_type.to_sym}")
+    else
+      tense_type.element_type
+    end
+  end
+
+  # The capacity N in ~T[N] / ~?T[N].
+  def stream_capacity
+    return nil unless bounded_stream?
+    optional_stream_shape_type&.capacity || tense_type.capacity
+  end
+
+  def element_type
+    return nil unless array?
+    # Uses the capture from parse_raw_input, ensuring "Number[3]" becomes "Float64"
+    @element_type_obj ||= begin
+      t = Type.new(@element_type_raw || :Any)
+      t.ownership = @elem_ownership if @elem_ownership
+      t.sync = @elem_sync if @elem_sync
+      t
+    end
+  end
+
+  def slot_size(lookup_arg = nil, &lookup_block)
+    resolver = lookup_arg || lookup_block
+
+    # 1. Primitives / Pointers (Heap objects are 1 slot pointers; Rc/Arc/Locked are also pointer-sized)
+    # Generic instances (e.g. Id<T>) are intrinsic scalar types — always 1 slot.
+    return 1 if primitive? || heap? || dynamic? || any? || multiowned? || shared? || any_sync? || generic_instance?
+
+    # 2. Fixed Arrays (Recursion)
+    if fixed?
+      return capacity * element_type.slot_size(resolver)
+    end
+
+    # 3. Structs (The tricky part)
+    if struct?
+      raise "Need lookup context for struct size" unless resolver
+      schema = resolver.call(resolved)
+      return 1 unless schema # Treat unknown/nil schemas as 1 slot (default for pointers/unknown structs)
+      # Enum/Union/Resource types — treat as slot size 1.
+      return 1 if schema.is_a?(Hash) && (schema[:kind] == :enum || schema[:kind] == :union || schema[:kind] == :resource)
+      # Generic structs: treat as 1 slot (size depends on type args, unknown at this point)
+      return 1 if schema.is_a?(Hash) && schema[:type_params]
+      # Only sum field entries (string keys). Skip metadata (symbol keys like :type_params, :extern_module).
+      return schema.select { |k, _| k.is_a?(String) }.values.sum { |t| Type.new(t).slot_size(resolver) }
+    end
+
+    1 # Default
+  end
+
+  # TODO: In future, need to be able to call slot-size for small structs.
+  def requires_move?
+    return false if fn_type?                # Function pointers are pointer-sized; no move semantics
+    return false if bounded_stream?         # Bounded streams are consumed incrementally — not linearly affine
+    return false if shared_promise?         # Shared promises are non-affine — multiple NEXT calls allowed
+    return false if open_stream?            # Open streams are resources with deinit cleanup, not linear
+    return false if inf_stream?             # Infinite streams are resources with deinit cleanup, not linear
+# ... file truncated after line 877; original file has 1674 lines ...
+```
+
 A mutant/regression test is failing after local source edits.
 Active source edits exist; inspect dirty changed lines first.
 
@@ -13,3 +247,4 @@ Issue: swapped || -> &&
 Fix it.
 
 Return ONLY the corrected function `stream?` in a ```ruby block.
+

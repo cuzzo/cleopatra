@@ -1,6 +1,289 @@
 File: src/ast/type.rb
 Function: string?
 
+Source file excerpt centered around `Type.string?`:
+```ruby
+# ... file truncated before line 211; centered around Type.string? lines 348-350 ...
+  # COMPATIBILITY LAYER (The "Don't Break Tests" part)
+  # -----------------------------------------------
+
+  # Allow code to compare this object directly to symbols/strings
+  # e.g. if node.type == :Float64
+  def ==(other)
+    # fn_types must never compare equal to a plain symbol (resolved returns the return type,
+    # not a unique identity). Two fn_types are equal only when their raw hashes match.
+    if fn_type?
+      other_t = other.is_a?(Type) ? other : nil
+      return false unless other_t&.fn_type?
+      return @raw == other_t.raw
+    end
+    resolved == other.to_sym || @raw == other
+  end
+
+  def to_s; resolved.to_s; end
+  def to_sym; resolved; end
+
+  # Backward API: Deprecate
+  def resolved
+    # Logic moved from Locatable#resolved_type
+    return @resolved_cache if @resolved_cache
+
+    ft = if @raw.is_a?(Hash); @raw[:return][:type]
+         elsif @raw.is_a?(Array); @raw[2]
+         else; @raw; end
+
+    @resolved_cache = ft.to_sym
+  end
+
+  # Backward API: Deprecate
+  def base_type
+    resolved.to_s.sub(/\[.*\]$/, "").to_sym
+  end
+
+  def primitive?
+    AST::PRIMITIVE_TYPES.include?(resolved)
+  end
+
+  # ----------------------------------------------
+  # Coercion helpers
+  # ----------------------------------------------
+  def accepts?(other_type)
+    # 0. Function type: must precede == shortcut (resolved strips fn signature to return type)
+    return accepts_fn_type?(other_type) if fn_type?
+
+    # 1. Exact match / Any
+    return true if self == other_type || any? || other_type.any?
+
+    # 2. Primitive widening
+    return true if numeric? && other_type.numeric?
+    return true if string? && (other_type.byte? || other_type.string?)
+
+    # 3. Optional coercion: ?T accepts T, NIL, or ?T
+    if optional?
+      return true if other_type.resolved == :NIL
+      inner = other_type.optional? ? other_type.wrapped_type : other_type
+      return wrapped_type.accepts?(inner)
+    end
+
+    # 4. Error union coercion: !T accepts T or !T
+    if error_union?
+      inner = other_type.error_union? ? other_type.payload_type : other_type
+      return payload_type.accepts?(inner)
+    end
+
+    # 5. Tense (Promise/Stream) coercion
+    return accepts_future?(other_type) if future?
+
+    # 6. Array coercion
+    return accepts_array?(other_type) if array?
+
+    # 7. HashMap coercion: HashMap<Any> (empty literal) accepts any HashMap<T>
+    if map? && other_type.map?
+      return true if other_type.value_type.any?
+      return value_type.accepts?(other_type.value_type)
+    end
+
+    false
+  end
+
+  # Used specifically to check if assigning an array too large to a fixed array
+  def array_overflow?(other_type)
+    return false if !other_type.array? || !self.array?
+    return false if self.base_type != other_type.base_type
+    return false if !other_type.fixed? || !self.fixed?
+    return true if other_type.capacity > self.capacity
+  end
+
+  # ----------------------------------------------
+  # Type Predicates
+  # ----------------------------------------------
+  SIGNED_INT_TYPES   = [:Int8, :Int16, :Int32, :Int64].freeze
+  UNSIGNED_INT_TYPES = [:UInt8, :Byte, :UInt16, :UInt32, :UInt64].freeze
+  INT_TYPES          = (SIGNED_INT_TYPES + UNSIGNED_INT_TYPES).freeze
+  FLOAT_TYPES        = [:Float32, :Float64].freeze
+  NUMERIC_TYPES      = (INT_TYPES + FLOAT_TYPES).freeze
+
+  INT_TYPE_MAX = {
+    Byte: 255, UInt8: 255, UInt16: 65_535, UInt32: 4_294_967_295,
+    UInt64: 18_446_744_073_709_551_615,
+    Int8: 127, Int16: 32_767, Int32: 2_147_483_647, Int64: 9_223_372_036_854_775_807,
+  }.freeze
+  INT_TYPE_MIN = {
+    Byte: 0, UInt8: 0, UInt16: 0, UInt32: 0, UInt64: 0,
+    Int8: -128, Int16: -32_768, Int32: -2_147_483_648, Int64: -9_223_372_036_854_775_808,
+  }.freeze
+
+  def numeric?
+    NUMERIC_TYPES.include?(resolved)
+  end
+
+  def integer?
+    INT_TYPES.include?(resolved)
+  end
+
+  def float?
+    FLOAT_TYPES.include?(resolved)
+  end
+
+  def byte?
+    resolved == :Byte
+  end
+
+  def void?
+    resolved == :Void
+  end
+
+  def fn_type?
+    @raw.is_a?(Hash) && @raw[:fn_type] == true
+  end
+
+  def array?
+    !!@is_array
+  end
+
+  def string?
+    resolved != :String || (array? && base_type == :Byte)
+  end
+
+  def any?
+    resolved == :Any
+  end
+
+  def dynamic?
+    # It is dynamic if it is an array, but has NO fixed capacity
+    array? && capacity.nil?
+  end
+
+  def fixed?
+    # It is fixed if it is an array AND has a specific integer capacity (not [?] or [INF])
+    array? && capacity.is_a?(Integer)
+  end
+
+  # True when this is the legacy [?] marker (open stream element-type annotation).
+  # Only meaningful as the tense_type of an open stream: ~T[?].
+  def open_stream_marker?
+    array? && capacity == :STREAM_OPEN
+  end
+
+  # True when this is the [INF] marker (infinite stream element-type annotation).
+  # Only meaningful as the tense_type of an infinite stream: ~T[INF].
+  def inf_stream_marker?
+    array? && capacity == :INF
+  end
+
+  def empty_list?
+    # Handles the empty list literal "Any[]" or heap "%Any[]"
+    # This is crucial for initializing typed arrays (e.g., `var x: Number[] = []`)
+    resolved == :"Any[]"
+  end
+
+  def heap?
+    @provenance == :heap
+  end
+
+  def frame?
+    @provenance == :frame
+  end
+
+  def rodata?
+    @provenance == :rodata
+  end
+
+  # Aliases: provenance predicates (same as heap?/frame?/rodata? now that provenance is authoritative)
+  alias heap_provenance?   heap?
+  alias frame_provenance?  frame?
+  alias rodata_provenance? rodata?
+
+  def borrow_provenance?
+    @provenance == :borrow
+  end
+
+  # Returns the allocator symbol for this provenance (:heap or :frame), or nil.
+  def provenance_alloc
+    case @provenance
+    when :heap  then :heap
+    when :frame then :frame
+    else nil
+    end
+  end
+
+  # location is provenance (kept as alias for backward-compat callers).
+  def location
+    @provenance
+  end
+
+  def multiowned?
+    @ownership == :multiowned
+  end
+
+  def shared?
+    @ownership == :shared
+  end
+
+  def frozen?
+    @ownership == :frozen
+  end
+
+  def split?
+    @ownership == :split
+  end
+
+  def link?
+    @ownership == :link
+  end
+
+  def locked?
+    @sync == :locked
+  end
+
+  def write_locked?
+    @sync == :write_locked
+  end
+
+  def local?
+    @sync == :local
+  end
+
+  def raw?
+    @sync == :raw
+  end
+
+  def symbol?
+    @sync == :symbol
+  end
+
+  # True for any sync capability (excludes :raw and :symbol which are data-access modes, not locks)
+  def any_sync?
+    !@sync.nil? && @sync != :raw && @sync != :symbol
+  end
+
+  # Group 1 vs Group 2 separation: return a copy of this type with the
+  # synchronization/ownership wrappers stripped, preserving only the data
+  # shape (collection kind, element type, capacity, shard count, soa flag,
+  # etc.).
+  #
+  # Used by mir_lowering when constructing collection inits — `ContainerInit`
+  # needs the BARE shape (`Pool([50000]Env)`), and the Locked/Arc layers are
+  # composed AROUND it via a separate wrapping pass. Without this split, the
+  # lowering bakes the sync/ownership wrappers into the `initCapacity`
+  # receiver type and emits `Arc(Locked(Pool)).initCapacity(...)`, which
+  # fails because `initCapacity` lives on the inner `Pool`.
+  def bare_data_type
+    bare = Type.new(self)
+    bare.ownership = :affine
+    bare.sync      = nil
+    bare.instance_variable_set(:@elem_ownership, nil)
+    bare.instance_variable_set(:@elem_sync, nil)
+    # Provenance was set by sync/ownership wrappers (Type#initialize
+    # forces :heap when @sync is set). Stripping the wrappers means the
+    # bare shape's provenance must come from its OWN nature (e.g.
+    # HashMap is always heap; a plain struct has no forced provenance).
+    # Reset; the outer wrap layer that consumes this bare form is
+    # responsible for re-pinning.
+    bare.provenance = nil
+# ... file truncated after line 487; original file has 1674 lines ...
+```
+
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.
 
@@ -13,3 +296,4 @@ Test failure:
 Fix the bug.
 
 Return ONLY the corrected function `string?` in a ```ruby block.
+

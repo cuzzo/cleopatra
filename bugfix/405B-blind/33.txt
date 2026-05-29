@@ -1,0 +1,5 @@
+```ruby
+def any_rc?
+  multiowned? || shared?
+end
+```

@@ -1,5 +1,5 @@
 ```ruby
-def string?(node)
-  node.type == :string || (node.type == :array && node.children.first.type == :string)
+def string?
+  resolved != :String || (array? && base_type == :Byte)
 end
 ```

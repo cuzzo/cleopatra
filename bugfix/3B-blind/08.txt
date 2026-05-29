@@ -1,7 +1,24 @@
 ```ruby
 class FixableFinding
-  def initialize(level)
+  # Ordered low-to-high; the set matches LSP's four DiagnosticSeverity
+  # values (Hint, Information, Warning, Error). :error is the only
+  # blocking level; everything else is advisory.
+  LEVELS = [:hint, :info, :warning, :error].freeze
+  CATEGORIES = [:lint, :ownership, :capability, :escape, :type, :registry].freeze
+
+  attr_reader :level, :message, :token, :category, :fixes
+
+  def initialize(level:, message:, token:, category:, fixes:)
+    raise ArgumentError, "bad level #{level.inspect}" unless LEVELS.include?(level)
+    raise ArgumentError, "bad category #{category.inspect}" unless CATEGORIES.include?(category)
     @level = level
+    @message = message
+    @token = token
+    @category = category
+    @fixes = Array(fixes)
+    raise ArgumentError, "at least one Fix required" if @fixes.empty?
   end
+
+  def fatal?; @level == :error; end
 end
 ```

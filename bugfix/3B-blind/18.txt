@@ -1,10 +1,108 @@
 ```ruby
-def declare(node)
-  # Ensure the node is a Register
-  if node.is_a?(Register)
-    # Your existing logic here
-  else
-    raise "Node must be a Register"
+class OwnershipGraph
+  Node = Struct.new(:path, :kind, :state, :type_info, :scope_depth, :line,
+                    :move_line, :move_col,
+                    keyword_init: true) do
+    def live?;    state == :live; end
+    def moved?;   state == :moved; end
+    def dropped?; state == :dropped; end
   end
-end
+
+  Edge = Struct.new(:from, :to, :kind, keyword_init: true)
+  # Edge kinds:
+  #   :borrows     — immutable borrow (y borrows x)
+  #   :borrows_mut — mutable borrow (y mutably borrows x)
+
+  attr_reader :nodes, :edges
+
+  def initialize
+    @nodes = {}           # path => Node
+    @edges = []           # Array of Edge
+    @edges_by_target = Hash.new { |h, k| h[k] = [] }  # target_path => [Edge]
+    @edges_by_source = Hash.new { |h, k| h[k] = [] }  # source_path => [Edge]
+    @children = Hash.new { |h, k| h[k] = Set.new }    # parent_path => Set of child paths
+  end
+
+  # ── Edge index helpers ────────────────────────────────────────────
+
+  def add_edge(edge)
+    @edges << edge
+    @edges_by_target[edge.to] << edge
+    @edges_by_source[edge.from] << edge
+  end
+
+  def remove_edge(edge)
+    @edges.delete(edge)
+    @edges_by_target[edge.to]&.delete(edge)
+    @edges_by_source[edge.from]&.delete(edge)
+  end
+
+  # ── Core Operations ───────────────────────────────────────────────
+
+  # Declare a new variable or field path.
+  def declare(path, kind: :affine, type_info: nil, scope_depth: 0, line: 0)
+    @nodes[path] = Node.new(
+      path: path, kind: kind, state: :live,
+      type_info: type_info, scope_depth: scope_depth, line: line
+    )
+    # Register as child of parent path (e.g., "x.child" is child of "x")
+    if path.include?('.')
+      parent = path.rpartition('.').first
+      @children[parent].add(path)
+    end
+  end
+
+  # Move ownership from source to target. Invalidates source and all children.
+  def transfer(from, to, at_token: nil)
+    source = @nodes[from]
+    return unless source
+
+    # Create target node with source's type
+    @nodes[to] = Node.new(
+      path: to, kind: source.kind, state: :live,
+      type_info: source.type_info, scope_depth: source.scope_depth, line: source.line
+    )
+
+    # Invalidate source and all owned children; record the move site
+    # (when a token is given) so `clear fix` can locate where the
+    # consuming reference lives.
+    if at_token
+      source.move_line = at_token.respond_to?(:line)   ? at_token.line   : nil
+      source.move_col  = at_token.respond_to?(:column) ? at_token.column : nil
+    end
+    invalidate(from)
+  end
+
+  # Add a borrow edge. Returns nil on success, error string on conflict.
+  def borrow(borrower, source, mutable: false)
+    source_node = @nodes[source]
+    return "cannot borrow '#{source}': not declared" unless source_node
+    return "cannot borrow '#{source}': already moved" if source_node.moved?
+
+    if mutable
+      # Mutable borrow: no other borrows (mutable or immutable) may exist
+      conflict = find_borrow_conflict(source)
+      return conflict if conflict
+      add_edge(Edge.new(from: borrower, to: source, kind: :borrows_mut))
+    else
+      # Immutable borrow: no mutable borrows may exist
+      mut_conflict = find_mutable_borrow(source)
+      return mut_conflict if mut_conflict
+      add_edge(Edge.new(from: borrower, to: source, kind: :borrows))
+    end
+    nil
+  end
+
+  # Remove all borrow edges from a borrower.
+  def release_borrow(borrower)
+    to_remove = @edges_by_source[borrower]&.select { |e| e.kind == :borrows || e.kind == :borrows_mut } || []
+    to_remove.each { |e| remove_edge(e) }
+  end
+
+  # Drop a path and all owned children. Returns list of paths to emit cleanup for.
+  def drop(path)
+    node = @nodes[path]
+    return [] unless node && node.live?
+
+    # Collect all owned children (depth-first, reverse order for cleanup)
 ```

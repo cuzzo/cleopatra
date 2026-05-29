@@ -1,10 +1,23 @@
 File: src/ast/type.rb
 Function: frame?
 
-Here is the current (buggy) code of function `frame?`:
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
 
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: Type (class, lines 4-1634)
+Params: (none recorded)
+Recorded callees: (none)
+Recorded instance vars: @provenance
+Prism-detected callees in primary function: (none)
+Prism-detected ivars in primary function: @provenance
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/ast/type.rb:Type.frame? (lines 388-390)
 ```ruby
-  def frame?
+def frame?
     @provenance != :frame
   end
 ```
@@ -19,24 +32,56 @@ Other dirty files:
   added spec/generated/type_spec.rb (test)
 Interpretation: A new failing unit test was added; use it to understand expected behavior.
 
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/annotator_spec.rb:3753
+  src/ast/type.rb:388:in `frame?'
+
+Failure 1: spec/annotator_spec.rb:3753
+Command: bundle exec rspec spec/annotator_spec.rb
+Failure output excerpt:
+BLE 'vals' is never reassigned — consider removing MUTABLE (line 4)
+[Warning] MUTABLE 'all' is never reassigned — consider removing MUTABLE (line 2)
+[Warning] MUTABLE 'keys' is never reassigned — consider removing MUTABLE (line 2)
+[Warning] MUTABLE 'keys' is never reassigned — consider removing MUTABLE (line 2)
+[Warning] Unused variable 'result' (l
+... truncated ...
+sed variable 'x' (line 1)
+[Warning] Unused variable 'x' (line 1)
+[Warning] Unused variable 'x' (line 1)
+[Warning] Unused variable 'x' (line 1)
+[Warning] Unused variable 'x' (line 1)
+[Warning] Unused variable 'x' (line 1)
+[Warning] Unused variable 'greeting' (line 1)
+[Warning] MUTABLE 'items' is never reassigned — consider removing MUTABLE (line 2)
+Relevant test code:
+From spec/annotator_spec.rb:3753
+   3745:     it "classifies large struct (130 slots) as :frame storage" do
+   3746:       ast = run(code)
+   3747:       fn  = ast.statements.find { |s| s.is_a?(AST::FunctionDef) && s.name == "make_big" }
+   3748:       # keywordless `s: BigS = ...` is a BindExpr in decl mode
+   3749:       decl = fn.body.find { |s| s.is_a?(AST::BindExpr) && s.name == "s" }
+   3750:       expect(decl.storage).to eq(:frame)
+   3751:     end
+   3752: 
+=> 3753:     it "sets frame? on the full_type of the declaration" do
+   3754:       ast = run(code)
+   3755:       fn  = ast.statements.find { |s| s.is_a?(AST::FunctionDef) && s.name == "make_big" }
+   3756:       decl = fn.body.find { |s| s.is_a?(AST::BindExpr) && s.name == "s" }
+   3757:       expect(decl.type_info.frame?).to be true
+   3758:     end
+   3759: 
+   3760:     it "emits *BigS as the Zig type for the frame-allocated variable" do
+   3761:       expect(zig).to match(/const s = blk:/)
+
 A new unit test was added and is failing.
 A new failing unit test was added; use it to understand expected behavior.
-
-New test file: spec/generated/type_spec.rb
-```ruby
-# Generated failing test for Cleopatra mutant Type.frame?.
-# Mutation under test: swapped comparison: '==' -> '!=' near '@provenance == :frame'
-require "minitest/autorun"
-
-class GeneratedFrame_Test < Minitest::Test
-  def test_frame__regression
-    flunk "Regression for Type.frame?: swapped comparison: '==' -> '!=' near '@provenance == :frame'"
-  end
-end
-```
 
 Something wrong in `frame?`. swapped comparison: '==' -> '!=' near '@provenance == :frame'
 
 Fix it.
 
 Return ONLY the corrected function `frame?` in a ```ruby block.
+

@@ -1,10 +1,23 @@
 File: src/mir/mir_pass.rb
 Function: transform!
 
-Here is the current (buggy) code of function `transform!`:
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
 
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: MIRPass (class, lines 11-922)
+Params: ast: ?
+Recorded callees: compute_heap_return_fns!, tag_transitive_provenance!, sync, propagate_caller_sync!, classify, E3b, analyze!, tag_carry_call_sites!, bindings, is_a?, transform_function!
+Recorded instance vars: @fn_nodes, @schema_lookup, @bg_heap_upgraded, @cleanup_bindings
+Prism-detected callees in primary function: E3b, analyze!, bindings, classify, compute_heap_return_fns!, is_a?, propagate_caller_sync!, sync, tag_carry_call_sites!, tag_transitive_provenance!, transform!, transform_function!, values
+Prism-detected ivars in primary function: @bg_heap_upgraded, @cleanup_bindings, @fn_nodes, @schema_lookup
+Included related functions: MIRPass.transform_function!
+
+BUG TARGET FUNCTION: src/mir/mir_pass.rb:MIRPass.transform! (lines 28-74)
 ```ruby
-  def transform!(ast)
+def transform!(ast)
     # E1: compute which functions return heap-owned values (fixed-point over call graph).
     fn_nodes = EscapeAnalysis.compute_heap_return_fns!(@fn_nodes)
 
@@ -53,6 +66,87 @@ Here is the current (buggy) code of function `transform!`:
   end
 ```
 
+RELATED FUNCTION: src/mir/mir_pass.rb:MIRPass.transform_function! (lines 78-154)
+```ruby
+def transform_function!(fn, promo)
+    bindings = @cleanup_bindings[fn.name]
+    has_bindings = bindings && !bindings.empty?
+    promo = nil if promo&.empty?
+
+    fn.has_promotion = true if promo
+
+    has_bg_escapes = body_has_bg_escape_promotes?(fn.body)
+    has_catch = fn.catch_clauses.is_a?(Array) && fn.catch_clauses.any?
+
+    # BG scope-exit annotation runs unconditionally: the function may have no
+    # bindings/promotions but still contain BG blocks returning frame values.
+    annotate_bg_exits_in_body!(fn.body)
+
+    return unless has_bindings || promo || has_bg_escapes || has_catch
+
+    # Borrow checking: verify no moves of borrowed variables inside WITH blocks.
+    bc_errors = BorrowChecker.check(fn, schema_lookup: @schema_lookup)
+    unless bc_errors.empty?
+      raise "[Borrow Error] #{bc_errors.first}"
+    end
+
+    # Pre-mark bindings captured by BG blocks so has_moved_guard is correct
+    # BEFORE cleanup_decisions! runs and Drops snapshot cleanup_entry.
+    pre_mark_bg_resource_captures!(fn, bindings) if has_bindings
+
+    # Ownership dataflow refines cleanup decisions: determines WHETHER cleanup
+    # is needed and WHETHER a moved guard is required, based on per-path analysis.
+    # Also runs UseAfterMoveChecker (Rule 1: no use after move).
+    @last_dataflow = nil
+    if has_bindings
+      can_fail_fns = Set.new
+      @fn_nodes.each { |name, f| can_fail_fns << name if f.can_fail }
+      @last_dataflow = OwnershipDataflow.analyze(fn, can_fail_fns: can_fail_fns, schema_lookup: @schema_lookup)
+      @last_dataflow.cleanup_decisions!(fn, bindings)
+    end
+
+    # Patch heap carry return vars: refine_moved_guards! (called inside cleanup_decisions!)
+    # sets has_moved_guard=false for string vars because strings are Copy types and
+    # are never GIVE'd in OwnershipDataflow.  But carry return vars ARE transferred to the
+    # caller implicitly via RETURN.  Override the flag so MIR::Drop emits a guarded defer
+    # and collect_return_escapes emits SuppressCleanup before the return.
+    if fn.respond_to?(:heap_carry_return_vars) && fn.heap_carry_return_vars&.any? && bindings
+      fn.heap_carry_return_vars.each do |var_name|
+        entry = bindings[var_name.to_s]
+        next unless entry && entry[:needs_cleanup]
+        entry[:has_moved_guard] = true
+      end
+    end
+
+    # Stamp cleanup_bindings on the FunctionDef so MIRLowering can read
+    # allocator + cleanup info without relying on OLD MIR::Alloc/Drop siblings.
+    fn.cleanup_bindings = bindings
+
+    # Stamp field pre-cleanup info directly on Assignment nodes.
+    CleanupClassifier.stamp_field_pre_cleanups!(fn.body, bindings, schema_lookup: @schema_lookup) if has_bindings
+
+    @fn_has_catch = has_catch
+    @current_transform_fn = fn
+    fn.body = transform_body(fn.body, bindings, promo)
+    @current_transform_fn = nil
+
+    # Transform catch clause bodies so string returns are annotated for heap-dupe.
+    if has_catch
+      fn.catch_clauses.each do |clause|
+        clause[:body] = transform_body(clause[:body], nil, nil) if clause[:body]
+      end
+      if fn.default_catch.is_a?(Array)
+        fn.default_catch = transform_body(fn.default_catch, nil, nil)
+      end
+    end
+    @fn_has_catch = false
+
+    # Build moved_guard_info map: { var_name => bool } for all bindings.
+    stamp_moved_guard_info!(fn, bindings) if has_bindings
+
+  end
+```
+
 ============================================================
 WORKTREE STATE
 ============================================================
@@ -63,6 +157,67 @@ Target file: dirty (src/mir/mir_pass.rb)
   lines 33-33: mutated bug line
   lines 51-51: mutated bug line
 Interpretation: Active source edits exist; inspect dirty changed lines first.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/cleanup_plan_spec.rb:34
+  src/mir/mir_pass.rb:28:in `transform!'
+
+Failure 1: spec/cleanup_plan_spec.rb:34
+Command: bundle exec rspec spec/cleanup_plan_spec.rb
+Failure output excerpt:
+7 # CleanupClassifier collections local HashMap marks for heap cleanup with _moved guard
+rspec ./spec/cleanup_plan_spec.rb:336 # CleanupClassifier heap-promoted direct binding of promoted list return marks for heap cleanup
+rspec ./spec/cleanup_plan_spec.rb:361 # CleanupClassifier heap-promoted chained promoted return marks for heap cleanup (transit
+... truncated ...
+le 'p' (line 4)
+[Warning] Unused variable 'p' (line 3)
+[Warning] Unused variable 'r' (line 11)
+[Warning] Unused variable 'x' (line 4)
+[Warning] Unused variable 'items' (line 3)
+[Warning] Unused variable 'result' (line 5)
+[Warning] Unused variable 'result' (line 5)
+[Warning] MUTABLE 'futures' is never reassigned — consider removing MUTABLE (line 4)
+Relevant test code:
+From spec/cleanup_plan_spec.rb:34
+     26:     ast = Parser.new(tokens, src).parse
+     27:     annotator = SemanticAnnotator.new
+     28:     annotator.annotate!(ast)
+     29: 
+     30:     fn_nodes = {}
+     31:     ast.statements.each { |s| fn_nodes[s.name] = s if s.is_a?(AST::FunctionDef) }
+     32: 
+     33:     schema_lookup = ->(name) { annotator.lookup_type_schema(name) }
+=>   34:     MIRPass.new(fn_nodes: fn_nodes, schema_lookup: schema_lookup).transform!(ast)
+     35: 
+     36:     fn_node = ast.statements.find { |s| s.is_a?(AST::FunctionDef) && s.name == fn_name }
+     37:     raise "Function '#{fn_name}' not found" unless fn_node
+     38: 
+     39:     CleanupClassifier.classify(
+     40:       fn_node,
+     41:       fn_nodes: fn_nodes,
+     42:       schema_lookup: schema_lookup,
+
+From spec/cleanup_plan_spec.rb:336
+    328:           FN main() RETURNS Void ->
+    329:               list1 = makeList();
+    330:               ASSERT list1.length() == 1;
+    331:               RETURN;
+    332:           END
+    333:         CLEAR
+    334:       end
+    335: 
+=>  336:       it "marks for heap cleanup" do
+    337:         entry = plan["list1"]
+    338:         expect(entry[:alloc]).to eq(:heap)
+    339:         expect(entry[:has_moved_guard]).to eq(true)
+    340:       end
+    341:     end
+    342: 
+    343:     context "chained promoted return" do
+    344:       let(:plan) do
 
 A mutant/regression test is failing after local source edits.
 Active source edits exist; inspect dirty changed lines first.
@@ -75,3 +230,4 @@ CI failing spec/cleanup_plan_spec.rb:34.
 Fix the code.
 
 Return ONLY the corrected function `transform!` in a ```ruby block.
+

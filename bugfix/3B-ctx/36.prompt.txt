@@ -1,15 +1,27 @@
 File: src/ast/scope.rb
 Function: initialize
 
-Here is the current (buggy) code of function `initialize`:
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
 
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: Scope (class, lines 4-221)
+Params: (none recorded)
+Recorded callees: (none)
+Recorded instance vars: @locals, @dependencies, @types, @owned_names
+Prism-detected callees in primary function: scope
+Prism-detected ivars in primary function: @dependencies, @locals, @owned_names
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/ast/scope.rb:Scope.initialize (lines 8-12)
 ```ruby
-  def initialize
+def initialize
     @locals = {}
     @dependencies = {}
     @owned_names = Set.new  # Variables declared in THIS scope (not inherited from parent)
   end
-
 ```
 
 ============================================================
@@ -22,21 +34,66 @@ Other dirty files:
   added spec/generated/scope_spec.rb (test)
 Interpretation: A new failing unit test was added; use it to understand expected behavior.
 
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/higher_order_spec.rb:1631
+  src/ast/scope.rb:8:in `initialize'
+
+Failure 1: spec/higher_order_spec.rb:1631
+Command: bundle exec rspec spec/higher_order_spec.rb
+Failure output excerpt:
+edicate resolves to element array type resolves to Item[]
+rspec ./spec/higher_order_spec.rb:2433 # SemanticAnnotator Collection Types — Phase 5: @list:sharded pipeline operators sharded list s> FIND predicate resolves to optional element type succeeds without errors
+rspec ./spec/higher_order_spec.rb:2437 # SemanticAnnotator Collection Types — Phase
+... truncated ...
+rder_spec.rb:2677 # SemanticAnnotator Collection Types — Phase 5: Pool FIND operator Zig output: pool s> FIND emits slot materialization and find loop emits find_found flag and optional return
+
+Coverage report generated for RSpec to /home/yahn/cleopatra/.eval/cheat/coverage.
+Line Coverage: 12.91% (2862 / 22165)
+Branch Coverage: 2.46% (281 / 11437)
+Relevant test code:
+From spec/higher_order_spec.rb:1631
+   1623:               nums: Float64[] = [1.0];
+   1624:               nums s> FIND _;
+   1625:               RETURN;
+   1626:             END
+   1627:           CLEAR
+   1628:         }.to raise_error(CompilerError, /FIND clause must evaluate to Bool/)
+   1629:       end
+   1630: 
+=> 1631:       it "emits a result variable initialized to null for FIND in Zig" do
+   1632:         out = transpile_fn(<<~CLEAR)
+   1633:           FN f() RETURNS Void ->
+   1634:             nums: Float64[] = [1.0, 2.0];
+   1635:             result = nums s> FIND _ > 1.0;
+   1636:             RETURN;
+   1637:           END
+   1638:         CLEAR
+   1639:         expect(out).to include("null")
+
+From spec/higher_order_spec.rb:2433
+   2425:       let(:code) {
+   2426:         <<~FLUX
+   2427:           STRUCT Item { value: Float64 }
+   2428:           MUTABLE slist: Item[]@list:sharded(2) = [];
+   2429:           result = slist s> FIND _.value > 0.0;
+   2430:         FLUX
+   2431:       }
+   2432: 
+=> 2433:       it "succeeds without errors" do
+   2434:         expect { ast }.not_to raise_error
+   2435:       end
+   2436: 
+   2437:       it "resolves to an optional type" do
+   2438:         # ?Item — the resolved raw includes Item
+   2439:         expect(result.to_s).to match(/Item/)
+   2440:       end
+   2441:     end
+
 A new unit test was added and is failing.
 A new failing unit test was added; use it to understand expected behavior.
-
-New test file: spec/generated/scope_spec.rb
-```ruby
-# Generated failing test for Cleopatra mutant Scope.initialize.
-# Mutation under test: forgotten line: '@types = {}'
-require "minitest/autorun"
-
-class GeneratedInitializeTest < Minitest::Test
-  def test_initialize_regression
-    flunk "Regression for Scope.initialize: forgotten line: '@types = {}'"
-  end
-end
-```
 
 Test failure:
   forgotten line: '@types = {}'
@@ -47,3 +104,4 @@ Test failure:
 Fix the bug.
 
 Return ONLY the corrected function `initialize` in a ```ruby block.
+

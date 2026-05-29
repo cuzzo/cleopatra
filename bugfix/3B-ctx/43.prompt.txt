@@ -1,10 +1,35 @@
 File: src/annotator.rb
 Function: annotate!
 
-Here is the current (buggy) code of function `annotate!`:
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
 
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: SemanticAnnotator (class, lines 26-4490)
+Params: node: ?
+Recorded callees: visit, propagate_caller_sync!, walker, classify_all!, effects, analyze!, error!, note!, check_function!, is_a?, check_call_sites!, checks, locked, check_all!, validations
+Recorded instance vars: @fn_nodes, @scope_stack, @locked, @lock_type_ranks
+Prism-detected callees in primary function: analyze!, annotate!, check_all!, check_call_sites!, check_function!, checks, classify_all!, effects, error!, is_a?, locked, note!, propagate_caller_sync!, runs, validations, visit, walker
+Prism-detected ivars in primary function: @fn_nodes, @lock_type_ranks, @locked, @scope_stack
+Included related functions: SemanticAnnotator.visit
+
+RELATED FUNCTION: src/annotator.rb:SemanticAnnotator.visit (lines 223-230)
 ```ruby
-  def annotate!(node)
+def visit(node)
+    return unless node
+    return if node.is_a?(Symbol)
+
+    # Dynamic Dispatch
+    method_name = "visit_#{node.class.name.split('::').last}"
+    send(method_name, node)
+  end
+```
+
+BUG TARGET FUNCTION: src/annotator.rb:SemanticAnnotator.annotate! (lines 97-146)
+```ruby
+def annotate!(node)
     # Reset user-registered error types so state from prior runs (rspec
     # parallel, multi-program test harness) doesn't leak in. Stdlib
     # types are preserved.
@@ -64,6 +89,77 @@ Worktree: clean
 Target file: clean (src/annotator.rb)
 Interpretation: Clean tree; treat this as a production/existing bug that slipped through tests.
 
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/mir_comparison_spec.rb:31
+  src/annotator.rb:97:in `annotate!'
+
+Failure 1: spec/mir_comparison_spec.rb:31
+Command: bundle exec rspec spec/mir_comparison_spec.rb
+Failure output excerpt:
+Run options: exclude {:integration=>true}
+.........F............
+
+Failures:
+
+  1) MIR pipeline comparison old MIR nodes passthrough translates MIR::SuppressCleanup from MIRPass
+     Failure/Error: annotator.annotate!(ast)
+
+     TypeError:
+       no implicit conversion of Integer into String
+     # ./src/annotator.rb:120:in `+'
+     # ./src/annotato
+... truncated ...
+4.17% (5358 / 22166)
+Branch Coverage: 16.4% (1876 / 11437)
+[Warning] Unused variable 'x' (line 2)
+[Warning] Unused variable 'name' (line 2)
+[Warning] Unused variable 'flag' (line 2)
+[Warning] Unused variable 'name' (line 2)
+[Warning] Unused variable 'result' (line 5)
+[Warning] Unused variable 's' (line 3)
+[Warning] Unused variable 'first' (line 3)
+Relevant test code:
+From spec/mir_comparison_spec.rb:169
+    161:   # =========================================================================
+    162: 
+    163:   # For function body comparison, we need a different approach:
+    164:   # extract the function body statements after MIRPass and lower each one.
+    165:   def compare_fn_body(src)
+    166:     tokens = Lexer.new(src).tokenize
+    167:     ast = Parser.new(tokens, src).parse
+    168:     annotator = SemanticAnnotator.new(importer: nil, source_dir: ".", strict_test: false)
+=>  169:     annotator.annotate!(ast)
+    170:     PipelineRewriter.new(annotator).rewrite!(ast)
+    171:     StringConcatRewriter.new.rewrite!(ast)
+    172: 
+    173:     fn_nodes = {}
+    174:     ast.statements.each { |s| fn_nodes[s.name] = s if s.is_a?(AST::FunctionDef) }
+    175:     schema_lookup = ->(name) { annotator.lookup_type_schema(name) }
+    176:     mir = MIRPass.new(fn_nodes: fn_nodes, schema_lookup: schema_lookup)
+    177:     mir.transform!(ast)
+
+From spec/mir_comparison_spec.rb:314
+    306:       src = <<~CLEAR
+    307:         FN consume(TAKES s: String) RETURNS Void -> RETURN; END
+    308:         FN main() RETURNS Void ->
+    309:           x = "hello";
+    310:           consume(GIVE x);
+    311:           RETURN;
+    312:         END
+    313:       CLEAR
+=>  314:       results = compare_fn_body(src)
+    315:       suppress = results.find { |r| r[:ast_class] == "MIR::SuppressCleanup" }
+    316:       if suppress
+    317:         expect(suppress[:error]).to be_nil
+    318:         expect(suppress[:new_zig]).to include("_moved = true")
+    319:       end
+    320:     end
+    321:   end
+    322: 
+
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.
 
@@ -76,3 +172,4 @@ Issue: off-by-one: added +1 to index ''
 Fix it.
 
 Return ONLY the corrected function `annotate!` in a ```ruby block.
+

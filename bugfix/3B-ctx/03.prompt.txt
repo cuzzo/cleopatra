@@ -1,10 +1,23 @@
 File: src/annotator-helpers/function_analysis.rb
 Function: verify_return
 
-Here is the current (buggy) code of function `verify_return`:
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
 
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: FunctionAnalysis (module, lines 3-789)
+Params: node: ?
+Recorded callees: return_is_borrow?, constructors, is_a?, lookup_type_schema, copyable?, implicitly_copyable?, include?, error!, tracing, split, map, get_path_to_root, join
+Recorded instance vars: (none)
+Prism-detected callees in primary function: constructors, copyable?, error!, get_path_to_root, implicitly_copyable?, include?, is_a?, join, lookup_type_schema, map, return_is_borrow?, split, tracing, verify_return
+Prism-detected ivars in primary function: (none)
+Included related functions: FunctionAnalysis.return_is_borrow?
+
+BUG TARGET FUNCTION: src/annotator-helpers/function_analysis.rb:FunctionAnalysis.verify_return (lines 676-723)
 ```ruby
-  def verify_return(node)
+def verify_return(node)
     # A returned value is a borrow when it is a direct indexed/field access OR
     # a variable that the ownership graph marked as :borrowed.
     return true unless return_is_borrow?(node)
@@ -54,6 +67,24 @@ Here is the current (buggy) code of function `verify_return`:
   end
 ```
 
+RELATED FUNCTION: src/annotator-helpers/function_analysis.rb:FunctionAnalysis.return_is_borrow? (lines 725-738)
+```ruby
+def return_is_borrow?(node)
+    if node.is_a?(AST::Identifier)
+      return false unless @og[node.name]&.kind == :borrowed
+      # Parameters (reg=nil) and MATCH bindings (reg=nil) are safe to return —
+      # the caller controls their lifetime. Only flag variables explicitly assigned
+      # from a collection index borrow (BindExpr with container_borrow=true).
+      scope = lookup_scope_for(node.name)
+      reg = scope&.locals&.[](node.name)&.reg
+      return reg.respond_to?(:container_borrow) && reg.container_borrow == true
+    end
+    return true if node.is_a?(AST::GetIndex)
+    return true if node.is_a?(AST::GetField)
+    false
+  end
+```
+
 ============================================================
 WORKTREE STATE
 ============================================================
@@ -62,6 +93,68 @@ Worktree: dirty
 Target file: dirty (src/annotator-helpers/function_analysis.rb)
   lines 676-723: entire function edited
 Interpretation: Active source edits exist; inspect dirty changed lines first.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/lifetimes_spec.rb:353
+  src/annotator-helpers/function_analysis.rb:676:in `verify_return'
+
+Failure 1: spec/lifetimes_spec.rb:353
+Command: bundle exec rspec spec/lifetimes_spec.rb
+Failure output excerpt:
+/function_analysis.rb:680:in `verify_return'
+         # ./src/annotator.rb:1726:in `visit_ReturnNode'
+         # ./src/annotator.rb:229:in `visit'
+         # ./src/annotator.rb:774:in `block in visit_stmts'
+         # ./src/annotator.rb:772:in `each'
+         # ./src/annotator.rb:772:in `each_with_index'
+         # ./src/annotator.rb:772:in `visit_
+... truncated ...
+ifetimes_spec.rb:386 # SemanticAnnotator Lifetimes indirect field borrow escape (via variable, non-copyable field) errors: cannot return a borrowed field via variable without COPY or lifetime
+
+Coverage report generated for RSpec to /home/yahn/cleopatra/.eval/cheat/coverage.
+Line Coverage: 18.36% (4069 / 22166)
+Branch Coverage: 9.07% (1037 / 11437)
+Relevant test code:
+From spec/lifetimes_spec.rb:14
+      6: require_relative "../src/backends/transpiler"
+      7: require_relative "../src/ast/ast"
+      8: 
+      9: RSpec.describe SemanticAnnotator do
+     10:   def run(source)
+     11:     tokens = Lexer.new(source).tokenize
+     12:     ast = Parser.new(tokens, source).parse
+     13:     annotator = SemanticAnnotator.new
+=>   14:     annotator.annotate!(ast)
+     15:     return ast
+     16:   end
+     17: 
+     18:   def get_last_type(source)
+     19:     run(source).statements.last.resolved_type
+     20:   end
+     21: 
+     22:   let(:ast) { run(code) }
+
+From spec/lifetimes_spec.rb:22
+     14:     annotator.annotate!(ast)
+     15:     return ast
+     16:   end
+     17: 
+     18:   def get_last_type(source)
+     19:     run(source).statements.last.resolved_type
+     20:   end
+     21: 
+=>   22:   let(:ast) { run(code) }
+     23:   let(:result) { ast.statements.last.resolved_type }
+     24: 
+     25:   # LIFETIMES
+     26:   describe "Lifetimes" do
+     27:     let(:func_def) { ast.statements.find { |n| n.is_a?(AST::FunctionDef) } }
+     28:     context "simple valid lifetime" do
+     29:       let(:code) {
+     30:         <<~FLUX
 
 A mutant/regression test is failing after local source edits.
 Active source edits exist; inspect dirty changed lines first.
@@ -74,3 +167,4 @@ CI broken.
 Fix the bug.
 
 Return ONLY the corrected function `verify_return` in a ```ruby block.
+

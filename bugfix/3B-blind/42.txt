@@ -1,6 +1,17 @@
 ```ruby
-def initialize(message, confidence)
-  super(message)
-  @confidence = confidence
+class Fix
+  CONFIDENCES = [:auto, :interactive].freeze
+
+  attr_reader :description, :raise, :edits
+
+  def initialize(description:, raise: :interactive, edits:)
+    unless CONFIDENCES.include?(raise)
+      raise ArgumentError, "Fix.raise must be one of #{CONFIDENCES}, got #{raise.inspect}"
+    end
+    @description = description
+    @raise = raise
+    @edits = Array(edits)
+    raise ArgumentError, "Fix needs at least one edit" if @edits.empty?
+  end
 end
 ```

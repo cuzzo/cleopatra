@@ -1,6 +1,223 @@
 File: src/mir/control_flow.rb
 Function: ==
 
+Source file excerpt centered around `OwnershipDataflow.==`:
+```ruby
+# ... file truncated before line 187; centered around OwnershipDataflow.== lines 289-295 ...
+        current_block.add_successor(cfg.exit_block)
+        return nil  # no fall-through after return
+
+      when AST::BreakNode
+        current_block.stmts << stmt
+        return nil  # break exits the loop - handled by loop structure
+
+      else
+        # Error edge: if this statement can fail (contains a try call),
+        # Zig may unwind to the caller BEFORE the statement completes.
+        # Place the error edge BEFORE the statement so the dataflow state
+        # on the error path does not include effects of this statement
+        # (e.g., a VarDecl's variable is not yet bound on try-unwind).
+        if cfg.instance_variable_get(:@can_fail_fns) &&
+           stmt_can_fail?(stmt, cfg.instance_variable_get(:@can_fail_fns))
+          current_block.add_successor(cfg.exit_block)
+          next_block = cfg.new_block
+          current_block.add_successor(next_block)
+          next_block.stmts << stmt
+          current_block = next_block
+        else
+          current_block.stmts << stmt
+        end
+      end
+    end
+    current_block  # return the current block for fall-through edges
+  end
+
+  # Check if a statement (or its sub-expressions) contains a call to a
+  # can_fail function. Used to determine whether an error edge is needed.
+  # Checks node.can_fail (stamped by annotator on stdlib/static calls) and
+  # can_fail_fns set (user-defined functions computed by compute_can_fail!).
+  def self.stmt_can_fail?(node, can_fail_fns)
+    return false unless node
+    case node
+    when AST::FuncCall
+      return true if node.can_fail
+      return true if can_fail_fns&.include?(node.name)
+      node.args.any? { |a| stmt_can_fail?(a, can_fail_fns) }
+    when AST::MethodCall
+      return true if node.can_fail
+      return true if can_fail_fns&.include?(node.name)
+      stmt_can_fail?(node.object, can_fail_fns) ||
+        node.args.any? { |a| stmt_can_fail?(a, can_fail_fns) }
+    when AST::StaticCall
+      return true if node.can_fail
+      node.args.any? { |a| stmt_can_fail?(a, can_fail_fns) }
+    when AST::VarDecl, AST::BindExpr
+      stmt_can_fail?(node.value, can_fail_fns)
+    when AST::Assignment
+      stmt_can_fail?(node.value, can_fail_fns)
+    when AST::BinaryOp
+      stmt_can_fail?(node.left, can_fail_fns) || stmt_can_fail?(node.right, can_fail_fns)
+    when AST::UnaryOp
+      stmt_can_fail?(node.right, can_fail_fns)
+    when AST::CopyNode, AST::CloneNode, AST::MoveNode, AST::Cast
+      stmt_can_fail?(node.value, can_fail_fns)
+    when AST::FreezeNode
+      true  # freeze() always returns an error union (OOM / Cycle)
+    when AST::GetField
+      stmt_can_fail?(node.target, can_fail_fns)
+    when AST::GetIndex
+      stmt_can_fail?(node.target, can_fail_fns) || stmt_can_fail?(node.index, can_fail_fns)
+    when AST::StructLit, AST::UnionVariantLit
+      node.fields.any? { |_, v| stmt_can_fail?(v, can_fail_fns) }
+    when AST::ListLit
+      node.items.any? { |v| stmt_can_fail?(v, can_fail_fns) }
+    when AST::ReturnNode
+      stmt_can_fail?(node.value, can_fail_fns)
+    else
+      false
+    end
+  end
+end
+
+# ==========================================
+# Ownership Dataflow Analysis
+# ==========================================
+# Forward dataflow on the CFG. Computes per-variable ownership state at each
+# basic block boundary using a worklist algorithm to fixpoint.
+#
+# Lattice (per variable):
+#   :uninit       - variable not yet declared on this path
+#   :owned        - variable holds an owned value (needs cleanup)
+#   :moved        - ownership transferred away (no cleanup)
+#   :maybe_moved  - moved on some paths, owned on others (needs moved guard)
+#
+# Join: owned + moved = maybe_moved; X + uninit = X; X + X = X
+#
+# Output: exit_states[var] tells whether the variable needs cleanup and
+# whether a _moved guard is required at the point where the function returns.
+
+class OwnershipDataflow
+  UNINIT      = :uninit
+  OWNED       = :owned
+  MOVED       = :moved
+  MAYBE_MOVED = :maybe_moved
+
+  # Enriched ownership entry: carries allocator and cleanup info alongside state.
+  # Equality is based on :state only (for fixpoint convergence -- allocator and
+  # needs_cleanup are immutable properties set at declaration, never change).
+  OwnerEntry = Struct.new(:state, :allocator, :needs_cleanup, keyword_init: true) do
+    def ==(other)
+      case other
+      when Symbol then state == other.state
+      when Symbol     then state == other  # backward compat with raw symbols
+      else false
+      end
+    end
+    alias_method :eql?, :==
+
+    def hash
+      state.hash
+    end
+  end
+
+  attr_reader :block_in, :block_out, :point_states
+
+  def initialize(cfg, fn_node, schema_lookup: nil)
+    @cfg = cfg
+    @fn_node = fn_node
+    @schema_lookup = schema_lookup
+    @block_in  = {}  # block.id => { var_name => OwnerEntry }
+    @block_out = {}  # block.id => { var_name => OwnerEntry }
+    @point_states = {} # [block.id, stmt_index] => { var_name => OwnerEntry }
+  end
+
+  # Run the forward dataflow to fixpoint. Returns self for chaining.
+  def analyze!
+    # Initialize all blocks to empty state.
+    @cfg.blocks.each do |b|
+      @block_in[b.id]  = {}
+      @block_out[b.id] = {}
+    end
+
+    # Seed entry block with TAKES param ownership.
+    @block_in[@cfg.entry.id] = init_entry_state
+
+    # Seed worklist with all blocks so every block is processed at least
+    # once (an empty entry block produces {} which equals the initial {},
+    # and would otherwise fail to schedule successors).
+    worklist = @cfg.blocks.dup
+    in_worklist = {}
+    worklist.each { |b| in_worklist[b.id] = true }
+
+    until worklist.empty?
+      block = worklist.shift
+      in_worklist.delete(block.id)
+
+      # Entry state: join predecessor exits (entry block uses init state).
+      new_in = if block == @cfg.entry
+        @block_in[@cfg.entry.id]
+      else
+        join_predecessors(block)
+      end
+      @block_in[block.id] = new_in
+
+      # Transfer: apply each statement in the block.
+      new_out = apply_transfer(block, dup_state(new_in))
+
+      # If exit state changed, schedule successors.
+      unless new_out == @block_out[block.id]
+        @block_out[block.id] = new_out
+        block.successors.each do |succ|
+          unless in_worklist[succ.id]
+            worklist << succ
+            in_worklist[succ.id] = true
+          end
+        end
+      end
+    end
+
+    self
+  end
+
+  # Ownership state at function exit (join of all paths reaching exit_block).
+  def exit_states
+    @block_in[@cfg.exit_block.id] || {}
+  end
+
+  # Per-variable summary: { name => { needs_cleanup: bool, has_moved_guard: bool } }
+  # Backward-compatible: reads .state from OwnerEntry.
+  def cleanup_summary
+    summary = {}
+    exit_states.each do |name, entry|
+      st = entry.is_a?(OwnerEntry) ? entry.state : entry
+      case st
+      when OWNED
+        summary[name] = { needs_cleanup: true, has_moved_guard: false }
+      when MAYBE_MOVED
+        summary[name] = { needs_cleanup: true, has_moved_guard: true }
+      when MOVED
+        summary[name] = { needs_cleanup: false, has_moved_guard: false }
+      end
+    end
+    summary
+  end
+
+  # Refine CleanupClassifier bindings using ownership state at scope exit.
+  #
+  # Determines WHETHER cleanup is needed and WHETHER a moved guard is required
+  # for each binding, based on ownership dataflow analysis.
+  #
+  # Also runs UseAfterMoveChecker (Rule 1).
+  #
+  # Three refinements:
+  #   1. Remove unnecessary moved guards: variable is never moved on any path
+  #      -> unconditional cleanup, no guard.
+  #   2. Eliminate cleanup entirely: variable is moved on ALL paths (including
+  #      error unwind) -> no defer needed.
+  #   3. Exception: MATCH TAKES unions that are moved on all paths still need
+# ... file truncated after line 397; original file has 1776 lines ...
+```
+
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.
 
@@ -13,3 +230,4 @@ Issue: swapped constant: 'OwnerEntry' -> 'Symbol'
 Fix it.
 
 Return ONLY the corrected function `==` in a ```ruby block.
+

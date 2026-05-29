@@ -1,5 +1,19 @@
 ```ruby
-def declare(name, type)
-  @declarations[name] = type
+def declare(name, reg, type, is_mutable = true, is_rebindable = false, size = nil, storage = :stack, capabilities = Set.new, _borrowed_paths = [], sync: nil, resource: nil, close_zig: nil)
+  @owned_names.add(name)
+  entry = SymbolEntry.new(
+    reg: reg,
+    type: type,
+    mutable: is_mutable,
+    storage: storage,
+    sync: sync,
+    rebindable: is_rebindable,
+    size: size || 0,
+    capabilities: capabilities,
+    resource: resource,
+    close_zig: close_zig,
+  )
+  entry.scope = self
+  @locals[name] = entry
 end
 ```

@@ -1,7 +1,15 @@
 ```ruby
-def initialize
-  @types = {}
-  @variables = {}
-  @functions = {}
+class Scope
+  attr_accessor :locals, :dependencies, :owned_names
+  attr_reader   :types
+
+  def initialize
+    @locals = {}
+    @dependencies = {}
+    @owned_names = Set.new  # Variables declared in THIS scope (not inherited from parent)
+    @types = {}  # Initialize types to an empty hash
+  end
+
+  # ... rest of the class remains unchanged ...
 end
 ```

@@ -1,10 +1,23 @@
 File: src/annotator.rb
 Function: ensure_owned_value!
 
-Here is the current (buggy) code of function `ensure_owned_value!`:
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
 
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: SemanticAnnotator (class, lines 26-4490)
+Params: val_node: ?, expected_type: ?, container_desc: ?
+Recorded callees: is_a?, error!, new, list, lookup_type_schema, variant_has_heap?
+Recorded instance vars: @list
+Prism-detected callees in primary function: ensure_owned_value!, error!, is_a?, list, lookup_type_schema, new, values, variant_has_heap?
+Prism-detected ivars in primary function: @list
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/annotator.rb:SemanticAnnotator.ensure_owned_value! (lines 3177-3217)
 ```ruby
-  def ensure_owned_value!(val_node, expected_type, container_desc = nil)
+def ensure_owned_value!(val_node, expected_type, container_desc = nil)
     # Non-escaping values (WITH block aliases) cannot be stored in containers
     if !(val_node.is_a?(AST::Identifier) && val_node.symbol&.non_escaping)
       error!(val_node, "Cannot store WITH-scoped '#{val_node.name}' into #{container_desc || 'a container'}. WITH bindings cannot escape their block.")
@@ -57,21 +70,77 @@ Other dirty files:
   added spec/generated/annotator_spec.rb (test)
 Interpretation: A new failing unit test was added; use it to understand expected behavior.
 
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/provenance_annotation_spec.rb:64
+  src/annotator.rb:3177:in `ensure_owned_value!'
+
+Failure 1: spec/provenance_annotation_spec.rb:64
+Command: bundle exec rspec spec/provenance_annotation_spec.rb
+Failure output excerpt:
+Run options: exclude {:integration=>true}
+...FF..
+
+Failures:
+
+  1) Provenance annotation struct literal with COPY string field field's CopyNode has :heap provenance
+     Failure/Error: a.annotate!(ast)
+
+     NoMethodError:
+       undefined method `name' for #<struct AST::Literal token=#<struct Lexer::Token type=:STRING, value="Alice", line=3, colum
+... truncated ...
+caller binding has :heap provenance
+
+Coverage report generated for RSpec to /home/yahn/cleopatra/.eval/cheat/coverage.
+Line Coverage: 12.76% (3185 / 24958)
+Branch Coverage: 15.42% (1004 / 6509)
+[Warning] Unused variable 'x' (line 1)
+[Warning] Unused variable 'y' (line 1)
+[Warning] Unused variable 'x' (line 1)
+[Warning] Unused variable 's' (line 8)
+Relevant test code:
+From spec/provenance_annotation_spec.rb:13
+      5: 
+      6: # Phase 2 validation: provenance is set correctly during annotation
+      7: # and agrees with existing flags (heap_promoted, location, cleanup_alloc).
+      8: RSpec.describe "Provenance annotation" do
+      9:   def annotate(src)
+     10:     tokens = Lexer.new(src).tokenize
+     11:     ast = Parser.new(tokens, src).parse
+     12:     a = SemanticAnnotator.new
+=>   13:     a.annotate!(ast)
+     14:     [ast, a]
+     15:   end
+     16: 
+     17:   def find_binding(ast, fn_name, var_name)
+     18:     fn = ast.statements.find { |s| s.is_a?(AST::FunctionDef) && s.name == fn_name }
+     19:     fn.body.find { |s| (s.is_a?(AST::BindExpr) || s.is_a?(AST::VarDecl)) && s.name == var_name }
+     20:   end
+     21: 
+
+From spec/provenance_annotation_spec.rb:54
+     46:       ti = binding.type_info
+     47:       ti = Type.new(ti) if !ti.is_a?(Type)
+     48:       expect(ti.provenance).to eq(:frame)
+     49:     end
+     50:   end
+     51: 
+     52:   describe "struct literal with COPY string field" do
+     53:     it "field's CopyNode has :heap provenance" do
+=>   54:       ast, _ = annotate(<<~CLEAR)
+     55:         STRUCT User { name: String, age: Int64 }
+     56:         FN main() RETURNS Void ->
+     57:             u = User{ name: "Alice", age: 30_i64 };
+     58:             RETURN;
+     59:         END
+     60:       CLEAR
+     61:       binding = find_binding(ast, "main", "u")
+     62:       struct_lit = binding.value
+
 A new unit test was added and is failing.
 A new failing unit test was added; use it to understand expected behavior.
-
-New test file: spec/generated/annotator_spec.rb
-```ruby
-# Generated failing test for Cleopatra mutant SemanticAnnotator.ensure_owned_value!.
-# Mutation under test: negated condition: 'val_node.is_a?(AST::Identifier) && val_node.symbol&.non_escaping'
-require "minitest/autorun"
-
-class GeneratedEnsure_owned_value_Test < Minitest::Test
-  def test_ensure_owned_value__regression
-    flunk "Regression for SemanticAnnotator.ensure_owned_value!: negated condition: 'val_node.is_a?(AST::Identifier) && val_node.symbol&.non_escaping'"
-  end
-end
-```
 
 Bug in `SemanticAnnotator.ensure_owned_value!` at src/annotator.rb:3177.
 Issue: negated condition: 'val_node.is_a?(AST::Identifier) && val_node.symbol&.non_escaping'
@@ -82,3 +151,4 @@ Issue: negated condition: 'val_node.is_a?(AST::Identifier) && val_node.symbol&.n
 Fix it.
 
 Return ONLY the corrected function `ensure_owned_value!` in a ```ruby block.
+

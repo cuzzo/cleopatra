@@ -1,7 +1,12 @@
 ```ruby
 def ==(other)
-  return false unless other.is_a?(Type)
-
-  self.class == other.class && self.value == other.value
+  # fn_types must never compare equal to a plain symbol (resolved returns the return type,
+  # not a unique identity). Two fn_types are equal only when their raw hashes match.
+  if fn_type?
+    other_t = other.is_a?(Type) ? other : nil
+    return false unless other_t&.fn_type?
+    return @raw == other_t.raw
+  end
+  resolved == other.to_sym && @raw == other
 end
 ```

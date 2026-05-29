@@ -1,6 +1,225 @@
 File: src/annotator-helpers/function_analysis.rb
 Function: verify_return
 
+Source file excerpt centered around `FunctionAnalysis.verify_return`:
+```ruby
+# ... file truncated before line 577; centered around FunctionAnalysis.verify_return lines 676-723 ...
+      # walking the body for an Identifier reference.
+      param[:symbol] = current_scope.locals[param[:name]]
+      # Mark as a parameter so deferred WITH validation (P1.7) can
+      # distinguish it from local bindings.
+      param[:symbol].is_param = true
+      # TAKES parameters own the data — force :affine so cleanup is emitted.
+      current_scope.locals[param[:name]].takes = true if param[:takes]
+      classify_ownership!(current_scope.locals[param[:name]])
+      og_declare(param[:name], nil, param[:type])
+      # Non-TAKES parameters are implicit borrows. Mark in OG so the
+      # annotator prevents storing borrowed data into owned containers.
+      unless param[:takes]
+        @og[param[:name]]&.kind = :borrowed
+      end
+      param[:type]
+    end
+  end
+
+  # Cannot be part of declare, needs to happen in outer-scope
+  def verify_captures!(node)
+    return if node.captures.nil? || node.captures.empty?
+
+    node.captures.each do |cap|
+      # cap is likely a hash: { name: "x" }
+      cap_name = cap[:name]
+
+      if cap[:default]
+        error!(node, "Captures cannot have default values: '#{cap_name}'")
+      end
+
+      if !current_scope.locals.key?(cap_name)
+        # Check if it's in a higher scope
+        owner_scope = lookup_scope_for(cap_name)
+        if owner_scope.nil?
+           error!(node, "Cannot capture undefined variable '#{cap_name}'")
+        end
+      else
+        # Local capture
+        owner_scope = current_scope
+      end
+
+      entry = owner_scope.locals[cap_name]
+
+      if cap[:mutable] && !entry.mutable
+        error!(node, "Cannot capture immutable variable '#{cap_name}' as MUTABLE")
+      end
+
+      # Mark the captured variable as used in its declaring scope.
+      owner_scope.mark_read(cap_name)
+
+      # Enrich the capture node with the resolved type
+      cap[:type] = entry.type
+      cap[:storage] = entry.storage
+    end
+  end
+
+  def declare_captures(node)
+    return if node.captures.nil? || node.captures.empty?
+
+    node.captures.each do |cap|
+      current_scope.declare(
+        cap[:name],
+        nil,
+        cap[:type],
+        cap[:mutable],
+        false,
+        nil,
+        cap[:storage]
+      )
+    end
+  end
+
+  def verify_returns(node, found_returns, declared_return)
+    if found_returns.size > 1
+      # Normalize: all string-like types (Byte[N], String) → String for comparison
+      normalized = found_returns.map { |r|
+        t = r[:type].to_s
+        (t.start_with?("Byte[") || t == "String") ? :String : r[:type]
+      }.uniq.size
+      if declared_return != :Any && normalized > 1
+        error!(node, "Ambiguous Return: Function returns multiple types #{found_returns}, specify :Any as type")
+      end
+    end
+  end
+
+  def get_return_strategy(return_type)
+    type = Type.new(return_type)
+
+    # 1. Small Objects & Pointers -> Return in Register (Fastest)
+    if !type.requires_move? || type.heap?
+      return :register
+    elsif type.void?
+      return :void
+    else
+      # Structs, Fixed Arrays, etc.
+      return :destination_pass
+    end
+  end
+
+  def verify_return(node)
+    # A returned value is a borrow when it is a direct indexed/field access OR
+    # a variable that the ownership graph marked as :borrowed.
+    return true unless return_is_borrow?(node)
+
+    # Union variant constructors (Value.Nil, Shape.Point) create new values, not borrows.
+    if node.is_a?(AST::GetField) || node.target.is_a?(AST::Identifier)
+      schema = lookup_type_schema(node.target.name.to_sym) rescue nil
+      return true if schema.is_a?(Hash) && (schema[:kind] == :union || schema[:kind] == :enum)
+    end
+
+    lifetime_path = current_fn_ctx&.lifetime
+    type_info = node.type_object
+    has_lifetime = !lifetime_path.nil?
+    schema_resolver = ->(t) { lookup_type_schema(t) rescue nil }
+    is_copyable = (type_info&.copyable?(schema_resolver) || type_info&.implicitly_copyable?(schema_resolver))
+    fn_type_params = current_fn_ctx&.type_params || []
+    is_type_param = fn_type_params.include?(type_info&.resolved)
+
+    unless has_lifetime || is_copyable || is_type_param
+      error!(
+        node,
+        "Cannot return borrowed value without COPY or a lifetime annotation.\n" \
+        "Type '#{node.full_type}' is not implicitly copyable."
+      )
+    end
+
+    return true unless has_lifetime
+
+    # Lifetime path validation applies to direct field/index access only.
+    # Borrowed variables need source-tracing (future work).
+    return true if node.is_a?(AST::Identifier)
+
+    lifetime_path = lifetime_path.split(".").map(&:to_sym)
+    actual_path = get_path_to_root(node)
+    if actual_path.nil?
+      error!("Lifetime Error: Lifetime '#{lifetime_path}' specified on return, but returned value is not associated.")
+    end
+
+    if actual_path[0...lifetime_path.size] != lifetime_path
+      error!(
+        node,
+        "Lifetime Error:\n" \
+        "  Expected return derived from: #{lifetime_path.join('.')}\n" \
+        "  Actual return derived from:   #{actual_path.join('.')}"
+      )
+    end
+  end
+
+  def return_is_borrow?(node)
+    if node.is_a?(AST::Identifier)
+      return false unless @og[node.name]&.kind == :borrowed
+      # Parameters (reg=nil) and MATCH bindings (reg=nil) are safe to return —
+      # the caller controls their lifetime. Only flag variables explicitly assigned
+      # from a collection index borrow (BindExpr with container_borrow=true).
+      scope = lookup_scope_for(node.name)
+      reg = scope&.locals&.[](node.name)&.reg
+      return reg.respond_to?(:container_borrow) && reg.container_borrow == true
+    end
+    return true if node.is_a?(AST::GetIndex)
+    return true if node.is_a?(AST::GetField)
+    false
+  end
+
+  def paths_overlap?(path_a, path_b)
+    # 1. Different Roots? (e.g. [:x, ...] vs [:y, ...]) -> No Overlap
+    return false if path_a.first != path_b.first
+
+    # 2. Same Root -> Check if one is a prefix of the other.
+    # We only compare up to the length of the shorter path.
+    # [:x, :a] vs [:x, :b] -> Compare [:x, :a] vs [:x, :b] -> mismatch at index 1 -> Safe.
+    # [:x] vs [:x, :y]     -> Compare [:x] vs [:x]          -> match -> Unsafe.
+
+    len = [path_a.size, path_b.size].min
+    return path_a[0...len] == path_b[0...len]
+  end
+
+  # Finds the first intrinsic overload that matches the given arguments.
+  # Returns nil if no overload matches.
+  def find_matching_intrinsic(definitions, args)
+    definitions.find do |config|
+      next true if config[:args] == :Varargs  # Varargs accepts anything
+
+      # Arity check
+      next false if args.size != config[:args].size
+
+      # Type check each argument, including capability constraints.
+      # Hash args like { type: :String, sync: :raw } check both the base
+      # type and the capability. This allows the registry to dispatch to
+      # different Zig implementations based on the argument's capability.
+      args.each_with_index.all? do |arg, i|
+        spec = config[:args][i]
+        if spec.is_a?(Hash)
+          expected = spec[:type]
+          next false unless is_safe_autocast?(arg.resolved_type, expected)
+          # Check capability constraints (sync, ownership, etc.)
+          arg_type = arg.type_info.is_a?(Type) ? arg.type_info : nil
+          next false if spec[:sync] && arg_type&.sync != spec[:sync]
+          next false if spec[:ownership] && arg_type&.ownership != spec[:ownership]
+          true
+        else
+          is_safe_autocast?(arg.resolved_type, spec)
+        end
+      end
+    end
+  end
+
+  # Formats intrinsic args for error messages
+  def format_intrinsic_args(args)
+    return "(varargs)" if args == :Varargs
+    types = args.map { |a| a.is_a?(Hash) ? a[:type] : a }
+    "(#{types.join(', ')})"
+  end
+end
+# ... file truncated after line 789; original file has 789 lines ...
+```
+
 A mutant/regression test is failing after local source edits.
 Active source edits exist; inspect dirty changed lines first.
 
@@ -12,3 +231,4 @@ CI broken.
 Fix the bug.
 
 Return ONLY the corrected function `verify_return` in a ```ruby block.
+

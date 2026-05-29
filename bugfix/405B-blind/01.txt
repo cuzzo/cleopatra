@@ -1,0 +1,7 @@
+```ruby
+def scc_is_cyclic?(scc, adj)
+    return true if scc.length > 1
+    node = scc.first
+    adj[node].include?(node)
+end
+```

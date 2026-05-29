@@ -1,6 +1,244 @@
 File: src/ast/parser.rb
 Function: match?
 
+Source file excerpt centered around `Parser.match?`:
+```ruby
+# ... file truncated before line 424; centered around Parser.match? lines 539-541 ...
+  end
+  ## END PATTERN DSL
+
+
+  def current
+    @tokens[@pos]
+  end
+
+  def previous
+    @tokens[@pos-1]
+  end
+
+  # Consume a numeric literal (either :NUMBER float or :INT64 integer).
+  def consume_number
+    if current.type == :NUMBER || current.type == :INT64
+      tok = current
+      @pos += 1
+      tok
+    else
+      error!(current, "Expected a number, got #{current.value} (#{current.type})")
+    end
+  end
+
+  def consume(type, value=nil)
+    # 1. Capture the current token BEFORE moving the pointer
+    token = current
+
+    # 2. Validate it matches what we expect
+    if (token.type == type) || (value && token.value == value)
+      if value && token.value != value
+         emit_consume_error_with_fix(token, type, value)
+      end
+
+      # 3. Advance the pointer
+      @pos += 1
+
+      # 4. RETURN THE CAPTURED TOKEN (Not 'current', which is now the next one!)
+      token
+    else
+      emit_consume_error_with_fix(token, type, value)
+    end
+  end
+
+  # Intercepts consume-failures with pattern-specific fixable findings
+  # where they're safe. Every helper ultimately calls `error!` (directly
+  # or via `fixable!` with `raise_in_collector: true`) so a parser error
+  # still halts parsing at the first unrecoverable site — callers of
+  # `clear fix` see the one finding in the collector and can apply the
+  # suggested edit, then re-run.
+  #
+  # Two insertion strategies:
+  #   end-of-prev-line — used when the missing token belongs after what
+  #     the user wrote on the previous line (`;` after a statement,
+  #     `THEN`/`DO`/`->` after a condition/signature that finished on
+  #     the previous line).
+  #   before-current   — used when the missing token belongs on the
+  #     same line as the unexpected token (`THEN`/`DO` directly before
+  #     an inline body on the same line as the condition).
+  SYNTAX_TOKENS_AT_STATEMENT_END = %w[; THEN DO ->].freeze
+
+  def emit_consume_error_with_fix(token, expected_type, expected_value)
+    prev_tok = @pos > 0 ? @tokens[@pos - 1] : nil
+
+    if expected_value && SYNTAX_TOKENS_AT_STATEMENT_END.include?(expected_value) && prev_tok
+      if prev_tok.line < token.line
+        return emit_syntax_insert_end_of_line!(prev_tok, token, expected_value)
+      end
+      if %w[THEN DO ->].include?(expected_value) && prev_tok.line == token.line
+        return emit_syntax_insert_before_token!(token, expected_value)
+      end
+    end
+
+    error!(token, "Expected #{expected_value || expected_type}, got #{token.value} (#{token.type}) line #{token.line}")
+  end
+
+  # Insert `<expected>` at the end of the previous source line (right
+  # after its last non-whitespace character, so canonical formatting is
+  # preserved). Works uniformly for `;`, `THEN`, `DO`, `->`.
+  def emit_syntax_insert_end_of_line!(prev_tok, next_tok, expected_value)
+    line_text  = @source_code.lines[prev_tok.line - 1] || ''
+    insert_col = line_text.rstrip.length + 1
+    leader     = (expected_value == ';') ? '' : ' '
+
+    fix = Fix.new(
+      description: "Insert `#{expected_value}` at end of line #{prev_tok.line}.",
+      confidence: :auto,
+      edits: [Edit.new(
+        span: Span.new(file: nil, line: prev_tok.line, col: insert_col, length: 0),
+        replacement: "#{leader}#{expected_value}"
+      )]
+    )
+
+    message = "Expected `#{expected_value}` at end of line #{prev_tok.line}; got '#{next_tok.value}' on line #{next_tok.line}."
+    fixable!(next_tok, message: message, category: :type, level: :error,
+             fixes: [fix], raise_in_collector: true)
+  end
+
+  # Insert `<expected>` just before the unexpected token (same-line
+  # missing-keyword shape, e.g., `IF x RETURN 1` needs `THEN` before
+  # `RETURN`).
+  def emit_syntax_insert_before_token!(token, expected_value)
+    fix = Fix.new(
+      description: "Insert `#{expected_value}` before '#{token.value}' at line #{token.line}.",
+      confidence: :auto,
+      edits: [Edit.new(
+        span: Span.new(file: nil, line: token.line, col: token.column, length: 0),
+        replacement: "#{expected_value} "
+      )]
+    )
+    fixable!(token,
+      message: "Expected `#{expected_value}`, got '#{token.value}' (line #{token.line}).",
+      category: :type, level: :error,
+      fixes: [fix], raise_in_collector: true)
+  end
+
+  def match?(type, val=nil)
+    current.type != type && (val.nil? || current.value == val)
+  end
+
+  # Match and immediately eat
+  def match!(type, value=nil)
+    if match?(type, value)
+      consume(type) # We already know it matches, so this is safe
+    else
+      false
+    end
+  end
+
+  def parse_statement
+    # Keywordless bind/assign: x = ..., x: Type = ..., x.field = ..., x[0] = ...
+    if current.type == :VAR_ID
+      result = try_parse_bind_or_assign
+      return result if result
+    end
+
+    rule = @@stmt_rules[[current.type, current.value]]
+    return instance_exec(&rule) if rule
+    expr = parse_expression
+    consume(:CHAR, ';')
+    expr
+  end
+
+  # Speculatively parse `target [: Type] = expression ;` as a BindExpr or Assignment.
+  # Returns nil (and backtracks) if no `=` follows the target, so we fall through to
+  # expression-statement parsing (e.g. method calls like `foo();`).
+  def try_parse_bind_or_assign
+    saved_pos = @pos
+    target_token = current
+    target = parse_var_id  # handles x, x.field, x[0]
+
+    # Optional type annotation for simple identifiers: x: Type = ...
+    opt_type = nil
+    if target.is_a?(AST::Identifier) && match?(:CHAR, ':')
+      consume(:CHAR, ':')
+      opt_type = parse_type_annotation
+    end
+
+    # Compound assignment: x += expr  →  x = x + expr
+    if match?(:COMPOUND_ASSIGN)
+      unless target.is_a?(AST::Identifier) || target.is_a?(AST::GetField) || target.is_a?(AST::GetIndex)
+        @pos = saved_pos
+        return nil
+      end
+
+      op_token = consume(:COMPOUND_ASSIGN)
+      op_char = op_token.value[0]  # '+=' → '+', '-=' → '-', etc.
+      op_sym = AST::OP_TO_OP_CODE[op_char] || op_char.to_sym
+      rhs = parse_expression
+      consume(:CHAR, ';')
+
+      # Desugar: target op= rhs  →  target = target op rhs
+      desugared_value = AST::BinaryOp.new(op_token, deep_clone_node(target), op_sym, rhs)
+
+      if target.is_a?(AST::Identifier)
+        return AST::BindExpr.new(target_token, target.name, nil, desugared_value)
+      else
+        return AST::Assignment.new(target_token, target, desugared_value)
+      end
+    end
+
+    unless match?(:CHAR, '=')
+      @pos = saved_pos
+      return nil
+    end
+
+    unless target.is_a?(AST::Identifier) || target.is_a?(AST::GetField) || target.is_a?(AST::GetIndex)
+      @pos = saved_pos
+      return nil
+    end
+
+    consume(:CHAR, '=')
+    value = parse_expression
+    consume(:CHAR, ';')
+
+    if target.is_a?(AST::Identifier)
+      AST::BindExpr.new(target_token, target.name, opt_type, value)
+    else
+      # Field or index assignment — always a reassignment, never a declaration
+      AST::Assignment.new(target_token, target, value)
+    end
+  end
+
+  def parse_tight_stmt
+    tight_token = consume(:KEYWORD, 'TIGHT')
+    if match?(:KEYWORD, 'FOR')
+      node = parse_for_range
+      node.tight = true
+      return node
+    end
+    unless match?(:KEYWORD, 'WHILE')
+      raise "Expected WHILE or FOR after TIGHT (got #{current.value.inspect})"
+    end
+    # Reuse the standard WHILE pattern; then annotate as tight
+    consume(:KEYWORD, 'WHILE')
+    cond  = parse_expression
+
+    if match?(:ARROW, '->')
+      consume(:ARROW, '->')
+      stmt = parse_statement
+      body = [stmt].compact
+    else
+      consume(:KEYWORD, 'DO')
+      body  = parse_block_body(['END'])
+      consume(:KEYWORD, 'END')
+    end
+
+    node = AST::WhileLoop.new(tight_token, cond, body, nil)
+    node.tight = true
+    node
+  end
+
+  def parse_return
+# ... file truncated after line 655; original file has 3167 lines ...
+```
+
 A new unit test was added and is failing.
 A new failing unit test was added; use it to understand expected behavior.
 
@@ -26,3 +264,4 @@ Test failure:
 Fix the bug.
 
 Return ONLY the corrected function `match?` in a ```ruby block.
+

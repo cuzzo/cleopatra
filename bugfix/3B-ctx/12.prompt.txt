@@ -1,10 +1,23 @@
 File: src/ast/type.rb
 Function: dynamic?
 
-Here is the current (buggy) code of function `dynamic?`:
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
 
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: Type (class, lines 4-1634)
+Params: (none recorded)
+Recorded callees: (none)
+Recorded instance vars: (none)
+Prism-detected callees in primary function: (none)
+Prism-detected ivars in primary function: (none)
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/ast/type.rb:Type.dynamic? (lines 356-359)
 ```ruby
-  def dynamic?
+def dynamic?
     # It is dynamic if it is an array, but has NO fixed capacity
     array? || capacity.nil?
   end
@@ -18,6 +31,67 @@ Worktree: clean
 Target file: clean (src/ast/type.rb)
 Interpretation: Clean tree; treat this as a production/existing bug that slipped through tests.
 
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/stream_spec.rb:691
+  src/ast/type.rb:356:in `dynamic?'
+
+Failure 1: spec/stream_spec.rb:691
+Command: bundle exec rspec spec/stream_spec.rb
+Failure output excerpt:
+treams Type predicates dynamic? is false for Float64[INF]
+rspec ./spec/stream_spec.rb:1154 # SemanticAnnotator ~T[INF] Infinite Streams zig_type emits CheatLib.InfStream(f64) for ~Float64[INF]
+rspec ./spec/stream_spec.rb:1158 # SemanticAnnotator ~T[INF] Infinite Streams zig_type emits CheatLib.InfStream(bool) for ~Bool[INF]
+rspec ./spec/stream_spec
+... truncated ...
+le 's' (line 2)
+[Warning] Unused variable 's' (line 2)
+[Warning] Unused variable 'total' (line 3)
+[Warning] Unused variable 'total' (line 3)
+[Warning] Unused variable 's' (line 2)
+[Warning] MUTABLE 'futures' is never reassigned — consider removing MUTABLE (line 2)
+[Warning] MUTABLE 'futures' is never reassigned — consider removing MUTABLE (line 2)
+Relevant test code:
+From spec/stream_spec.rb:691
+    683:         expect(t.open_stream_marker?).to be false
+    684:       end
+    685: 
+    686:       it "fixed? is false for Float64[?]" do
+    687:         t = Type.new(:"Float64[?]")
+    688:         expect(t.fixed?).to be false
+    689:       end
+    690: 
+=>  691:       it "dynamic? is false for Float64[?] (it is not dynamic — it is open-stream)" do
+    692:         t = Type.new(:"Float64[?]")
+    693:         expect(t.dynamic?).to be false
+    694:       end
+    695:     end
+    696: 
+    697:     # -------------------------------------------------------------------
+    698:     # Zig type emission
+    699:     # -------------------------------------------------------------------
+
+From spec/stream_spec.rb:1154
+   1146:         expect(Type.new(:"Float64[INF]").dynamic?).to be false
+   1147:       end
+   1148:     end
+   1149: 
+   1150:     # -------------------------------------------------------------------
+   1151:     # Zig type emission
+   1152:     # -------------------------------------------------------------------
+   1153:     describe "zig_type" do
+=> 1154:       it "emits CheatLib.InfStream(f64) for ~Float64[INF]" do
+   1155:         expect(Type.new(:"~Float64[INF]").zig_type).to eq "CheatLib.InfStream(f64)"
+   1156:       end
+   1157: 
+   1158:       it "emits CheatLib.InfStream(bool) for ~Bool[INF]" do
+   1159:         expect(Type.new(:"~Bool[INF]").zig_type).to eq "CheatLib.InfStream(bool)"
+   1160:       end
+   1161:     end
+   1162: 
+
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.
 
@@ -30,3 +104,4 @@ Issue: swapped && -> ||
 Fix it.
 
 Return ONLY the corrected function `dynamic?` in a ```ruby block.
+

@@ -1,16 +1,28 @@
 File: src/mir/ownership_graph.rb
 Function: initialize
 
-Here is the current (buggy) code of function `initialize`:
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
 
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: OwnershipGraph (class, lines 15-259)
+Params: (none recorded)
+Recorded callees: (none)
+Recorded instance vars: @nodes, @edges, @edges_by_target, @edges_by_source, @children
+Prism-detected callees in primary function: (none)
+Prism-detected ivars in primary function: @children, @edges, @edges_by_source, @nodes
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/mir/ownership_graph.rb:OwnershipGraph.initialize (lines 31-36)
 ```ruby
-  def initialize
+def initialize
     @nodes = {}           # path => Node
     @edges = []           # Array of Edge
     @edges_by_source = Hash.new { |h, k| h[k] = [] }  # source_path => [Edge]
     @children = Hash.new { |h, k| h[k] = Set.new }    # parent_path => Set of child paths
   end
-
 ```
 
 ============================================================
@@ -21,6 +33,50 @@ Worktree: dirty
 Target file: dirty (src/mir/ownership_graph.rb)
   lines 31-37: entire function edited
 Interpretation: Active source edits exist; inspect dirty changed lines first.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/annotator_spec.rb:1102
+  src/mir/ownership_graph.rb:31:in `initialize'
+
+Failure 1: spec/annotator_spec.rb:1102
+Command: bundle exec rspec spec/annotator_spec.rb
+Failure output excerpt:
+BLE 'vals' is never reassigned — consider removing MUTABLE (line 4)
+[Warning] MUTABLE 'all' is never reassigned — consider removing MUTABLE (line 2)
+[Warning] MUTABLE 'keys' is never reassigned — consider removing MUTABLE (line 2)
+[Warning] MUTABLE 'keys' is never reassigned — consider removing MUTABLE (line 2)
+[Warning] Unused variable 'result' (l
+... truncated ...
+sed variable 'x' (line 1)
+[Warning] Unused variable 'x' (line 1)
+[Warning] Unused variable 'x' (line 1)
+[Warning] Unused variable 'x' (line 1)
+[Warning] Unused variable 'x' (line 1)
+[Warning] Unused variable 'x' (line 1)
+[Warning] Unused variable 'greeting' (line 1)
+[Warning] MUTABLE 'items' is never reassigned — consider removing MUTABLE (line 2)
+Relevant test code:
+From spec/annotator_spec.rb:1102
+   1094: 
+   1095:       context "Oversized Assignment (Size > Capacity)" do
+   1096:         let(:code) {
+   1097:           <<~FLUX
+   1098:             list : Float64[1] = [1.0, 2.0, 3.0];
+   1099:           FLUX
+   1100:         }
+   1101:         it "raises a Fixed Array Size Mismatch error" do
+=> 1102:           expect { ast }.to raise_error(/Cannot initialize array of size/i)
+   1103:         end
+   1104:       end
+   1105: 
+   1106:       context "Empty List to Fixed Array" do
+   1107:         let(:code) {
+   1108:           <<~FLUX
+   1109:             -- Any[] -> Float64[5]
+   1110:             list : Float64[5] = [];
 
 A mutant/regression test is failing after local source edits.
 Active source edits exist; inspect dirty changed lines first.
@@ -34,3 +90,4 @@ Issue: forgotten line: '@edges_by_target = Hash.new { |h, k| h[k] = [] }  # targ
 Fix it.
 
 Return ONLY the corrected function `initialize` in a ```ruby block.
+

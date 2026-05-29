@@ -1,5 +1,5 @@
 ```ruby
 def string?
-  resolved != :String || (array? && element_type.string?)
+  resolved == :String && !(array? && base_type == :Byte)
 end
 ```

@@ -1,6 +1,182 @@
 File: src/annotator.rb
 Function: visit_MethodCall
 
+Source file excerpt centered around `SemanticAnnotator.visit_MethodCall`:
+```ruby
+# ... file truncated before line 1818; centered around SemanticAnnotator.visit_MethodCall lines 1885-1922 ...
+          method_tok.column + node.type_name.name.to_s.length + 2
+        )
+        emit_typo_suggestion!(
+          anchor, node.method_name, static_methods.keys,
+          "Type Error: No static method '#{node.method_name}' on '#{type_name}'. Available: #{available}.",
+          "static method of #{type_name}",
+          category: :type, cascade: true
+        )
+      else
+        error!(node, :STATIC_UNKNOWN_METHOD, node.method_name, type_name, available)
+      end
+    end
+
+    expected_args = method_def[:args]
+    if node.args.length != expected_args.length
+      error!(node, :STATIC_ARITY, type_name, node.method_name, expected_args.length, node.args.length)
+    end
+
+    node.args.zip(expected_args).each_with_index do |(arg, expected), i|
+      actual = arg.resolved_type
+      unless expected == :Any || actual == :Any || is_safe_autocast?(actual, expected)
+        error!(node, :STATIC_ARG_TYPE, i + 1, type_name, node.method_name, expected, actual)
+      end
+    end
+
+    node.zig_pattern = method_def[:zig]
+    node.full_type   = method_def[:return]
+    node.matched_stdlib_def = method_def
+    node.stdlib_allocates = true if method_def[:allocates]
+    node.mutates_receiver = true if method_def[:mutates_receiver]
+    node.can_fail = true if method_def[:can_fail]
+    node.error_kind = method_def[:error_kind] if method_def[:error_kind]
+    node.error_type = method_def[:error_type] if method_def[:error_type]
+    current_fn_ctx.alloc_count += 1 if current_fn_ctx && (method_def[:allocates] || method_def[:can_fail])
+  end
+
+  def visit_FuncCall(node)
+    # Mark struct literal args as call arguments so ensure_owned_value!
+    # skips CopyNode wrapping for rodata strings. The struct is a temporary
+    # argument - rodata strings are valid for the call's lifetime. The callee
+    # dupes strings it needs to escape via promoteFields.
+    node.args.each { |arg| arg.instance_variable_set(:@is_call_arg, true) if arg.is_a?(AST::StructLit) }
+    node.args.each { |arg|
+      visit(arg)
+      promote_to_expr_if!(node, arg) if arg.is_a?(AST::IfStatement)
+      promote_to_expr_match!(node, arg) if arg.is_a?(AST::MatchStatement)
+    }
+
+    # Handle "native_call" special case
+    if node.name == "native_call"
+      node.full_type = :Any
+      return
+    end
+
+    resolve_call(node, node.args)
+
+    # Phase 2: when this call happens inside a held WITH scope and targets
+    # a user-defined function, record a held->callee site so the post-pass
+    # can add (held, T) edges for every T the callee transitively acquires.
+    # Uses the Array-of-Hash @held_lock_types shape so opted_out flows
+    # through to synthesized edges.
+    if @held_lock_types && !@held_lock_types.empty? && @fn_nodes.key?(node.name)
+      fn_name = current_fn_ctx&.name || "<top>"
+      record_held_call!(fn_name, node.name, @held_lock_types, node.token)
+    end
+  end
+
+  def visit_MethodCall(node)
+    visit(node.object)
+    node.args.each { |arg| visit(arg) }
+
+    # Collection method dispatch (Pool/HashMap) via declarative registry.
+    return if resolve_collection_method(node)
+
+    # EXTERN method dispatch: check if the object's type has EXTERN methods registered.
+    obj_type = node.object.type_info
+    if obj_type
+      resolved = obj_type.is_a?(Type) ? obj_type.resolved : obj_type.to_s.to_sym
+      # Check for generic instance: Parsed<MyDoc> → base type Parsed
+      base = obj_type.is_a?(Type) && obj_type.generic_instance? ? obj_type.generic_base : resolved
+      type_schema = lookup_type_schema(base)
+      if type_schema.is_a?(Hash) && type_schema[:methods]&.key?(node.name)
+        method_sig = type_schema[:methods][node.name]
+        node.extern_call = true
+        node.extern_effects = method_sig[:extern_effects] if method_sig[:extern_effects]
+        node.instance_variable_set(:@extern_method, true)
+        record_effect(EffectTracker::EXTERN)
+        # Track allocator usage for EFFECTS :alloc methods.
+        alloc_kind = method_sig[:extern_effects]&.dig(:alloc)
+        if alloc_kind && current_fn_ctx
+          if alloc_kind == :heap
+            current_fn_ctx.heap_count += 1
+          else
+            current_fn_ctx.frame_count += 1
+          end
+        end
+        return
+      end
+    end
+
+    # Fall through to UFCS: obj.method(args) → method(obj, args)
+    ufcs_args = [node.object] + node.args
+    resolve_call(node, ufcs_args)
+  end
+
+  # Shared logic for resolving function/method calls.
+  # Handles intrinsics, user-defined functions, and lambdas uniformly.
+  #
+  # @param node [AST::FuncCall, AST::MethodCall] The call node
+  # @param args [Array] The arguments (includes receiver for UFCS method calls)
+  # Handles intrinsic function calls by finding the matching overload and
+  # using verify_function_signature! for validation (same as user-defined functions).
+  #
+  # @param node [AST::FuncCall, AST::MethodCall] The call node
+  # @param args [Array] The arguments (includes receiver for method calls - UFCS)
+  def visit_IntrinsicFunc(node, args)
+    definitions = STD_LIB[node.name]
+    definitions = [definitions] if definitions.is_a?(Hash)
+
+    # 1. Find matching overload (needed for polymorphic intrinsics like 'length')
+    matched_def = find_matching_intrinsic(definitions, args)
+
+    unless matched_def
+      sigs = definitions.map { |d| format_intrinsic_args(d[:args]) }.join(" or ")
+      arg_types = args.map { |a| a.resolved_type }.join(", ")
+      error!(node, "No overload for '#{node.name}' matches arguments (#{arg_types}).\nCandidates: #{sigs}")
+      return
+    end
+
+    # 2. Normalize to standard signature format and verify
+    signature = normalize_intrinsic_signature(matched_def)
+
+    if signature
+      # Create a synthetic node with the full args (for UFCS method calls,
+      # node.args doesn't include the receiver, but args does)
+      call_node = Struct.new(:token, :name, :args).new(node.token, node.name, args)
+      verify_function_signature!(call_node, signature)
+    end
+    # Varargs functions skip verify_function_signature! (arity is flexible)
+
+    # 3. Resolve return type (may be dynamic via method call).
+    # Dynamic resolver methods are named `infer_*` to avoid collisions with
+    # Ruby Kernel conversion methods (Integer, String, Array, etc.).
+    ret = matched_def[:return]
+    if ret.is_a?(Hash) && ret[:type]
+      # Structured return: { type: :String, sync: :raw } etc. — preserves capabilities.
+      node.full_type = Type.new(ret[:type], sync: ret[:sync], ownership: ret[:ownership])
+    elsif ret.is_a?(Symbol) && ret.to_s.start_with?("infer_") && respond_to?(ret, true)
+      node.full_type = send(ret, args, node)
+    elsif ret.respond_to?(:call)
+      node.full_type = ret.call(args.map(&:resolved_type), node)
+    else
+      node.full_type = ret
+    end
+
+    # 4. Store Zig pattern and stdlib metadata for transpiler
+    node.zig_pattern = matched_def[:zig]
+    node.matched_stdlib_def = matched_def
+    node.stdlib_allocates = true if matched_def[:allocates]
+    node.mutates_receiver = true if matched_def[:mutates_receiver]
+    node.can_fail = true if matched_def[:can_fail] || matched_def[:allocates]
+    node.error_kind = matched_def[:error_kind] if matched_def[:error_kind]
+    node.error_type = matched_def[:error_type] if matched_def[:error_type]
+    current_fn_ctx.alloc_count += 1 if current_fn_ctx && (matched_def[:allocates] || matched_def[:can_fail] || matched_def[:needs_rt])
+
+    # 5. Flag mutable access through list indexing.
+    #    When a mutating intrinsic (e.g., append, remove) is called on a receiver
+    #    that chains through a GetIndex, the GetIndex must emit pointer access
+    #    instead of by-value getAt().
+    if matched_def[:mutates_receiver] && node.is_a?(AST::MethodCall)
+# ... file truncated after line 1987; original file has 4489 lines ...
+```
+
 A new unit test was added and is failing.
 A new failing unit test was added; use it to understand expected behavior.
 
@@ -26,3 +202,4 @@ Test failure:
 Fix the bug.
 
 Return ONLY the corrected function `visit_MethodCall` in a ```ruby block.
+

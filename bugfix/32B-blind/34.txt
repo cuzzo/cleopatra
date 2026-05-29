@@ -1,8 +1,23 @@
 ```ruby
 def parse_fn_type_annotation
-  # Assuming the problematic line is around here, correcting the comparison
-  if consume?(:LPAREN) && peek.type == :CHAR && peek.value != ')'
-    # Rest of the method implementation
+  consume(:KEYWORD, 'FN')
+  consume(:CHAR, '(')
+  param_types = []
+  until match?(:CHAR, ')')
+    # Allow optional name annotation: `name: Type` or just `Type`
+    if match?(:VAR_ID) && peek.type == :CHAR && peek.value == ':'
+      consume(:VAR_ID)   # name is for documentation only
+      consume(:CHAR, ':')
+    end
+    param_types << parse_type_annotation
+    break unless match!(:CHAR, ',')
   end
-end
-```
+  consume(:CHAR, ')')
+  consume(:ARROW, '->')
+  return_type = parse_type_annotation
+  # Parse optional @reentrant capability on fn-type annotations.
+  # FN(Int64) -> Bool @reentrant means the parameter accepts @reentrant functions.
+  allows_reentrant = false
+  if match?(:VAR_ID) && current.value == '@reentrant'
+    consume(:VAR_ID)
+    allows_reentrant =

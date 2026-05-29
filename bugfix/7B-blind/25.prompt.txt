@@ -1,6 +1,288 @@
 File: src/ast/type.rb
 Function: symbol?
 
+Source file excerpt centered around `Type.symbol?`:
+```ruby
+# ... file truncated before line 318; centered around Type.symbol? lines 455-457 ...
+  }.freeze
+
+  def numeric?
+    NUMERIC_TYPES.include?(resolved)
+  end
+
+  def integer?
+    INT_TYPES.include?(resolved)
+  end
+
+  def float?
+    FLOAT_TYPES.include?(resolved)
+  end
+
+  def byte?
+    resolved == :Byte
+  end
+
+  def void?
+    resolved == :Void
+  end
+
+  def fn_type?
+    @raw.is_a?(Hash) && @raw[:fn_type] == true
+  end
+
+  def array?
+    !!@is_array
+  end
+
+  def string?
+    resolved == :String || (array? && base_type == :Byte)
+  end
+
+  def any?
+    resolved == :Any
+  end
+
+  def dynamic?
+    # It is dynamic if it is an array, but has NO fixed capacity
+    array? && capacity.nil?
+  end
+
+  def fixed?
+    # It is fixed if it is an array AND has a specific integer capacity (not [?] or [INF])
+    array? && capacity.is_a?(Integer)
+  end
+
+  # True when this is the legacy [?] marker (open stream element-type annotation).
+  # Only meaningful as the tense_type of an open stream: ~T[?].
+  def open_stream_marker?
+    array? && capacity == :STREAM_OPEN
+  end
+
+  # True when this is the [INF] marker (infinite stream element-type annotation).
+  # Only meaningful as the tense_type of an infinite stream: ~T[INF].
+  def inf_stream_marker?
+    array? && capacity == :INF
+  end
+
+  def empty_list?
+    # Handles the empty list literal "Any[]" or heap "%Any[]"
+    # This is crucial for initializing typed arrays (e.g., `var x: Number[] = []`)
+    resolved == :"Any[]"
+  end
+
+  def heap?
+    @provenance == :heap
+  end
+
+  def frame?
+    @provenance == :frame
+  end
+
+  def rodata?
+    @provenance == :rodata
+  end
+
+  # Aliases: provenance predicates (same as heap?/frame?/rodata? now that provenance is authoritative)
+  alias heap_provenance?   heap?
+  alias frame_provenance?  frame?
+  alias rodata_provenance? rodata?
+
+  def borrow_provenance?
+    @provenance == :borrow
+  end
+
+  # Returns the allocator symbol for this provenance (:heap or :frame), or nil.
+  def provenance_alloc
+    case @provenance
+    when :heap  then :heap
+    when :frame then :frame
+    else nil
+    end
+  end
+
+  # location is provenance (kept as alias for backward-compat callers).
+  def location
+    @provenance
+  end
+
+  def multiowned?
+    @ownership == :multiowned
+  end
+
+  def shared?
+    @ownership == :shared
+  end
+
+  def frozen?
+    @ownership == :frozen
+  end
+
+  def split?
+    @ownership == :split
+  end
+
+  def link?
+    @ownership == :link
+  end
+
+  def locked?
+    @sync == :locked
+  end
+
+  def write_locked?
+    @sync == :write_locked
+  end
+
+  def local?
+    @sync == :local
+  end
+
+  def raw?
+    @sync == :raw
+  end
+
+  def symbol?
+    @sync == :symbol
+  end
+
+  # True for any sync capability (excludes :raw and :symbol which are data-access modes, not locks)
+  def any_sync?
+    !@sync.nil? && @sync != :raw && @sync != :symbol
+  end
+
+  # Group 1 vs Group 2 separation: return a copy of this type with the
+  # synchronization/ownership wrappers stripped, preserving only the data
+  # shape (collection kind, element type, capacity, shard count, soa flag,
+  # etc.).
+  #
+  # Used by mir_lowering when constructing collection inits — `ContainerInit`
+  # needs the BARE shape (`Pool([50000]Env)`), and the Locked/Arc layers are
+  # composed AROUND it via a separate wrapping pass. Without this split, the
+  # lowering bakes the sync/ownership wrappers into the `initCapacity`
+  # receiver type and emits `Arc(Locked(Pool)).initCapacity(...)`, which
+  # fails because `initCapacity` lives on the inner `Pool`.
+  def bare_data_type
+    bare = Type.new(self)
+    bare.ownership = :affine
+    bare.sync      = nil
+    bare.instance_variable_set(:@elem_ownership, nil)
+    bare.instance_variable_set(:@elem_sync, nil)
+    # Provenance was set by sync/ownership wrappers (Type#initialize
+    # forces :heap when @sync is set). Stripping the wrappers means the
+    # bare shape's provenance must come from its OWN nature (e.g.
+    # HashMap is always heap; a plain struct has no forced provenance).
+    # Reset; the outer wrap layer that consumes this bare form is
+    # responsible for re-pinning.
+    bare.provenance = nil
+    bare.instance_variable_set(:@zig_type_cache, nil)
+    bare
+  end
+
+  def any_rc?
+    # SharedPromise uses its own ref-counting internally — it is NOT an Rc/Arc wrapper.
+    return false if shared_promise? || split_open_stream?
+    multiowned? || shared?
+  end
+
+  def map?
+    @is_map
+  end
+
+  # True when this is a numeric-keyed map (HashMap<Number,V> or HashMap<Int64,V>).
+  # Backed by AutoHashMapUnmanaged — no key duplication, pure arena-allocated.
+  def numeric_map?
+    @is_map && @key_type_raw && @key_type_raw != :String
+  end
+
+  def key_type
+    Type.new(@key_type_raw || :String)
+  end
+
+  # True when this is an explicit @pool (generational pool) collection.
+  def pool?
+    @collection == :pool
+  end
+
+  # True when this is an explicit @list (heap list) collection.
+  def list_collection?
+    @collection == :list
+  end
+
+  # True when this is an explicit @set (hash set) collection.
+  def set_collection?
+    @collection == :set
+  end
+
+  # --- Unified collection predicates ---
+  # Use these instead of individual map?/pool?/list_collection?/set_collection? checks
+  # to ensure new collection types get consistent treatment automatically.
+
+  # True for any collection type (HashMap, @pool, @list, @set).
+  def collection?
+    map? || pool? || list_collection? || set_collection?
+  end
+
+  # Returns the canonical registry key for this type.
+  # Used as the single lookup key for INDEX_OPS, COLLECTION_METHOD_CONFIGS, etc.
+  # All type-to-dispatch mappings must go through here — never add new if/elsif
+  # chains on type predicates in lowering or annotation code.
+  def dispatch_key
+    if numeric_map?         then :numeric_map
+    elsif map?              then :string_map
+    elsif pool?             then :pool
+    elsif set_collection?   then :set_collection
+    elsif list_collection?              then :list
+    elsif array? && !string?            then :array
+    elsif string? && symbol? then :string_symbol
+    elsif string? && raw?    then :string_raw
+    end
+    # Returns nil for non-dispatchable types (plain String, primitives, etc.)
+  end
+
+  # Collections that need shared mutable state across call boundaries.
+  # Passed by pointer (&) at call sites, use anytype params, tracked in
+  # @current_fn_collection_params to prevent double-& in recursive calls.
+  def needs_pointer_passing?
+    map? || pool?
+  end
+
+  # True when backing storage operations require the heap allocator.
+  # Used by the transpiler to resolve :receiver_storage allocator symbols.
+  def needs_heap_backing?
+    pool? || sharded? || heap_provenance? || map?
+  end
+
+  # True when this map type stores an allocator in its Zig struct initializer.
+  # StringMaps/StripedMaps need .alloc = heapAlloc(); NumericMaps and
+  # PartitionedMaps (shared-nothing sharded) don't have an alloc field.
+  def map_init_needs_alloc?
+    return false unless map?
+    return false if numeric_map?
+    return false if sharded? && !striped?
+    true
+  end
+
+  # True when backing data is frame-allocated and must be promoted to heap
+  # before escaping its scope (return, BG capture, etc.).
+  # Covers: @list (frame-backed buffer), string HashMap (frame-backed keys/buckets),
+  # and strings ([]const u8 slices pointing into the frame arena).
+  def needs_escape_promotion?
+    return false if sharded?  # sharded collections are always heap-backed
+    list_collection? || (map? && !numeric_map?) || string?
+  end
+
+  RESOURCE_TYPES = Set[:File, :TCPClient, :TCPServer].freeze
+
+  # Canonical mapping from CLEAR type symbols to Zig type strings.
+  # User-defined types (structs, enums, unions) pass through as-is.
+  ZIG_TYPE_MAP = {
+    Float64:   "f64",
+    Int64:     "i64",
+    String:    "[]const u8",
+    Void:      "void",
+# ... file truncated after line 593; original file has 1674 lines ...
+```
+
 A mutant/regression test is failing after local source edits.
 Active source edits exist; inspect dirty changed lines first.
 
@@ -9,3 +291,4 @@ Something wrong in `symbol?`. swapped comparison: '==' -> '!=' near '@sync == :s
 Fix it.
 
 Return ONLY the corrected function `symbol?` in a ```ruby block.
+

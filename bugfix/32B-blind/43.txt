@@ -1,16 +1,20 @@
 ```ruby
-def annotate!
-  # Assuming the problematic line is something like this:
-  # some_array[index + 1] = some_value
-  # We need to correct the index usage to avoid off-by-one error.
-
-  some_array.each_with_index do |element, index|
-    # Example correction: Ensure we don't go out of bounds
-    if index + 1 < some_array.length
-      some_array[index + 1] = some_value
-    end
-  end
-end
-```
-
-Since the exact code is not provided, I've given a generic example of how to correct an off-by-one error in an `annotate!` method. You should replace `some_array`, `index`, and `some_value` with the actual variable names used in your code.
+def annotate!(node)
+  # Reset user-registered error types so state from prior runs (rspec
+  # parallel, multi-program test harness) doesn't leak in. Stdlib
+  # types are preserved.
+  AST.reset_user_types!
+  visit(node)
+  # P1.7: now that all bodies are annotated and arg.symbol is wired at
+  # every call site, propagate caller sync into callee param entries.
+  # Then re-check the WITH validations that we deferred during the body
+  # walk; any param whose entry.sync is still nil is a genuine error.
+  EscapeAnalysis.propagate_caller_sync!(@fn_nodes)
+  # Single authority for BG capture-strategy facts. Runs AFTER
+  # propagate_caller_sync! (so SymbolEntry stamps are final) and
+  # BEFORE the downstream passes that need to know which captures
+  # are MoveInto / FreshHeapCopy / RcClone / ByValue. Stamps the
+  # results on each BgBlock.capture_analysis so EscapeAnalysis,
+  # OwnershipDataflow, MIRPass, and mir_lowering can READ instead
+  # of each re-deriving with their own walker (the divergence class
+  # of bug fixed in

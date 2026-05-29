@@ -1,6 +1,200 @@
 File: src/ast/type.rb
 Function: finalize_storage
 
+Source file excerpt centered around `Type.finalize_storage`:
+```ruby
+# ... file truncated before line 1051; centered around Type.finalize_storage lines 1127-1164 ...
+  # Determine the allocator needed for cleanup of this type.
+  # Returns :heap or :frame. Centralizes the type-specific logic that
+  # was previously inline in annotator.rb's set_cleanup_alloc!.
+  def cleanup_allocator(schema_lookup = nil)
+    return :heap if heap_provenance? || map? || any_rc? || any_sync? ||
+                     resource? || sharded? || striped? || link?
+    if schema_lookup
+      schema = schema_lookup.call(resolved) rescue nil
+      if schema.is_a?(Hash) && !schema[:kind]
+        return :heap if schema_struct_any?(schema) { |t| t.link? || t.any_rc? || t.string? }
+      elsif schema.is_a?(Hash) && schema[:kind] == :union
+        return :heap if (schema[:variants] || {}).any? { |_, vt| Type.variant_has_heap?(vt) }
+      end
+    end
+    :frame
+  end
+
+  # Check if a union variant type contains heap-allocated data (collections, maps, dynamic arrays).
+  # Used to determine if a union needs cleanup.
+  def self.variant_has_heap?(vt)
+    return false unless vt
+    # Single-type payload with @indirect: always heap (stored as *T pointer)
+    return true if vt.is_a?(Hash) && vt[:kind] == :indirect_payload
+    if vt.is_a?(Hash) && vt[:kind] == :inline_struct
+      # Inline struct: check for @indirect fields or string/collection fields
+      return true if vt[:indirect_fields]&.any?
+      fields = vt[:fields] || {}
+      return fields.any? { |_, ft|
+        t = ft.is_a?(Type) ? ft : (Type.new(ft) rescue nil)
+        t && (t.string? || t.collection? || t.map? || (t.array? && !t.fixed?))
+      }
+    end
+    t = vt.is_a?(Type) ? vt : Type.new(vt) rescue nil
+    return false unless t
+    (t.collection? || t.map? || t.string? || (t.array? && !t.fixed?)) rescue false
+  end
+
+  # Safely extract a normalized Type from any AST/MIR node or raw type value.
+  # Returns nil if no type_info is available or conversion fails.
+  # Replaces the repeated inline pattern:
+  #   ti = node.type_info rescue nil
+  #   ti = Type.new(ti) if ti && !ti.is_a?(Type)
+  def self.from_node(node)
+    return nil unless node
+    t = node.respond_to?(:type_info) ? (node.type_info rescue nil) : node
+    return nil unless t
+    t.is_a?(Type) ? t : (Type.new(t) rescue nil)
+  end
+
+  def ownership=(value)
+    @zig_type_cache = nil
+    @ownership = value
+  end
+
+  def sync=(value)
+    @zig_type_cache = nil
+    @sync = value
+    # :raw and :symbol are data-access modes, not locks — they don't force heap provenance.
+    @provenance = :heap if value && value != :raw && value != :symbol && @ownership == :affine
+    @provenance = :rodata if value == :symbol
+  end
+
+  # Returns the Zig type string representation of this type.
+  # Memoized for performance; cache is invalidated when location changes.
+  def zig_type(is_param: false, is_field: false)
+    return compute_zig_type(is_param: is_param, is_field: is_field) if is_param || is_field
+    @zig_type_cache ||= compute_zig_type
+  end
+
+  # Determines the appropriate storage location based on type characteristics and size.
+  # Returns :stack for small primitives, :frame for medium-sized data, :heap for large/dynamic.
+  #
+  # @param size [Integer] The slot size of the type (from slot_size method)
+  # @param current_storage [Symbol, nil] The current storage if already set
+  # @return [Symbol] One of :stack, :frame, or :heap
+  #
+  def finalize_storage(size, current_storage = nil)
+    # Frozen (compact buffer) always stays frozen
+    return :current_storage if current_storage? || current_storage == :current_storage
+
+    # Multiowned (Rc) always stays multiowned
+    return :multiowned if multiowned? || current_storage == :multiowned
+
+    # Shared (Arc) always stays shared
+    return :shared if shared? || current_storage == :shared
+
+    # Link (WeakRc/WeakArc) always stays link
+    return :link if link? || current_storage == :link
+
+    # Sync (locked) types need a stable heap address
+    return :heap if any_sync? || current_storage == :heap && any_sync?
+
+    # Rodata (string literals) always stay rodata — never heap/frame allocated
+    return :rodata if current_storage == :rodata || rodata?
+
+    # If already heap, keep it heap
+    return :heap if current_storage == :heap || heap?
+
+    # Frame-arena containers: explicit @list (non-sharded, non-sync)
+    return :frame if list_collection?
+
+    # Primitives stay on stack
+    return :stack if primitive? && !requires_move?
+
+    # Types that require moves need frame or heap based on size
+    if requires_move?
+      if current_storage.nil? || current_storage == :stack
+        return size > 128 ? :frame : :stack
+      end
+    end
+
+    # Default to current or stack
+    current_storage || :stack
+  end
+
+  private
+
+  # True if any struct field in schema satisfies the block (block receives Type).
+  # Skips metadata (Symbol) keys; unwraps {:type => T} field hashes.
+  def schema_struct_any?(schema)
+    schema.any? { |k, v|
+      next false if k.is_a?(Symbol)
+      ft = v.is_a?(Hash) ? v[:type] : v
+      t  = ft.is_a?(Type) ? ft : (Type.new(ft || :Any) rescue nil)
+      next false unless t
+      yield t
+    }
+  end
+
+  # True if any non-Hash union variant in schema satisfies the block (block receives Type).
+  # Skips nil and Hash variants (inline_struct/indirect); caller handles those via
+  # Type.variant_has_heap? when needed.
+  def schema_union_any?(schema)
+    (schema[:variants] || {}).any? { |_, vt|
+      next false unless vt
+      next false if vt.is_a?(Hash)
+      t = vt.is_a?(Type) ? vt : (Type.new(vt) rescue nil)
+      next false unless t
+      (yield t) rescue false
+    }
+  end
+
+  # Structural match for function/lambda types. Called by accepts? when self.fn_type?.
+  def accepts_fn_type?(other_type)
+    return true if other_type.is_a?(Type) && other_type.any?
+    other_raw = other_type.is_a?(Type) ? other_type.raw : nil
+    is_fn_or_lambda = other_type.is_a?(Type) &&
+                      (other_type.fn_type? || (other_raw.is_a?(Hash) && other_raw[:lambda]))
+    return false unless is_fn_or_lambda
+
+    self_params  = @raw[:params] || []
+    other_params = (other_raw || {})[:params] || []
+    return false unless self_params.length == other_params.length
+
+    self_ret  = @raw.dig(:return, :type)
+    other_ret = (other_raw || {}).dig(:return, :type)
+    self_ret_t  = self_ret.is_a?(Type)  ? self_ret  : Type.new(self_ret  || :Any)
+    other_ret_t = other_ret.is_a?(Type) ? other_ret : Type.new(other_ret || :Any)
+    return false unless self_ret_t.accepts?(other_ret_t)
+
+    self_params.zip(other_params).each do |sp, op|
+      sp_t = sp[:type].is_a?(Type) ? sp[:type] : Type.new(sp[:type] || :Any)
+      op_t = op[:type].is_a?(Type) ? op[:type] : Type.new(op[:type] || :Any)
+      return false unless sp_t.accepts?(op_t)
+    end
+
+    # Reentrant constraint: a @reentrant function cannot be passed to a parameter
+    # that doesn't explicitly allow it (i.e., the param type lacks @reentrant).
+    self_allows_reentrant = @raw[:reentrant] == true
+    other_is_reentrant    = other_raw.is_a?(Hash) && other_raw[:reentrant] == true
+    return false if other_is_reentrant && !self_allows_reentrant
+
+    true
+  end
+
+  # Promise/Stream coercion. Called by accepts? when self.future?.
+  def accepts_future?(other_type)
+    # ~T[]@list accepts [] or another ~T[]
+    return true if promise_list? && (other_type.empty_list? || (other_type.future? && other_type.tense_type.dynamic?))
+    return false unless other_type.future?
+
+    if dynamic_stream? && other_type.dynamic_stream?
+      se = tense_type.element_type; oe = other_type.tense_type.element_type
+      return se.accepts?(oe) if se && oe
+    end
+    if open_stream? && other_type.open_stream?
+      se = open_stream_element_type; oe = other_type.open_stream_element_type
+      return se.accepts?(oe) if se && oe
+# ... file truncated after line 1238; original file has 1674 lines ...
+```
+
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.
 
@@ -13,3 +207,4 @@ Test failure:
 Fix the bug.
 
 Return ONLY the corrected function `finalize_storage` in a ```ruby block.
+

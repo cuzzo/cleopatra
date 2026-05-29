@@ -1,7 +1,14 @@
 ```ruby
 def ==(other)
-  return false unless other.is_a?(self.class)
+  case other
+  when Symbol then state == other
+  when Symbol     then state == other  # backward compat with raw symbols
+  else false
+  end
+  alias_method :eql?, :==
 
-  owner_entry == other.owner_entry && symbol == other.symbol
+  def hash
+    state.hash
+  end
 end
 ```

@@ -1,5 +1,85 @@
 ```ruby
-def annotate!
-  # Your corrected code here
-end
+# ... file truncated before line 38; centered around SemanticAnnotator.annotate! lines 97-146 ...
+  include MethodAnalysis
+  include UnionAnalysis
+  include LockHelper
+
+  attr_reader :scope_stack
+
+  def current_fn_ctx
+    @function_context_stack.last
+  end
+
+  # `source_code` is optional — used ONLY by fixable-error helpers to
+  # locate source-level spans (e.g., the `;` at the end of a
+  # declaration line so `@multiowned` can be inserted before it).
+  # When nil, affected helpers fall back to the plain `error!` path.
+  attr_accessor :source_code
+
+  def initialize(importer: nil, compiler: nil, source_dir: nil, strict_test: false, source_code: nil)
+    @importer   = importer || compiler
+    @source_dir = source_dir ? File.expand_path(source_dir) : Dir.pwd
+    @strict_test = strict_test
+    @source_code = source_code
+    # We start with a global scope
+    @scope_stack = [Scope.new]
+    @function_context_stack = [] # Stack of expected return types
+    @loop_depth = 0 # Track if we are inside a loop
+    @smooth_depth = 0
+    @match_pattern_context = false # True when visiting a MATCH case value (suppresses inline-struct GetField error)
+    # Reentrancy analysis
+    @call_graph  = {}  # name => Set of directly-called function names (excluding self-calls)
+    @fn_has_fnptr = {} # name => true if function calls a fn-type variable or lambda
+    @fn_nodes    = {}  # name => FunctionDef node (for error reporting in the post-pass)
+    # Performance analysis
+    @fn_raises_directly = {}  # name => true if body has Raise/OrRaise, uses_frame, has_fnptr, or @nonReentrant
+    # Capability audit — tracks declarations and usage to detect over-engineering.
+    # SOA analysis: tracks which fields of `_` are accessed during pipeline lambda bodies.
+    # nil = not inside a pipeline; Set = collecting field names.
+    @pipeline_accessed_fields = nil
+
+    # Phase 2 lock analysis storage (keyed by fn name). Hooked in
+    # visit_WithBlock / user-fn-call visitors; cycle-checked as a
+    # post-pass after @call_graph is complete.
+    init_lock_analysis!
+    # @pinned escape safety: true when inside a @pinned BG block.
+    @current_bg_pinned = false
+    # P1.7: WITH validations on parameter bindings are deferred to a
+    # post-annotation pass so EscapeAnalysis.propagate_caller_sync! has a
+    # chance to populate sync from callers' arg bindings first. Each entry:
+    # { node:, var_node:, capability:, kind: :exclusive | :write_locked_read }
+    @deferred_with_validations = []
+    # Tracks remaining statements in current body for forward reference analysis
+    @stmts_after = nil
+    # Ownership graph: shadow tracker that runs in parallel with the scope-based system.
+    @og = OwnershipGraph.new
+    @og_scope_depth = 0
+    effects_init!
+    capability_audit_init!
+    setup_builtins
+  end
+
+  def annotate!(node)
+    # Reset user-registered error types so state from prior runs (rspec
+    # parallel, multi-program test harness) doesn't leak in. Stdlib
+    # types are preserved.
+    AST.reset_user_types!
+    visit(node)
+    # P1.7: now that all bodies are annotated and arg.symbol is wired at
+    # every call site, propagate caller sync into callee param entries.
+    # Then re-check the WITH validations that we deferred during the body
+    # walk; any param whose entry.sync is still nil is a genuine error.
+    EscapeAnalysis.propagate_caller_sync!(@fn_nodes)
+    # Single authority for BG capture-strategy facts. Runs AFTER
+    # propagate_caller_sync! (so SymbolEntry stamps are final) and
+    # BEFORE the downstream passes that need to know which captures
+    # are MoveInto / FreshHeapCopy / RcClone / ByValue. Stamps the
+    # results on each BgBlock.capture_analysis so EscapeAnalysis,
+    # OwnershipDataflow, MIRPass, and mir_lowering can READ instead
+    # of each re-deriving with their own walker (the divergence class
+    # of bug fixed in 378036a0 / 1522e534).
+    BgCaptureClassifier.classify_all!(@fn_nodes)
+    # P3.2: infer per-function effects (yield/alloc_heap/io/fail) and
+    # propagate transitively through the call graph.
+    EffectIn
 ```

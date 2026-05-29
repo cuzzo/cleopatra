@@ -1,9 +1,4 @@
 ```ruby
 def dig(*keys)
-  if keys.length == 1
-    self[keys.first]
-  else
-    keys.reduce(self) { |acc, key| acc && acc[key] }
-  end
-end
-```
+  val = self[keys.first]
+  return val if keys.length ==

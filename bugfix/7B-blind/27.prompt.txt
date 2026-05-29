@@ -1,6 +1,201 @@
 File: src/annotator.rb
 Function: visit_NextExpr
 
+Source file excerpt centered around `SemanticAnnotator.visit_NextExpr`:
+```ruby
+# ... file truncated before line 3729; centered around SemanticAnnotator.visit_NextExpr lines 3791-3856 ...
+      error!(node, "BG block inside @pinned scope captures local variables but is not @pinned. " \
+                   "Thread-local memory cannot escape to a stealable fiber. " \
+                   "Add @pinned to this BG block, or avoid capturing variables from the pinned scope.")
+    end
+
+    # Auto-pin when shared state is captured (uses result from validate_fiber_captures!).
+    if analysis && !node.pinned
+      if analysis.has_local
+        node.pinned = :local
+        note!(node, "BG block auto-pinned — captures @local resource (same-scheduler affinity).")
+      elsif analysis.has_affine_locked
+        node.pinned = :shared
+        note!(node, "BG block auto-pinned — captures @locked resource (round-robin scheduler affinity).")
+      else
+        node.pinned = :local
+        if analysis.has_sharded
+          note!(node, "BG block auto-pinned — captures @sharded map (scheduler affinity for shard locality).")
+        else
+          note!(node, "BG block auto-pinned — captures shared/locked resource. Use @parallel to override.")
+        end
+      end
+    end
+
+    walk_bg_capture_moves(node.body, outer_scope, locally_bound)
+    @current_bg_pinned = prev_bg_pinned
+  end
+
+  def visit_ThenChain(node)
+    # Sequential chaining: each step runs in order inside the same fiber.
+    # Steps with AS bindings declare a local variable accessible to later steps.
+    # The last step's type determines the ThenChain's type.
+    #
+    # Error propagation: if a step returns !T and has an AS binding, the
+    # binding type is T (unwrapped). The error propagates to the BG result
+    # via try/errdefer in the generated Zig code.
+    last_type = :Void
+    node.steps.each do |step|
+      visit(step[:expr])
+      step_type = step[:expr].respond_to?(:full_type) ? (step[:expr].full_type || :Void) : :Void
+
+      if step[:binding]
+        # Unwrap error union for the binding: !T -> T
+        bind_type = step_type
+        t = Type.new(step_type)
+        bind_type = t.payload_type if t.error_union?
+
+        current_scope.declare(
+          step[:binding],
+          nil,
+          bind_type,
+          false,  # immutable
+          false,  # not rebindable
+          nil,
+          :stack
+        )
+      end
+
+      last_type = step_type
+    end
+    node.full_type = last_type
+  end
+
+  def visit_NextExpr(node)
+    record_effect(EffectTracker::YIELD)
+    visit(node.expr)
+    promise_type = Type.new(node.expr.full_type || :Void)
+
+    unless promise_type.future?
+      error!(node, "NEXT requires a future value (~T), got #{node.expr.full_type}")
+    end
+
+    if !(promise_type.promise_list?)
+      # NEXT on ~T[]@list: await all promises, return T[]@list.
+      # The promise list is linearly consumed — each inner promise is freed by its next() call.
+      if node.expr.is_a?(AST::Identifier)
+        og_set_moved(node.expr.name)
+      end
+      elem_sym = promise_type.tense_type.element_type.to_sym
+      node.full_type = Type.new(:"#{elem_sym}[]", collection: :list)
+    elsif promise_type.dynamic_stream?
+      elem_sym = promise_type.tense_type.element_type.to_sym
+      node.full_type = :"?#{elem_sym}"
+    elsif promise_type.bounded_stream?
+      # NEXT on ~T[N]: returns T (the element type).
+      # Does NOT mark the stream as moved — the stream can be NEXT'd up to N times.
+      node.full_type = promise_type.stream_element_type.to_sym
+    elsif promise_type.shared_promise?
+      # NEXT on ~T@shared: returns T, idempotent — same handle can be NEXT'd again.
+      # Does NOT mark as moved; multiple consumers may hold their own handles.
+      node.full_type = promise_type.tense_type.to_sym
+    elsif promise_type.split_open_stream?
+      # NEXT on ~?T[]@split: returns ?T — each handle advances independently through
+      # the shared memoized sequence until exhaustion.
+      elem_sym = promise_type.open_stream_element_type.to_sym
+      node.full_type = :"?#{elem_sym}"
+    elsif promise_type.open_stream?
+      # NEXT on ~?T[]: returns ?T — null signals stream exhaustion.
+      # Does NOT mark as moved — stream is a resource cleaned up via deinit.
+      elem_sym = promise_type.open_stream_element_type.to_sym
+      node.full_type = :"?#{elem_sym}"
+    elsif promise_type.inf_stream?
+      # NEXT on ~T[INF]: returns T (never nil — stream is infinite, rendezvous-style).
+      # Does NOT mark as moved — stream is a resource cleaned up via deinit.
+      node.full_type = promise_type.inf_stream_element_type.to_sym
+    else
+      # NEXT on ~T: returns T, marks the promise as linearly consumed.
+      if node.expr.is_a?(AST::Identifier)
+        og_set_moved(node.expr.name)
+      end
+      node.full_type = promise_type.tense_type.to_sym
+    end
+
+    # Propagate heap provenance through NEXT: if the fiber's exit/yield value was
+    # frame-allocated and heap-duped, the NEXT caller owns that heap allocation
+    # and must free it.
+    if node.expr.is_a?(AST::Identifier)
+      sym = node.expr.symbol
+      decl_node = sym&.reg  # the declaration's AST node (BindExpr/VarDecl)
+      bg_value = decl_node.respond_to?(:value) ? decl_node.value : nil
+      needs_heap =
+        (bg_value.is_a?(AST::BgBlock) && bg_value.return_provenance == :heap) ||
+        (bg_value.is_a?(AST::BgStreamBlock) && bg_value.yields_frame_strings)
+      if needs_heap
+        ti = node.type_info
+        ti.provenance = :heap if ti.is_a?(Type)
+      end
+    end
+  end
+
+  def get_root_object(node)
+    curr = node
+    while curr.is_a?(AST::GetField) || curr.is_a?(AST::GetIndex)
+      curr = curr.target
+    end
+    curr
+  end
+
+  # Collect all identifier names referenced (directly) in an AST subtree.
+  # Used by the WHILE loop moved-value check to skip variables not referenced in the body.
+  def collect_body_identifier_names(nodes)
+    names = Set.new
+    traverse = lambda do |n|
+      case n
+      when nil, Symbol, String, Integer, Float, TrueClass, FalseClass, Type
+      when Array
+        n.each { |item| traverse.call(item) }
+      when Hash
+        n.each_value { |v| traverse.call(v) }
+      when AST::FunctionDef
+        # Don't descend into nested function definitions.
+      when AST::Identifier
+        names.add(n.name)
+      else
+        n.each_pair { |_, v| traverse.call(v) } if n.respond_to?(:each_pair)
+      end
+    end
+    traverse.call(nodes)
+    names
+  end
+
+  # ── Ownership: move, escape, borrow, drop ────────────────────────
+  # All ownership state lives in @og (OwnershipGraph). The scope is
+  # The scope handles type resolution, variable declarations, mutability,
+  # and capability tracking. All ownership state is in the OwnershipGraph.
+
+  def handle_assign_move(node)
+    return if node.value.is_a?(AST::CopyNode)
+
+    # Non-escaping values (WITH block aliases) cannot be moved/consumed.
+    # Copy types (Int64, Bool, Float64, etc.) are exempt: assignment copies the
+    # value with no pointer transfer, so no lifetime hazard exists.
+    if node.value.is_a?(AST::Identifier) && node.value.symbol&.non_escaping
+      vti = node.value.type_info
+      needs_move = begin
+        vti && Type.new(vti).requires_move?
+      rescue
+        true
+      end
+      if needs_move
+        error!(node, "Cannot move WITH-scoped '#{node.value.name}'. WITH bindings cannot escape their block.")
+      end
+    end
+    if node.value.is_a?(AST::GetField) || node.value.is_a?(AST::GetIndex)
+      # Container indexing of borrowed source into an owned target (HashMap
+      # assignment) is an error. Plain variable declarations get borrow marking
+      # via register_container_borrow! instead.
+      if node.is_a?(AST::Assignment) && node.value.is_a?(AST::GetIndex)
+        vti = node.value.type_info
+        vti = Type.new(vti) if vti && !vti.is_a?(Type)
+# ... file truncated after line 3917; original file has 4490 lines ...
+```
+
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.
 
@@ -13,3 +208,4 @@ Issue: negated condition: 'promise_type.promise_list?'
 Fix it.
 
 Return ONLY the corrected function `visit_NextExpr` in a ```ruby block.
+

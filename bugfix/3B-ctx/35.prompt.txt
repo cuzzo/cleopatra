@@ -1,10 +1,23 @@
 File: src/annotator.rb
 Function: ensure_owned_value!
 
-Here is the current (buggy) code of function `ensure_owned_value!`:
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
 
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: SemanticAnnotator (class, lines 26-4490)
+Params: val_node: ?, expected_type: ?, container_desc: ?
+Recorded callees: is_a?, error!, new, list, lookup_type_schema, variant_has_heap?
+Recorded instance vars: @list
+Prism-detected callees in primary function: ensure_owned_value!, error!, is_a?, list, lookup_type_schema, new, values, variant_has_heap?
+Prism-detected ivars in primary function: @list
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/annotator.rb:SemanticAnnotator.ensure_owned_value! (lines 3177-3217)
 ```ruby
-  def ensure_owned_value!(val_node, expected_type, container_desc = nil)
+def ensure_owned_value!(val_node, expected_type, container_desc = nil)
     # Non-escaping values (WITH block aliases) cannot be stored in containers
     if is_a.is_a?(AST::Identifier) && is_a.symbol&.non_escaping
       error!(is_a, "Cannot store WITH-scoped '#{is_a.name}' into #{container_desc || 'a container'}. WITH bindings cannot escape their block.")
@@ -55,6 +68,66 @@ Worktree: clean
 Target file: clean (src/annotator.rb)
 Interpretation: Clean tree; treat this as a production/existing bug that slipped through tests.
 
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/provenance_annotation_spec.rb:64
+  src/annotator.rb:3177:in `ensure_owned_value!'
+
+Failure 1: spec/provenance_annotation_spec.rb:64
+Command: bundle exec rspec spec/provenance_annotation_spec.rb
+Failure output excerpt:
+, value="append", line=4, column=10>, object=#<struct AST::Identifier token=#<struct Lexer::Token type=:VAR_ID, value="vals", line=4, column=5>, name="vals">, name="append", args=[#<struct AST::Literal token=#<struct Lexer::Token type=:INT64, value=1, line=4, column=17>, type=:INT64, value=1, storage=:stack>]>, #<struct AST::ReturnNode token=#<stru
+... truncated ...
+ caller binding has :heap provenance
+
+Coverage report generated for RSpec to /home/yahn/cleopatra/.eval/cheat/coverage.
+Line Coverage: 12.71% (3171 / 24958)
+Branch Coverage: 15.32% (997 / 6509)
+[Warning] Unused variable 'x' (line 1)
+[Warning] Unused variable 'y' (line 1)
+[Warning] Unused variable 'x' (line 1)
+[Warning] Unused variable 's' (line 8)
+Relevant test code:
+From spec/provenance_annotation_spec.rb:13
+      5: 
+      6: # Phase 2 validation: provenance is set correctly during annotation
+      7: # and agrees with existing flags (heap_promoted, location, cleanup_alloc).
+      8: RSpec.describe "Provenance annotation" do
+      9:   def annotate(src)
+     10:     tokens = Lexer.new(src).tokenize
+     11:     ast = Parser.new(tokens, src).parse
+     12:     a = SemanticAnnotator.new
+=>   13:     a.annotate!(ast)
+     14:     [ast, a]
+     15:   end
+     16: 
+     17:   def find_binding(ast, fn_name, var_name)
+     18:     fn = ast.statements.find { |s| s.is_a?(AST::FunctionDef) && s.name == fn_name }
+     19:     fn.body.find { |s| (s.is_a?(AST::BindExpr) || s.is_a?(AST::VarDecl)) && s.name == var_name }
+     20:   end
+     21: 
+
+From spec/provenance_annotation_spec.rb:74
+     66:       ti = name_field.type_info
+     67:       ti = Type.new(ti) if !ti.is_a?(Type)
+     68:       expect(ti.provenance).to eq(:heap)
+     69:     end
+     70:   end
+     71: 
+     72:   describe "function returning promoted data" do
+     73:     it "caller binding has :heap provenance" do
+=>   74:       ast, _ = annotate(<<~CLEAR)
+     75:         STRUCT Holder { items: Int64[], label: String }
+     76:         FN build() RETURNS Holder ->
+     77:             MUTABLE vals: Int64[]@list = [];
+     78:             vals.append(1_i64);
+     79:             RETURN Holder{ items: vals, label: "test" };
+     80:         END
+     81:         FN main() RETURNS Void ->
+     82:             h = build();
+
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.
 
@@ -67,3 +140,4 @@ Test failure:
 Fix the bug.
 
 Return ONLY the corrected function `ensure_owned_value!` in a ```ruby block.
+

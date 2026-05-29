@@ -1,11 +1,8 @@
 ```ruby
-def initialize(description:, confidence: :interactive, edits:)
-    unless CONFIDENCES.include?(confidence)
-      raise ArgumentError, "Fix.confidence must be one of #{CONFIDENCES}, got #{confidence.inspect}"
-    end
-    @description = description
-    @confidence = confidence
-    @edits = Array(edits)
-    raise ArgumentError, "Fix needs at least one edit" if @edits.empty?
+def initialize(file:, line:, col:, length:)
+    @file = file
+    @line = line
+    @col = col
+    @length = length
   end
 ```

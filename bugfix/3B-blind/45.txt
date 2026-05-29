@@ -1,5 +1,108 @@
 ```ruby
-def walk_body(body)
-  # Your corrected implementation here
-end
+# ... file truncated before line 1; centered around AST.walk_body lines 11-43 ...
+require_relative "type"
+
+#=========
+# AST
+#=========
+module AST
+  # Walk all statements in a body, recursing into control flow branches.
+  # Yields each statement node. Handles IfStatement, MatchStatement,
+  # WhileLoop, ForRange, ForEach, and generic nodes with .body.
+  # Adding a new control flow node type requires updating only this method.
+  def self.walk_body(nodes, &visitor)
+    return unless nodes
+    nodes = nodes.is_a?(Array) ? nodes : [nodes]
+    nodes.each do |node|
+      yield node
+      case node
+      when IfStatement
+        walk_body(node.then_branch, &visitor)
+        walk_body(node.else_branch, &visitor)
+      when MatchStatement
+        (node.cases || []).each { |c| walk_body(c[:nodes], &visitor) }
+        walk_body(node.default_case, &visitor) if node.default_case
+      when WhileLoop, WhileBindLoop
+        walk_body(node.do_branch, &visitor)
+      when ForRange, ForEach
+        walk_body(node.nodes, &visitor)
+      when BgBlock, BgStreamBlock
+        walk_body(node.body, &visitor)
+      when WithBlock
+        walk_body(node.body, &visitor)
+      when DoBlock
+        (node.branches || []).each { |b| walk_body(b[:nodes], &visitor) }
+      when FunctionDef
+        walk_body(node.nodes, &visitor)
+      when TestBlock
+        walk_body(node.setup, &visitor)
+        node.whens&.each do |w|
+          walk_body(w.setup, &visitor)
+          w.tests&.each { |t| walk_body(t.nodes, &visitor) }
+        end
+      end
+    end
+  end
+
+  # Yield every BgBlock / BgStreamBlock reachable from `body`, including
+  # nested ones inside control flow (WHILE/MATCH/IF/FOR/WITH/DO),
+  # expression positions (VarDecl.value, FuncCall.args), and inside
+  # other BG bodies. Use this when classifying every BG in a function.
+  # The single source of truth replacing the parallel walkers in
+  # escape_analysis (e2_each_bg) and elsewhere.
+  def self.each_bg_block(body, &block)
+    return unless body
+    nodes = body.is_a?(Array) ? body : [body]
+    nodes.each { |n| _bg_visit_recursive(n, &block) }
+  end
+
+  def self._bg_visit_recursive(node, &block)
+    case node
+    when BgBlock, BgStreamBlock
+      yield node
+      each_bg_block(node.body, &block)
+    when IfStatement
+      each_bg_block(node.then_branch, &block)
+      each_bg_block(node.else_branch, &block)
+    when MatchStatement
+      (node.cases || []).each { |c| each_bg_block(c[:body], &block) }
+      each_bg_block(node.default_case, &block) if node.default_case
+    when WhileLoop, WhileBindLoop
+      each_bg_block(node.do_branch, &block)
+    when ForRange, ForEach
+      each_bg_block(node.body, &block)
+    when WithBlock
+      each_bg_block(node.body, &block)
+    when DoBlock
+      (node.branches || []).each { |b| each_bg_block(b[:body], &block) }
+    when FunctionDef
+      each_bg_block(node.body, &block)
+    when VarDecl, BindExpr, Assignment
+      _expr_each_bg_block_recursive(node.value, &block) if node.respond_to?(:value)
+    when FuncCall
+      node.args&.each { |a| _expr_each_bg_block_recursive(a, &block) }
+    when MethodCall
+      _expr_each_bg_block_recursive(node.object, &block)
+      node.args&.each { |a| _expr_each_bg_block_recursive(a, &block) }
+    when ReturnNode
+      _expr_each_bg_block_recursive(node.value, &block) if node.respond_to?(:value)
+    end
+  end
+
+  def self._expr_each_bg_block_recursive(expr, &block)
+    return unless expr
+    case expr
+    when BgBlock, BgStreamBlock
+      yield expr
+      each_bg_block(expr.body, &block)
+    when FuncCall
+      expr.args&.each { |a| _expr_each_bg_block_recursive(a, &block) }
+    when MethodCall
+      _expr_each_bg_block_recursive(expr.object, &block)
+      expr.args&.each { |a| _expr_each_bg_block_recursive(a, &block) }
+    end
+  end
+
+  # Yield ONLY the BgBlocks directly embedded in `stmt`'s expression
+  # positions -- does NOT
 ```

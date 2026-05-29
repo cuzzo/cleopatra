@@ -1,0 +1,12 @@
+Here is the corrected `collect_binding_moves` function:
+
+```ruby
+def collect_binding_moves(node, state)
+  return [] unless node
+  consumed = Set.new
+  collect_ownership_transfers(node, state, consumed)
+  consumed.to_a
+end
+```
+
+The bug was that the `collect_ownership_transfers` call was missing, so the `consumed` set was never populated. Adding that call fixes the issue.

@@ -1,10 +1,23 @@
 File: src/ast/type.rb
 Function: payload_type
 
-Here is the current (buggy) code of function `payload_type`:
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
 
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: Type (class, lines 4-1634)
+Params: (none recorded)
+Recorded callees: new
+Recorded instance vars: @payload_type_obj, @payload_type_raw
+Prism-detected callees in primary function: new
+Prism-detected ivars in primary function: @payload_type_obj, @payload_type_raw
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/ast/type.rb:Type.payload_type (lines 724-727)
 ```ruby
-  def payload_type
+def payload_type
     return nil unless error_union?
     @payload_type_obj &&= Type.new(@payload_type_raw || :Any)
   end
@@ -21,6 +34,47 @@ Target file: dirty (src/ast/type.rb)
   lines 727-727: nearby edited line
 Interpretation: Active source edits exist; inspect dirty changed lines first.
 
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/concurrency_spec.rb:1520
+  src/ast/type.rb:724:in `payload_type'
+
+Failure 1: spec/concurrency_spec.rb:1520
+Command: bundle exec rspec spec/concurrency_spec.rb
+Failure output excerpt:
+t generated for RSpec to /home/yahn/cleopatra/.eval/cheat/coverage.
+Line Coverage: 39.3% (7816 / 19889)
+Branch Coverage: 27.1% (3388 / 12503)
+[Note] DO branch auto-pinned — captures shared/locked resource. Use @parallel to distribute. (line 3)
+[Note] DO branch auto-pinned — captures shared/locked resource. Use @parallel to distribute. (line 3)
+[Not
+... truncated ...
+signed — consider removing MUTABLE (line 2)
+[Note] DO branch auto-pinned — captures shared/locked resource. Use @parallel to distribute. (line 3)
+[Note] DO branch auto-pinned — captures shared/locked resource. Use @parallel to distribute. (line 3)
+[Note] DO branch auto-pinned — captures shared/locked resource. Use @parallel to distribute. (line 3)
+Relevant test code:
+From spec/concurrency_spec.rb:1520
+   1512:         expect(t.tense?).to be true
+   1513:         expect(t.tense_type).to eq(:Void)
+   1514:       end
+   1515: 
+   1516:       it "recognises ~!Float64 as a promise of a failable Float64" do
+   1517:         t = Type.new(:"~!Float64")
+   1518:         expect(t.tense?).to be true
+   1519:         expect(t.tense_type.error_union?).to be true
+=> 1520:         expect(t.tense_type.payload_type).to eq(:Float64)
+   1521:       end
+   1522: 
+   1523:       it "is not a struct, primitive, optional, or error_union" do
+   1524:         t = Type.new(:"~Float64")
+   1525:         expect(t.struct?).to be false
+   1526:         expect(t.primitive?).to be false
+   1527:         expect(t.optional?).to be false
+   1528:         expect(t.error_union?).to be false
+
 A mutant/regression test is failing after local source edits.
 Active source edits exist; inspect dirty changed lines first.
 
@@ -33,3 +87,4 @@ Test failure:
 Fix the bug.
 
 Return ONLY the corrected function `payload_type` in a ```ruby block.
+

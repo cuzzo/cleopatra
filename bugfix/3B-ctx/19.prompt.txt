@@ -1,17 +1,29 @@
 File: src/ast/type.rb
 Function: stream_element_type
 
-Here is the current (buggy) code of function `stream_element_type`:
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
 
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: Type (class, lines 4-1633)
+Params: (none recorded)
+Recorded callees: new
+Recorded instance vars: (none)
+Prism-detected callees in primary function: new
+Prism-detected ivars in primary function: (none)
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/ast/type.rb:Type.stream_element_type (lines 817-823)
 ```ruby
-  def stream_element_type
+def stream_element_type
     return nil unless bounded_stream?
     if optional_stream_shape_type&.fixed?
       Type.new(:"?#{optional_stream_shape_type.element_type.to_sym}")
       tense_type.element_type
     end
   end
-
 ```
 
 ============================================================
@@ -23,6 +35,48 @@ Target file: dirty (src/ast/type.rb)
   lines 817-824: entire function edited
 Interpretation: Active source edits exist; inspect dirty changed lines first.
 
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/stream_spec.rb:300
+  src/ast/type.rb:817:in `stream_element_type'
+
+Failure 1: spec/stream_spec.rb:300
+Command: bundle exec rspec spec/stream_spec.rb
+Failure output excerpt:
+19.62% (2244 / 11437)
+[Note] Variable 'sp' is @shared (Arc) but never leaves the local scheduler. You are paying for atomic ref-counting but never crossing cores. Consider @multiowned or @local. (line 2)
+[Warning] Unused variable 'r' (line 3)
+[Warning] Unused variable 'r' (line 3)
+[Note] Variable 'sp' is @shared (Arc) but never leaves the local sch
+... truncated ...
+MUTABLE (line 2)
+[Warning] Unused variable 'v' (line 4)
+[Warning] MUTABLE 'futures' is never reassigned — consider removing MUTABLE (line 2)
+[Warning] MUTABLE 'futures' is never reassigned — consider removing MUTABLE (line 2)
+[Warning] Unused variable 'v' (line 4)
+[Warning] MUTABLE 'futures' is never reassigned — consider removing MUTABLE (line 2)
+Relevant test code:
+From spec/stream_spec.rb:300
+    292:       it "bounded_stream? is false for plain ~Float64" do
+    293:         expect(Type.new(:"~Float64").bounded_stream?).to be false
+    294:       end
+    295: 
+    296:       it "bounded_stream? is false for ~Float64[] (dynamic)" do
+    297:         expect(Type.new(:"~Float64[]").bounded_stream?).to be false
+    298:       end
+    299: 
+=>  300:       it "stream_element_type returns the inner T for ~Float64[3]" do
+    301:         t = Type.new(:"~Float64[3]")
+    302:         expect(t.stream_element_type.to_sym).to eq(:Float64)
+    303:       end
+    304: 
+    305:       it "stream_capacity returns N for ~Float64[3]" do
+    306:         expect(Type.new(:"~Float64[3]").stream_capacity).to eq(3)
+    307:       end
+    308: 
+
 A mutant/regression test is failing after local source edits.
 Active source edits exist; inspect dirty changed lines first.
 
@@ -31,3 +85,4 @@ Something wrong in `stream_element_type`. forgotten line: 'else'
 Fix it.
 
 Return ONLY the corrected function `stream_element_type` in a ```ruby block.
+

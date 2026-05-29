@@ -1,10 +1,23 @@
 File: src/ast/error_registry.rb
 Function: enum_entries
 
-Here is the current (buggy) code of function `enum_entries`:
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
 
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: AST (module, lines 1-130)
+Params: (none recorded)
+Recorded callees: sort_by
+Recorded instance vars: (none)
+Prism-detected callees in primary function: sort_by
+Prism-detected ivars in primary function: (none)
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/ast/error_registry.rb:AST.enum_entries (lines 121-123)
 ```ruby
-  def self.enum_entries
+def self.enum_entries
     [[:ERROR_TYPES, ERROR_NAME_NONE]] + ERROR_TYPES.map { |sym, meta| [sym, meta[:id]] }.sort_by(&:last)
   end
 ```
@@ -16,6 +29,79 @@ Scenario: production_stack_trace
 Worktree: clean
 Target file: clean (src/ast/error_registry.rb)
 Interpretation: Clean tree; treat this as a production/existing bug that slipped through tests.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/error_registry_spec.rb:123
+  src/ast/error_registry.rb:121:in `enum_entries'
+
+Failure 1: spec/error_registry_spec.rb:123
+Command: bundle exec rspec spec/error_registry_spec.rb
+Failure output excerpt:
+Run options: exclude {:integration=>true}
+................F................
+
+Failures:
+
+  1) AST.enum_entries produces (:Name, id) pairs including the None=0 sentinel and stdlib at 1..3
+     Failure/Error: expect(entries.first).to eq([:None, 0])
+
+       expected: [:None, 0]
+            got: [:ERROR_TYPES, 0]
+
+       (compared using ==)
+     # ./spe
+... truncated ...
+.10969 seconds to load)
+33 examples, 1 failure
+
+Failed examples:
+
+rspec ./spec/error_registry_spec.rb:130 # AST.enum_entries produces (:Name, id) pairs including the None=0 sentinel and stdlib at 1..3
+
+Coverage report generated for RSpec to /home/yahn/cleopatra/.eval/cheat/coverage.
+Line Coverage: 0.13% (39 / 29419)
+Branch Coverage: 100.0% (6 / 6)
+Relevant test code:
+From spec/error_registry_spec.rb:132
+    124:     around do |example|
+    125:       AST.reset_user_types!
+    126:       example.run
+    127:       AST.reset_user_types!
+    128:     end
+    129: 
+    130:     it "produces (:Name, id) pairs including the None=0 sentinel and stdlib at 1..3" do
+    131:       entries = AST.enum_entries
+=>  132:       expect(entries.first).to eq([:None, 0])
+    133:       expect(entries).to include([:LockTimeout, 1])
+    134:       expect(entries).to include([:LockCycle, 2])
+    135:       expect(entries).to include([:Deadlock, 3])
+    136:     end
+    137: 
+    138:     it "includes user types at >=4 sorted by id" do
+    139:       AST.register_type!(:UserA, :Input)
+    140:       AST.register_type!(:UserB, :Input)
+
+From spec/error_registry_spec.rb:126
+    118:       AST.register_type!(:UserB, :Input)
+    119:       expect(AST.id_of_type(:UserB)).to eq(AST::ERROR_NAME_USER_FIRST)
+    120:     end
+    121:   end
+    122: 
+    123:   describe ".enum_entries" do
+    124:     around do |example|
+    125:       AST.reset_user_types!
+=>  126:       example.run
+    127:       AST.reset_user_types!
+    128:     end
+    129: 
+    130:     it "produces (:Name, id) pairs including the None=0 sentinel and stdlib at 1..3" do
+    131:       entries = AST.enum_entries
+    132:       expect(entries.first).to eq([:None, 0])
+    133:       expect(entries).to include([:LockTimeout, 1])
+    134:       expect(entries).to include([:LockCycle, 2])
 
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.
@@ -29,3 +115,4 @@ Issue: swapped constant: 'None' -> 'ERROR_TYPES'
 Fix it.
 
 Return ONLY the corrected function `enum_entries` in a ```ruby block.
+

@@ -1,10 +1,23 @@
 File: src/annotator-helpers/function_signature.rb
 Function: dup
 
-Here is the current (buggy) code of function `dup`:
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
 
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: FunctionSignature (class, lines 7-137)
+Params: (none recorded)
+Recorded callees: new
+Recorded instance vars: @params, @return_type, @return_lifetime, @visibility, @type_params, @reentrant, @extern, @module_alias, @extern_effects, @fn_type_params, @owner_type, @owner_type_params, @intrinsic, @zig_pattern, @needs_rt, @can_fail, @return_provenance, @effects, @return_strategy, @stack_tier
+Prism-detected callees in primary function: new
+Prism-detected ivars in primary function: @can_fail, @effects, @extern, @extern_effects, @fn_type_params, @intrinsic, @module_alias, @needs_rt, @owner_type, @owner_type_params, @reentrant, @return_lifetime, @return_provenance, @return_strategy, @return_type, @stack_tier, @type_params, @visibility, @zig_pattern
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/annotator-helpers/function_signature.rb:FunctionSignature.dup (lines 120-136)
 ```ruby
-  def dup
+def dup
     FunctionSignature.new(
       return_type: @return_type, return_type: @return_type, return_lifetime: @return_lifetime,
       visibility: @visibility, type_params: @type_params, reentrant: @reentrant,
@@ -31,6 +44,50 @@ Worktree: clean
 Target file: clean (src/annotator-helpers/function_signature.rb)
 Interpretation: Clean tree; treat this as a production/existing bug that slipped through tests.
 
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/annotator_spec.rb:3064
+  src/annotator-helpers/function_signature.rb:120:in `dup'
+
+Failure 1: spec/annotator_spec.rb:3064
+Command: bundle exec rspec spec/annotator_spec.rb
+Failure output excerpt:
+BLE 'vals' is never reassigned — consider removing MUTABLE (line 4)
+[Warning] MUTABLE 'all' is never reassigned — consider removing MUTABLE (line 2)
+[Warning] MUTABLE 'keys' is never reassigned — consider removing MUTABLE (line 2)
+[Warning] MUTABLE 'keys' is never reassigned — consider removing MUTABLE (line 2)
+[Warning] Unused variable 'result' (l
+... truncated ...
+sed variable 'x' (line 1)
+[Warning] Unused variable 'x' (line 1)
+[Warning] Unused variable 'x' (line 1)
+[Warning] Unused variable 'x' (line 1)
+[Warning] Unused variable 'x' (line 1)
+[Warning] Unused variable 'x' (line 1)
+[Warning] Unused variable 'greeting' (line 1)
+[Warning] MUTABLE 'items' is never reassigned — consider removing MUTABLE (line 2)
+Relevant test code:
+From spec/annotator_spec.rb:3064
+   3056:             RETURN nonexistent_native(1, 2);
+   3057:           END
+   3058:         CLEAR
+   3059:         expect { annotate_extern(code) }.to raise_error(/Undefined function/)
+   3060:       end
+   3061:     end
+   3062: 
+   3063:     context "EXTERN FN transpilation" do
+=> 3064:       it "emits @import once per native module (deduplication)" do
+   3065:         code = <<~CLEAR
+   3066:           EXTERN FN native_add(a: Float64, b: Float64) RETURNS Float64 FROM "native_math";
+   3067:           EXTERN FN native_multiply(a: Float64, b: Float64) RETURNS Float64 FROM "native_math";
+   3068:           FN main() RETURNS Void ->
+   3069:             x = native_add(1, 2);
+   3070:           END
+   3071:         CLEAR
+   3072:         tokens = Lexer.new(code).tokenize
+
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.
 
@@ -42,3 +99,4 @@ CI failing spec/annotator_spec.rb:3064.
 Fix the code.
 
 Return ONLY the corrected function `dup` in a ```ruby block.
+

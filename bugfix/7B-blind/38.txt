@@ -1,14 +1,7 @@
 ```ruby
 def dig(*keys)
-  return nil if keys.empty?
-
-  current = self
-  keys.each do |key|
-    return nil unless current.is_a?(Hash) || current.is_a?(Array)
-    current = current[key]
-    return nil if current.nil?
-  end
-
-  current
+  val = self[keys.first]
+  return val if keys.length == 1
+  val.is_a?(Hash) ? val.dig(*keys[1..]) : nil
 end
 ```

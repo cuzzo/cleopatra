@@ -1,10 +1,23 @@
 File: src/ast/type.rb
 Function: stream?
 
-Here is the current (buggy) code of function `stream?`:
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
 
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: Type (class, lines 4-1634)
+Params: (none recorded)
+Recorded callees: (none)
+Recorded instance vars: (none)
+Prism-detected callees in primary function: (none)
+Prism-detected ivars in primary function: (none)
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/ast/type.rb:Type.stream? (lines 763-765)
 ```ruby
-  def stream?
+def stream?
     dynamic_stream? && bounded_stream? || open_stream? || inf_stream? || split_open_stream?
   end
 ```
@@ -18,6 +31,65 @@ Target file: dirty (src/ast/type.rb)
   lines 763-765: entire function edited
 Interpretation: Active source edits exist; inspect dirty changed lines first.
 
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/stream_spec.rb:287
+  src/ast/type.rb:763:in `stream?'
+
+Failure 1: spec/stream_spec.rb:287
+Command: bundle exec rspec spec/stream_spec.rb
+Failure output excerpt:
+pec ./spec/stream_spec.rb:1470 # SemanticAnnotator stream / promise compiler error guards native ~T[] finite streams allows variable-backed ~T[] pipelines for fusible EACH chains
+rspec ./spec/stream_spec.rb:1484 # SemanticAnnotator stream / promise compiler error guards native ~T[] finite streams accepts REDUCE on variable-backed ~T[]
+rspec ./spec/
+... truncated ...
+MUTABLE (line 2)
+[Warning] Unused variable 'v' (line 4)
+[Warning] MUTABLE 'futures' is never reassigned — consider removing MUTABLE (line 2)
+[Warning] MUTABLE 'futures' is never reassigned — consider removing MUTABLE (line 2)
+[Warning] Unused variable 'v' (line 4)
+[Warning] MUTABLE 'futures' is never reassigned — consider removing MUTABLE (line 2)
+Relevant test code:
+From spec/stream_spec.rb:287
+    279:     def transpile_fn(clear_src)
+    280:       ZigTranspiler.new.transpile(clear_src)
+    281:     end
+    282: 
+    283:     # ------------------------------------------------------------------
+    284:     # Type system
+    285:     # ------------------------------------------------------------------
+    286:     describe "Type predicates" do
+=>  287:       it "bounded_stream? is true for ~Float64[3]" do
+    288:         t = Type.new(:"~Float64[3]")
+    289:         expect(t.bounded_stream?).to be true
+    290:       end
+    291: 
+    292:       it "bounded_stream? is false for plain ~Float64" do
+    293:         expect(Type.new(:"~Float64").bounded_stream?).to be false
+    294:       end
+    295: 
+
+From spec/stream_spec.rb:1484
+   1476:               acc = acc + _;
+   1477:             };
+   1478:             RETURN;
+   1479:           END
+   1480:         CLEAR
+   1481:         expect { run(src) }.not_to raise_error
+   1482:       end
+   1483: 
+=> 1484:       it "accepts REDUCE on variable-backed ~T[]" do
+   1485:         src = <<~CLEAR
+   1486:           FN f() RETURNS Void ->
+   1487:             s: ~Int64[] = 0 ..< 8;
+   1488:             total = s s> REDUCE(0_i64) acc + _;
+   1489:             RETURN;
+   1490:           END
+   1491:         CLEAR
+   1492:         expect { run(src) }.not_to raise_error
+
 A mutant/regression test is failing after local source edits.
 Active source edits exist; inspect dirty changed lines first.
 
@@ -30,3 +102,4 @@ Issue: swapped || -> &&
 Fix it.
 
 Return ONLY the corrected function `stream?` in a ```ruby block.
+

@@ -1,0 +1,171 @@
+```ruby
+def parse_fn_type_annotation
+    consume(:KEYWORD, 'FN')
+
+    # Parse name: either "fnName", "fnName<T>", or "TypeName<T>.methodName"
+    owner_type = nil
+    owner_type_params = []
+    fn_type_params = []
+
+    if match?(:TYPE_ID)
+      # Could be TypeName<T>.method or just a TYPE_ID-named function
+      type_name = consume(:TYPE_ID).value
+      if match!(:CHAR, '<')
+        loop do
+          owner_type_params << consume(:TYPE_ID).value.to_sym
+          break unless match!(:CHAR, ',')
+        end
+        consume(:CHAR, '>')
+      end
+      if match!(:CHAR, '.')
+        # It's a method: TypeName<T>.methodName
+        owner_type = type_name
+        name = consume(:VAR_ID).value
+      else
+        # TYPE_ID without dot — treat as function name (unusual but valid)
+        name = type_name
+        fn_type_params = owner_type_params
+        owner_type_params = []
+      end
+    else
+      name = consume(:VAR_ID).value
+      # Optional generic type params on the function: fnName<T>
+      if match!(:CHAR, '<')
+        loop do
+          fn_type_params << consume(:TYPE_ID).value.to_sym
+          break unless match!(:CHAR, ',')
+        end
+        consume(:CHAR, '>')
+      end
+    end
+
+    params = parse_argument_list()
+
+    # 2. Parse USE() UpValues
+    captures = []
+    if match!(:KEYWORD, 'USE')
+      captures = parse_argument_list()
+    end
+
+    # 3. Parse optional RETURNS
+    return_type = nil
+    if match!(:KEYWORD, 'RETURNS')
+      if current.type == :VAR_ID
+        return_lifetime = parse_var_id
+        consume(:CHAR, ':')
+      end
+
+      return_type = parse_type_annotation()
+    end
+
+    # 3.5. Parse optional REQUIRES clause: gates which sync families this
+    # function accepts on its parameters. Mandatory whenever the body uses
+    # WITH on a parameter (P2.5 enforces). Stored as { param => Set[Family] }.
+    requires_clause = nil
+    if match!(:KEYWORD, 'REQUIRES')
+      requires_clause = parse_requires_clause
+    end
+
+    # 4. Parse optional @reentrant / @nonReentrant / @reentrant:tailCall function annotation.
+    reentrant = nil
+    tail_call = false
+    if match?(:VAR_ID) && %w[@reentrant @nonReentrant].include?(current.value)
+      cap_tok = consume(:VAR_ID)
+      reentrant = cap_tok.value == '@reentrant'? :reentrant : :non_reentrant
+      # Check for :tailCall suffix
+      if reentrant == :reentrant && match?(:CHAR, ':') && @tokens[@pos + 1]&.value == 'tailCall'
+        consume(:CHAR, ':')
+        consume(:VAR_ID)
+        tail_call = true
+      end
+    end
+
+    consume(:ARROW, '->')
+    body = parse_block_body(['END', 'CATCH'])
+
+    # 2. Parse Optional CATCH blocks (multi-clause)
+    # Syntax:
+    #   CATCH ErrorName WITH("msg")
+    #     body;
+    #   CATCH ErrorName
+    #     body;
+    #   DEFAULT
+    #     body;
+    #   END
+    catch_block = nil
+    # Parse CATCH clauses (unified error-system grammar):
+    #
+    #   CATCH <item> (',' <item>)* [ WITH(<filter> (',' <filter>)*) ]
+    #
+    # <item>   is a TYPE_ID — disambiguated via ERROR_KINDS into a kind
+    #         or a type. Any mix and any count is valid:
+    #           CATCH Input, NotFound           — kinds only
+    #           CATCH ParseErr, BadJson         — types only
+    #           CATCH Input, ParseErr           — mix
+    # <filter> is a TYPE_ID (error type name) OR a STRING (message to
+    #         match). The annotator validates the types against the
+    #         registry; messages are compared as-is at runtime.
+    #
+    # Match semantics:
+    #   Items are ORed. WITH filters (if present) are ORed among
+    #   themselves and ANDed against the item-list match. Example:
+    #     CATCH Input, ParseErr WITH(BadJson, "bad header")
+    #   matches iff (kind is Input OR type is ParseErr) AND
+    #               (type is BadJson OR message == "bad header").
+    #
+    # Clause shape stored on the AST:
+    #   { items:        [{ form: :kind|:type, name:, token: },...],
+    #     filters:      [{ form: :type|:message, value: },...],
+    #     body:         [...] }
+    # Annotator fills in clause[:kinds] / [:types] / [:filter_types] /
+    # [:filter_messages] for lowering.
+    catch_block = nil
+    if match?(:KEYWORD, 'CATCH')
+      catch_clauses = []
+      default_body = nil
+      while match?(:KEYWORD, 'CATCH')
+        consume(:KEYWORD, 'CATCH')
+
+        # 1) One or more comma-separated items.
+        items = [parse_catch_item]
+        while match!(:CHAR, ',')
+          items << parse_catch_item
+        end
+
+        # 2) Optional WITH(<filter_list>). Filters may be types
+        #    (TYPE_ID) or messages (STRING).
+        filters = []
+        if match?(:KEYWORD, 'WITH')
+          consume(:KEYWORD, 'WITH')
+          consume(:CHAR, '(')
+          filters << parse_catch_filter
+          while match!(:CHAR, ',')
+            filters << parse_catch_filter
+          end
+          consume(:CHAR, ')')
+        end
+
+        clause_body = parse_block_body(['CATCH', 'DEFAULT', 'END'])
+        catch_clauses << {
+          items: items,
+          filters: filters,
+          body: clause_body,
+        }
+      end
+      if match?(:KEYWORD, 'DEFAULT')
+        consume(:KEYWORD, 'DEFAULT')
+        default_body = parse_block_body(['END'])
+      end
+      catch_block = AST::CatchBlock.new(fn_token, catch_clauses, default_body)
+    end
+
+    consume(:KEYWORD, 'END')
+    node = AST::FunctionDef.new(fn_token, name, params, captures, return_type, return_lifetime, body,
+      catch_block? catch_block.catch_clauses : [], catch_block? catch_block.default_body : nil, visibility)
+    node.type_params = type_params unless type_params.empty?
+    node.reentrant = reentrant
+    node.tail_call = tail_call
+    node.requires = requires_clause
+    node
+  end
+```

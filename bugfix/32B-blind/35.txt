@@ -1,11 +1,25 @@
 ```ruby
-def ensure_owned_value!(node)
-  val_node = node.children.find { |child| child.type == :send && child.method_name == :value }
-  return unless val_node
+def ensure_owned_value!(val_node, expected_type, container_desc = nil)
+  # Non-escaping values (WITH block aliases) cannot be stored in containers
+  if val_node.is_a?(AST::Identifier) && val_node.symbol&.non_escaping
+    error!(val_node, "Cannot store WITH-scoped '#{val_node.name}' into #{container_desc || 'a container'}. WITH bindings cannot escape their block.")
+  end
+  return nil if val_node.is_a?(AST::CopyNode)
+  vti = val_node.type_info
+  vti = Type.new(vti) if vti && !vti.is_a?(Type)
+  return nil unless vti
 
-  is_a = val_node.children.find { |child| child.type == :send && child.method_name == :is_a? }
-  return unless is_a
+  if vti.list_collection?
+    # When the target field is also @list (ArrayList), skip CopyNode wrapping.
+    # The move mechanism will transfer the ArrayList struct directly.
+    # CopyNode produces a slice which is the wrong type for ArrayList fields.
+    et = expected_type.is_a?(Type) ? expected_type : nil
+    return nil if et&.list_collection?
 
-  # Rest of the method logic
-end
-```
+    copy = AST::CopyNode.new(val_node.token, val_node)
+    copy.full_type = expected_type.is_a?(Type) ? expected_type : Type.new(expected_type || :Any)
+    elem = vti.element_type
+    if elem
+      es = lookup_type_schema(elem.resolved) rescue nil
+      copy.deep_copy = es.is_a?(Hash) && es[:kind] == :union &&
+        (es[:variants] ||

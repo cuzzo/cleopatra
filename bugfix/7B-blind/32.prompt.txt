@@ -1,6 +1,208 @@
 File: src/mir/control_flow.rb
 Function: collect_binding_moves
 
+Source file excerpt centered around `OwnershipDataflow.collect_binding_moves`:
+```ruby
+# ... file truncated before line 543; centered around OwnershipDataflow.collect_binding_moves lines 639-644 ...
+  end
+
+  # Transfer function for a single statement.
+  def transfer_stmt(stmt, state)
+    case stmt
+    when AST::VarDecl
+      # RHS of declaration: non-Copy identifier = ownership transfer.
+      collect_binding_moves(stmt.value, state).each { |n| mark_moved!(state, n) }
+      state[stmt.name.to_s] = make_owner_entry(stmt)
+
+    when AST::BindExpr
+      collect_binding_moves(stmt.value, state).each { |n| mark_moved!(state, n) }
+      state[stmt.name.to_s] = make_owner_entry(stmt) if stmt.mode == :decl
+
+    when AST::Assignment
+      # Map indexed assignments: only skip rhs moves for UNION values (dupeUnionValue
+      # creates a true deep copy, so the original retains ownership). For struct values,
+      # CheatLib.promote() shallow-copies heap string pointers, so nested list-field
+      # variables ARE consumed (moved) into the promoted copy -- suppress their cleanup.
+      lhs = stmt.name
+      lhs_is_map = lhs.is_a?(AST::GetIndex) && (Type.from_node(lhs.target)&.map? rescue false)
+      skip_rhs_move = if lhs_is_map
+        val_ti_raw = stmt.value.respond_to?(:type_info) ? (stmt.value.type_info rescue nil) : nil
+        val_resolved = val_ti_raw && (val_ti_raw.is_a?(Type) ? val_ti_raw.resolved : val_ti_raw)
+        schema = val_resolved && @schema_lookup&.call(val_resolved)
+        schema.is_a?(Hash) && schema[:kind] == :union
+      else
+        false
+      end
+      collect_binding_moves(stmt.value, state).each { |n| mark_moved!(state, n) } unless skip_rhs_move
+
+    when AST::ReturnNode
+      collect_binding_moves(stmt.value, state).each { |n| mark_moved!(state, n) }
+
+    when AST::MoveNode
+      # Standalone GIVE statement: GIVE f;
+      inner = stmt.value
+      if inner.is_a?(AST::Identifier)
+        name = inner.name.to_s
+        mark_moved!(state, name) if state[name]
+      end
+
+    when AST::FuncCall, AST::MethodCall
+      # Function args: only was_moved (TAKES/GIVE) triggers a move.
+      collect_explicit_moves(stmt, state).each { |n| mark_moved!(state, n) }
+      # BG blocks in args transfer ownership of captured resources.
+      collect_bg_captures_in_args(stmt, state).each { |n| mark_moved!(state, n) }
+
+    when AST::IfStatement, AST::WhileLoop, AST::ForRange, AST::ForEach, AST::MatchStatement
+      # Control flow headers: only process condition/expr for explicit moves.
+      cond = case stmt
+             when AST::IfStatement then stmt.condition
+             when AST::WhileLoop then stmt.condition
+             when AST::MatchStatement then stmt.expr
+             when AST::ForRange then nil
+             when AST::ForEach then stmt.collection
+             end
+      collect_explicit_moves(cond, state).each { |n| mark_moved!(state, n) } if cond
+
+      # ForEach/ForRange: loop variable is owned in the body block.
+      if stmt.is_a?(AST::ForRange) || stmt.is_a?(AST::ForEach)
+        state[stmt.var_name.to_s] = make_owner_entry(stmt)
+      end
+
+    when AST::WithBlock
+      # WITH block capabilities borrow the source variable -- no ownership transfer.
+      # The source variable remains OWNED (it's borrowed, not moved).
+
+    when AST::DoBlock
+      # DO block header -- no moves in the header itself.
+
+    when AST::BgBlock, AST::BgStreamBlock
+      # BG block: resource captures transfer ownership to the fiber.
+      # String captures are promoted (borrowed), not moved.
+      stmt.capture_analysis&.resource_captures&.each do |name|
+        mark_moved!(state, name) if state[name]
+      end
+      # User-written GIVE x inside the BG body (where x is a captured
+      # outer binding) transfers ownership out of the outer scope too.
+      # COPY/CLONE do NOT consume — those deep-copy / rc-clone.
+      collect_bg_body_gives(stmt).each do |name|
+        mark_moved!(state, name) if state[name]
+      end
+    end
+  end
+
+  # Collect identifiers moved by a binding RHS (VarDecl, BindExpr, Assignment, Return).
+  # Both explicit (was_moved) and implicit (non-Copy identifier = ownership transfer).
+  #
+  # Ownership-transferring positions (non-Copy = move):
+  #   - Direct RHS identifier: b = a
+  #   - Struct literal field value: S{ field: a }
+  #   - Union constructor payload: U.Variant(a)
+  #   - List literal items: [a, b]
+  #   - MoveNode: MOVE a
+  # All other positions: only was_moved (set by annotator for TAKES/GIVE).
+  def collect_binding_moves(node, state)
+    return [] unless node
+    consumed = Set.new
+    consumed.to_a
+  end
+
+  # Recursively find ownership-transferring identifiers.
+  def collect_ownership_transfers(node, state, consumed)
+    return unless node
+
+    case node
+    when AST::Identifier
+      name = node.name.to_s
+      return unless state[name]
+      return if copy_type?(node) # Copy types are never consumed
+      consumed << name
+
+    when AST::StructLit
+      node.fields&.each_value { |v| collect_ownership_transfers(v, state, consumed) }
+
+    when AST::MethodCall
+      # Union constructors: U.Variant(payload) - payload transfers ownership.
+      # Regular method calls in binding RHS: only was_moved args.
+      # Distinguish by token type: TYPE_ID = union constructor, VAR_ID = method call.
+      if node.object.is_a?(AST::Identifier) && node.object.token&.type == :TYPE_ID
+        node.args&.each { |a| collect_ownership_transfers(a, state, consumed) }
+      else
+        collect_explicit_in(node, state, consumed)
+      end
+
+    when AST::FuncCall
+      collect_explicit_in(node, state, consumed)
+
+    when AST::ListLit
+      node.items&.each { |i| collect_ownership_transfers(i, state, consumed) }
+
+    when AST::MoveNode
+      inner = node.value
+      if inner.is_a?(AST::Identifier)
+        name = inner.name.to_s
+        consumed << name if state[name]
+      end
+
+    when AST::CopyNode, AST::CloneNode, AST::FreezeNode
+      # COPY / FREEZE do NOT move the source.
+
+    when AST::CapabilityWrap
+      # Unwrap: S{ field: x } @shared still consumes x.
+      collect_ownership_transfers(node.value, state, consumed)
+
+    when AST::BgBlock, AST::BgStreamBlock
+      # Resources captured by BG fibers transfer ownership.
+      node.capture_analysis&.resource_captures&.each do |name|
+        consumed << name if state[name]
+      end
+      # GIVE x inside the BG body moves the outer x into the fiber.
+      collect_bg_body_gives(node).each do |name|
+        consumed << name if state[name]
+      end
+
+    else
+      collect_explicit_in(node, state, consumed)
+    end
+  end
+
+  # Collect only was_moved identifiers from an expression subtree.
+  # Skips CopyNode children: COPY wraps a was_moved identifier but the
+  # source is NOT consumed (the copy is what transfers ownership).
+  def collect_explicit_in(node, state, consumed)
+    walk_expr_skip_copy(node) do |n|
+      next unless n.is_a?(AST::Identifier) && n.was_moved
+      name = n.name.to_s
+      next unless state[name]
+      next if copy_type?(n)
+      consumed << name
+    end
+  end
+
+  # Collect only explicitly moved identifiers (was_moved set by annotator).
+  # Used for function calls where non-TAKES args are borrowed, not moved.
+  def collect_explicit_moves(node, state)
+    return [] unless node
+    consumed = []
+    walk_expr_skip_copy(node) do |n|
+      next unless n.is_a?(AST::Identifier) && n.was_moved
+      name = n.name.to_s
+      next unless state[name]
+      next if copy_type?(n)
+      consumed << name
+    end
+    consumed
+  end
+
+  # Collect resource captures from BG blocks nested in function/method call args.
+  # Without this, the dataflow doesn't see ownership transfers via BG capture
+  # when the BG block appears inside a MethodCall like tasks.append(BG { ... }).
+  def collect_bg_captures_in_args(stmt, state)
+    consumed = []
+    args = stmt.args || []
+    args.each do |arg|
+# ... file truncated after line 738; original file has 1775 lines ...
+```
+
 A mutant/regression test is failing after local source edits.
 Active source edits exist; inspect dirty changed lines first.
 
@@ -13,3 +215,4 @@ Test failure:
 Fix the bug.
 
 Return ONLY the corrected function `collect_binding_moves` in a ```ruby block.
+

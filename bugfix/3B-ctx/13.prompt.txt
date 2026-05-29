@@ -1,10 +1,23 @@
 File: src/ast/scope.rb
 Function: declare
 
-Here is the current (buggy) code of function `declare`:
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
 
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: Scope (class, lines 4-222)
+Params: name: ?, reg: ?, type: ?, is_mutable: ?, is_rebindable: ?, size: ?, storage: ?, capabilities: ?, _borrowed_paths: ?, sync: nil, resource: nil, close_zig: nil
+Recorded callees: add, new
+Recorded instance vars: @owned_names, @locals
+Prism-detected callees in primary function: add, declare, new
+Prism-detected ivars in primary function: @locals, @owned_names
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/ast/scope.rb:Scope.declare (lines 15-31)
 ```ruby
-  def declare(name, reg, type, is_mutable = true, is_rebindable = false, size = nil, storage = :stack, capabilities = Set.new, _borrowed_paths = [], sync: nil, resource: nil, close_zig: nil)
+def declare(name, reg, type, is_mutable = true, is_rebindable = false, size = nil, storage = :stack, capabilities = Set.new, _borrowed_paths = [], sync: nil, resource: nil, close_zig: nil)
     @owned_names.add(name)
     entry = SymbolEntry.new(
       reg: reg,
@@ -32,6 +45,65 @@ Target file: dirty (src/ast/scope.rb)
   lines 15-31: entire function edited
 Interpretation: Active source edits exist; inspect dirty changed lines first.
 
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/stream_spec.rb:108
+  src/ast/scope.rb:15:in `declare'
+
+Failure 1: spec/stream_spec.rb:108
+Command: bundle exec rspec spec/stream_spec.rb
+Failure output excerpt:
+rds ~T@multiowned rejection raises an error when a plain promise function param is @multiowned (VarDecl path)
+rspec ./spec/stream_spec.rb:1387 # SemanticAnnotator stream / promise compiler error guards ~T@multiowned rejection suggests @shared as the correct alternative
+rspec ./spec/stream_spec.rb:1399 # SemanticAnnotator stream / promise compiler e
+... truncated ...
+ures.append(rt.frameAlloc(), ...) for append
+rspec ./spec/stream_spec.rb:1732 # SemanticAnnotator ~T[]@list Promise Lists Transpiler output emits indexed access plus .next() for NEXT futures[0]
+
+Coverage report generated for RSpec to /home/yahn/cleopatra/.eval/cheat/coverage.
+Line Coverage: 13.2% (2927 / 22166)
+Branch Coverage: 2.88% (329 / 11437)
+Relevant test code:
+From spec/stream_spec.rb:108
+    100:         expect(t.zig_type).to eq("CheatLib.Rc(f64)")
+    101:       end
+    102:     end
+    103: 
+    104:     # ------------------------------------------------------------------
+    105:     # Compiler error: ~T@multiOwned is invalid
+    106:     # ------------------------------------------------------------------
+    107:     describe "~T@multiOwned compiler error" do
+=>  108:       it "raises a directed error when a binding declares ~T@multiOwned" do
+    109:         src = <<~CLEAR
+    110:           FN f() RETURNS Void ->
+    111:             sp: ~Float64 @multiowned = BG { 1.0; };
+    112:             RETURN;
+    113:           END
+    114:         CLEAR
+    115:         expect { run(src) }.to raise_error(SourceError, /~T@multiOwned is not valid/)
+    116:       end
+
+From spec/stream_spec.rb:1387
+   1379:           FN f() RETURNS Void ->
+   1380:             p: ~Float64 @multiowned = BG { 1.0; };
+   1381:             RETURN;
+   1382:           END
+   1383:         CLEAR
+   1384:         expect { run(src) }.to raise_error(/~T@multiOwned is not valid/)
+   1385:       end
+   1386: 
+=> 1387:       it "suggests @shared as the correct alternative" do
+   1388:         src = <<~CLEAR
+   1389:           FN f() RETURNS Void ->
+   1390:             p: ~Float64 @multiowned = BG { 1.0; };
+   1391:             RETURN;
+   1392:           END
+   1393:         CLEAR
+   1394:         expect { run(src) }.to raise_error(/Use ~T@shared instead/)
+   1395:       end
+
 A mutant/regression test is failing after local source edits.
 Active source edits exist; inspect dirty changed lines first.
 
@@ -44,3 +116,4 @@ Issue: off-by-one: added +1 to index ''
 Fix it.
 
 Return ONLY the corrected function `declare` in a ```ruby block.
+

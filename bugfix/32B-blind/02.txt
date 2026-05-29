@@ -1,13 +1,6 @@
 ```ruby
-def register_type!(type_sym, error_class)
-  unless error_class < StandardError
-    raise ArgumentError, "error_class must be a subclass of StandardError"
-  end
-
-  if @registry.key?(type_sym)
-    raise ArgumentError, "Type #{type_sym} is already registered"
-  end
-
-  @registry[type_sym] = error_class
-end
-```
+def self.register_type!(type_sym, kind_sym, site_token: nil)
+  entry = ERROR_TYPES[type_sym]
+  if entry.nil?
+    id = @next_user_id
+    @next_user_id +=

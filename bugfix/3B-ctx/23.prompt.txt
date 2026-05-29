@@ -1,10 +1,23 @@
 File: src/mir/ownership_graph.rb
 Function: restore_lightweight
 
-Here is the current (buggy) code of function `restore_lightweight`:
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
 
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: OwnershipGraph (class, lines 15-260)
+Params: snapshot: ?
+Recorded callees: delete
+Recorded instance vars: @nodes, @edges, @edges_by_target, @edges_by_source
+Prism-detected callees in primary function: delete, restore_lightweight
+Prism-detected ivars in primary function: @edges, @edges_by_source, @edges_by_target, @nodes
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/mir/ownership_graph.rb:OwnershipGraph.restore_lightweight (lines 167-178)
 ```ruby
-  def restore_lightweight(snapshot)
+def restore_lightweight(snapshot)
     snapshot[:node_states].each do |path, state|
       node = @nodes[path]
       node.state = state if !(node)
@@ -26,6 +39,75 @@ Worktree: clean
 Target file: clean (src/mir/ownership_graph.rb)
 Interpretation: Clean tree; treat this as a production/existing bug that slipped through tests.
 
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/ownership_graph_spec.rb:193
+  src/mir/ownership_graph.rb:167:in `restore_lightweight'
+
+Failure 1: spec/ownership_graph_spec.rb:193
+Command: bundle exec rspec spec/ownership_graph_spec.rb
+Failure output excerpt:
+Run options: exclude {:integration=>true}
+.........................F...........
+
+Failures:
+
+  1) OwnershipGraph#fork_lightweight and #restore_lightweight captures and restores node states
+     Failure/Error: expect(graph.live?("x")).to be true
+
+       expected true
+            got false
+     # ./spec/ownership_graph_spec.rb:200:in `block (3 levels)
+... truncated ...
+#fork_lightweight and #restore_lightweight captures and restores node states
+
+Coverage report generated for RSpec to /home/yahn/cleopatra/.eval/cheat/coverage.
+Line Coverage: 17.34% (3843 / 22166)
+Branch Coverage: 8.0% (915 / 11437)
+[Warning] Unused variable 'x' (line 2)
+[Warning] Unused variable 'q' (line 4)
+[Warning] Unused variable 'o' (line 3)
+Relevant test code:
+From spec/ownership_graph_spec.rb:200
+    192: 
+    193:   describe "#fork_lightweight and #restore_lightweight" do
+    194:     it "captures and restores node states" do
+    195:       graph.declare("x")
+    196:       snapshot = graph.fork_lightweight
+    197:       graph.transfer("x", "y")
+    198:       expect(graph.moved?("x")).to be true
+    199:       graph.restore_lightweight(snapshot)
+=>  200:       expect(graph.live?("x")).to be true
+    201:     end
+    202: 
+    203:     it "captures edge count for restoration" do
+    204:       graph.declare("x")
+    205:       snapshot = graph.fork_lightweight
+    206:       expect(snapshot[:edge_count]).to eq(graph.edges.size)
+    207:     end
+    208:   end
+
+From spec/ownership_graph_spec.rb:193
+    185:       graph.declare("x")
+    186:       graph.borrow("y", "x", mutable: false)
+    187:       graph.release_borrow("y")
+    188:       expect(graph.can_write?("x")).to be true
+    189:     end
+    190:   end
+    191: 
+    192: 
+=>  193:   describe "#fork_lightweight and #restore_lightweight" do
+    194:     it "captures and restores node states" do
+    195:       graph.declare("x")
+    196:       snapshot = graph.fork_lightweight
+    197:       graph.transfer("x", "y")
+    198:       expect(graph.moved?("x")).to be true
+    199:       graph.restore_lightweight(snapshot)
+    200:       expect(graph.live?("x")).to be true
+    201:     end
+
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.
 
@@ -38,3 +120,4 @@ Test failure:
 Fix the bug.
 
 Return ONLY the corrected function `restore_lightweight` in a ```ruby block.
+

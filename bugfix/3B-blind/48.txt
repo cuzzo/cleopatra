@@ -1,5 +1,106 @@
 ```ruby
-def transform!
-  # Your code here
-end
+# ... file truncated before line 1; centered around MIRPass.transform! lines 28-74 ...
+# src/mir_pass.rb - MIR transformation pass
+#
+# Runs after annotation. Classifies cleanup bindings, stamps fn.cleanup_bindings,
+# inserts MIR promotion/suppress nodes, and propagates heap provenance.
+#
+# Dependencies are defined in control_flow.rb (required first) and promotion_plan.rb.
+
+require_relative "promotion_plan"
+require_relative "escape_analysis"
+
+class MIRPass
+  # cleanup_bindings: { fn_name => { var_name => entry_hash } }
+  # Exposed for specs that test classification directly.
+  attr_reader :cleanup_bindings
+
+  def initialize(fn_nodes:, schema_lookup:)
+    @fn_nodes = fn_nodes
+    @schema_lookup = schema_lookup
+    @cleanup_bindings = {}
+  end
+
+  # Computes plans, classifies bindings, inserts MIR nodes, and stamps AST.
+  # Phase 0 hoists heap-promoted temporaries (HPTs) into VarDecl nodes so that
+  # existing classify_binding + cleanup_bindings infrastructure handles their cleanup.
+  # PromotionClassifier must run before cleanup classification because its Phase 0
+  # (scan_for_hpt_downgrade) clears heap provenance on return sub-expressions
+  # that the classifier depends on.
+  def transform!(ast)
+    # E1: compute which functions return heap-owned values (fixed-point over call graph).
+    fn_nodes = EscapeAnalysis.compute_heap_return_fns!(@fn_nodes)
+
+    # E3a: propagate heap return_provenance to caller binding type_info.
+    # Must run before PromotionClassifier so HPT downgrade sees stable provenance.
+    EscapeAnalysis.tag_transitive_provenance!(@fn_nodes, fn_nodes)
+
+    # E3c: propagate caller arg sync into callee param SymbolEntry#sync.
+    # Runs after annotation has stamped local bindings; before classification
+    # passes that read sync (CleanupClassifier, mir_lowering).
+    EscapeAnalysis.propagate_caller_sync!(@fn_nodes)
+
+    # Phase 1: classify promotions for all functions.
+    # Must run before E2 so promotion_plans are available for :always_returned detection.
+    promotion_plans = {}
+    @fn_nodes.each do |name, fn|
+      promotion_plans[name] = PromotionClassifier.classify(fn, schema_lookup: @schema_lookup)
+    end
+
+    # E2: per-declaration escape scan.
+    # Applies all 6 escape conditions; replaces the upgrade_* methods below.
+    # Sets fn.heap_carry_return for E3b (tag_carry_call_sites!).
+    @bg_heap_upgraded = EscapeAnalysis.analyze!(
+      @fn_nodes, fn_nodes: fn_nodes, promotion_plans: promotion_plans
+    )
+
+    # E3b: stamp heap provenance on call-site expressions for carry-return functions.
+    # Runs after E2 because E2 sets fn.heap_carry_return on loop-carry functions.
+    EscapeAnalysis.tag_carry_call_sites!(@fn_nodes)
+
+    # Phase 2: set mark_per_iter on all loops so CleanupClassifier sees stable
+    # provenance before classification.
+    LoopFrameAnalysis.analyze!(@fn_nodes)
+
+    # Phase 2.5: classify cleanup bindings (uses finalized provenance from Phase 2).
+    @fn_nodes.each do |name, fn|
+      @cleanup_bindings[name] = CleanupClassifier.classify(fn, fn_nodes: @fn_nodes, schema_lookup: @schema_lookup)
+    end
+
+    # Phase 3: insert MIR nodes + stamp AST.
+    ast.statements.each do |stmt|
+      next unless stmt.is_a?(AST::FunctionDef) && stmt.body
+      transform_function!(stmt, promotion_plans[stmt.name])
+    end
+
+  end
+
+  private
+
+  def transform_function!(fn, promo)
+    bindings = @cleanup_bindings[fn.name]
+    has_bindings = bindings && !bindings.empty?
+    promo = nil if promo&.empty?
+
+    fn.has_promotion = true if promo
+
+    has_bg_escapes = body_has_bg_escape_promotes?(fn.body)
+    has_catch = fn.catch_clauses.is_a?(Array) && fn.catch_clauses.any?
+
+    # BG scope-exit annotation runs unconditionally: the function may have no
+    # bindings/promotions but still contain BG blocks returning frame values.
+    annotate_bg_exits_in_body!(fn.body)
+
+    return unless has_bindings || promo || has_bg_escapes || has_catch
+
+    # Borrow checking: verify no moves of borrowed variables inside WITH blocks.
+    bc_errors = BorrowChecker.check(fn, schema_lookup: @schema_lookup)
+    unless bc_errors.empty?
+      raise "[Borrow Error] #{bc_errors.first}"
+    end
+
+    # Pre-mark bindings captured by BG blocks as needing moved guards.
+    pre_mark_bg_resource_captures!(fn, bindings) if has_bindings
+
+    # Ownership dataflow refines cleanup decisions:
 ```

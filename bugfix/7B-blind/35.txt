@@ -1,13 +1,43 @@
 ```ruby
-def ensure_owned_value!(node, owner)
-  if node.is_a?(RDF::Literal)
-    node = RDF::Literal.new(node.value, datatype: node.datatype)
-  elsif node.is_a?(RDF::URI)
-    node = RDF::URI.new(node.value)
-  elsif node.is_a?(RDF::Node)
-    node = RDF::Node.new(node.value)
+def ensure_owned_value!(val_node, expected_type, container_desc = nil)
+  # Non-escaping values (WITH block aliases) cannot be stored in containers
+  if val_node.is_a?(AST::Identifier) && val_node.symbol&.non_escaping
+    error!(val_node, "Cannot store WITH-scoped '#{val_node.name}' into #{container_desc || 'a container'}. WITH bindings cannot escape their block.")
   end
-  node.owner = owner
-  node
+  return nil if val_node.is_a?(AST::CopyNode)
+  vti = val_node.type_info
+  vti = Type.new(vti) if vti && !vti.is_a?(Type)
+  return nil unless vti
+
+  if vti.list_collection?
+    # When the target field is also @list (ArrayList), skip CopyNode wrapping.
+    # The move mechanism will transfer the ArrayList struct directly.
+    # CopyNode produces a slice which is the wrong type for ArrayList fields.
+    et = expected_type.is_a?(Type) ? expected_type : nil
+    return nil if et&.list_collection?
+
+    copy = AST::CopyNode.new(val_node.token, val_node)
+    copy.full_type = expected_type.is_a?(Type) ? expected_type : Type.new(expected_type || :Any)
+    elem = vti.element_type
+    if elem
+      es = lookup_type_schema(elem.resolved) rescue nil
+      copy.deep_copy = es.is_a?(Hash) && es[:kind] == :union &&
+        (es[:variants] || {}).any? { |_, vt| Type.variant_has_heap?(vt) }
+    end
+    return copy
+  end
+
+  if vti.string? && vti.rodata?
+    copy = AST::CopyNode.new(val_node.token, val_node)
+    # provenance auto-inferred from location: :heap in Type constructor
+    copy.full_type = Type.new(Type::STRING_TYPE, location: :heap)
+    return copy
+  end
+
+  if vti.string? && val_node.is_a?(AST::Identifier) && container_desc
+    error!(val_node, "Cannot store string variable '#{val_node.name}' into #{container_desc} without COPY. Strings are frame-arena managed; use COPY for heap ownership.")
+  end
+
+  nil
 end
 ```

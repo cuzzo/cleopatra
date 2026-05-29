@@ -1,6 +1,205 @@
 File: src/backends/pipeline_host.rb
 Function: initialize
 
+Source file excerpt centered around `PipelineHost.initialize`:
+```ruby
+# ... file truncated before line 1; centered around PipelineHost.initialize lines 22-33 ...
+require "set"
+require_relative "./pipeline_generator"
+require_relative "./zig_type_mapper"
+require_relative "../mir/fiber_ctx_builder"
+
+# Lightweight host for PipelineGenerator that routes sub-expression
+# transpilation through MIRLowering + MIREmitter instead of the old
+# ZigTranspiler visit() dispatch.
+#
+# PipelineGenerator expects its host to provide:
+#   - visit(node) -> Zig string
+#   - transpile_type(type) -> Zig type string
+#   - @placeholder_name, @acc_placeholder, @soa_* state (via with_pipeline_context)
+#   - @join_param_map (managed internally by PipelineGenerator)
+#   - @fn_sigs (for catch snapshot detection in transpile_Smooth)
+class PipelineHost
+  include PipelineGenerator
+  include ZigTypeMapper
+
+  attr_accessor :fn_sigs
+
+  def initialize(lowering:, emitter:)
+    @emitter = emitter
+    @emitter = emitter
+    @fn_sigs = emitter.fn_sigs
+    # Pipeline context state (managed by with_pipeline_context)
+    @soa_rewrite_active = false
+    @soa_each_mode = false
+    @soa_needed_fields = Set.new
+    @mir_mode = false
+    # Named pipeline bindings: "@u" -> "__pipe_u" (persist across stages, cleared per-chain)
+    @named_bindings = {}
+  end
+
+  # Compute the Zig variable name for a CLEAR named pipeline binding.
+  # "@u" -> "__pipe_u", "@order" -> "__pipe_order"
+  def pipe_binding_zig_name(clear_name)
+    "__pipe_#{clear_name.delete_prefix('@')}"
+  end
+
+  # Conditional version of with_named_binding: registers the binding only
+  # if a name is provided, otherwise just calls the block. Used at the
+  # CONCURRENT lowering site where `list AS @u s> ...` provides a name
+  # but plain `list s> ...` does not.
+  def with_optional_named_binding(clear_name, zig_var, &blk)
+    return blk.call if clear_name.nil?
+    with_named_binding(clear_name, zig_var, &blk)
+  end
+
+  # Register a named pipeline binding for the duration of a block.
+  # Saves and restores previous value so nested bindings stack correctly.
+  def with_named_binding(clear_name, zig_var, &blk)
+    prev = @named_bindings[clear_name]
+    @named_bindings[clear_name] = zig_var
+    blk.call
+  ensure
+    if prev.nil?
+      @named_bindings.delete(clear_name)
+    else
+      @named_bindings[clear_name] = prev
+    end
+  end
+
+  # Delegate fiber capture map management to MIRLowering
+  def with_fiber_capture_map(new_entries, capture_symbols: nil, rt_override: "__rt", &blk)
+    @lowering.with_fiber_capture_map(new_entries, capture_symbols: capture_symbols, rt_override: rt_override, &blk)
+  end
+
+  # Delegate task_config_zig to MIRLowering (used by CONCURRENT pipeline operators)
+  def task_config_zig(stack_size, computed_tier = nil)
+    @lowering.send(:task_config_zig, stack_size, computed_tier)
+  end
+
+  # Route AST node -> Zig string, handling pipeline-specific nodes
+  # (Placeholder, SOA field rewrites) before general MIR lowering.
+  def visit(node)
+    # In MIR mode, return MIR nodes instead of Zig strings.
+    return visit_mir(node) if @mir_mode
+
+    # Placeholder: _ inside pipeline expression -> loop variable name
+    if node.is_a?(AST::Identifier) && node.name == "_" && @placeholder_name
+      return @placeholder_name
+    end
+
+    # Join param map: lambda param names -> Zig loop variables
+    if node.is_a?(AST::Identifier) && @join_param_map && @join_param_map[node.name]
+      return @join_param_map[node.name]
+    end
+
+    # Named pipeline binding: @u -> registered Zig var (e.g. "__pipe_u")
+    if node.is_a?(AST::Identifier) && !@named_bindings.empty? && @named_bindings.key?(node.name)
+      return @named_bindings[node.name]
+    end
+
+    # SOA field-slice rewrite: _.field -> __soa_field[__soa_i]
+    if @soa_rewrite_active && node.is_a?(AST::GetField) &&
+       node.target.is_a?(AST::Identifier) && node.target.name == "_"
+      @soa_needed_fields << node.field
+      return "__soa_#{node.field}[__soa_i]"
+    end
+
+    # SOA assignment rewrite: _.field = expr -> __soa_field[__soa_i] = expr
+    if @soa_rewrite_active && (node.is_a?(AST::BindExpr) || node.is_a?(AST::Assignment)) &&
+       node.name.is_a?(AST::GetField) && node.name.target.is_a?(AST::Identifier) &&
+       node.name.target.name == "_"
+      field = node.name.field
+      @soa_needed_fields << field
+      value = visit(node.value)
+      return "__soa_#{field}[__soa_i] = #{value};"
+    end
+
+    # Accumulator placeholder
+    if node.is_a?(AST::Identifier) && node.name == "acc" && @acc_placeholder
+      return @acc_placeholder
+    end
+
+    # Before sending to MIRLowering, substitute _ placeholders and join
+    # params in the AST tree. MIRLowering's lower() recurses on its own,
+    # so it won't call back to us for sub-expressions.
+    substituted = substitute_placeholders(node)
+
+    # Propagate shard-direct context so MIRLowering emits putDirect/getDirect
+    @lowering.shard_context = if @shard_direct_map
+      { map: @shard_direct_map, idx: @shard_direct_idx, key: @shard_direct_key }
+    end
+
+    # General case: lower to MIR, emit to Zig
+    mir_node = @lowering.lower(substituted)
+    @emitter.emit(mir_node)
+  end
+
+  # MIR-mode visit: returns MIR node instead of Zig string.
+  # Used by lower_* pipeline methods during MIR migration.
+  def visit_mir(node)
+    substituted = substitute_placeholders(node)
+    @lowering.lower(substituted)
+  end
+
+  # Lower an array of AST body statements to MIR nodes, with pipeline
+  # placeholder substitution. Used by side-effect operators (Tap, Each, Join)
+  # whose loop bodies contain multiple statements.
+  def visit_pipeline_body_mir(body_stmts, placeholder:)
+    with_pipeline_context(placeholder: placeholder) do
+      substituted = body_stmts.map { |stmt| substitute_placeholders(stmt) }
+      @lowering.lower_body(substituted)
+    end
+  end
+
+  private
+
+  # Check whether any statement in an AST array references the `_` placeholder.
+  # Used to decide whether to use `|__each_item|` vs `|_|` in while captures.
+  def ast_stmts_use_placeholder?(stmts)
+    stmts.any? { |s| ast_node_uses_placeholder?(s) }
+  end
+
+  def ast_node_uses_placeholder?(node)
+    return false unless node
+    return false if node.is_a?(String) || node.is_a?(Symbol) || node.is_a?(Numeric) ||
+                    node.is_a?(TrueClass) || node.is_a?(FalseClass)
+    return node.name == "_" if node.is_a?(AST::Identifier)
+    # Traverse known child fields that may contain sub-expressions/statements
+    [:left, :right, :value, :args, :object, :target, :index, :condition,
+     :then_branch, :else_branch, :do_branch, :body, :start, :finish].each do |field|
+      next unless node.respond_to?(field)
+      child = node.public_send(field)
+      case child
+      when Array  then return true if child.any? { |c| ast_node_uses_placeholder?(c) }
+      when NilClass, String, Symbol, Numeric, TrueClass, FalseClass, Hash then next
+      else return true if ast_node_uses_placeholder?(child)
+      end
+    end
+    false
+  end
+
+  # Recursively replace AST::Identifier("_") with the current placeholder name,
+  # and join param names with their Zig loop variable names.
+  # Returns the node (possibly modified) or a new synthetic Identifier.
+  def substitute_placeholders(node)
+    return node unless @placeholder_name || @acc_placeholder || @join_param_map || @soa_each_mode || !@named_bindings.empty?
+
+    # SOA EACH: _.field -> synthetic identifier __soa_field[__soa_i]
+    if @soa_each_mode && node.is_a?(AST::GetField) &&
+       node.target.is_a?(AST::Identifier) && node.target.name == "_"
+      @soa_needed_fields << node.field
+      new_id = AST::Identifier.new(node.token, "__soa_#{node.field}[__soa_i]")
+      copy_type_info(node, new_id)
+      return new_id
+    end
+
+    case node
+    when AST::Identifier
+      if node.name == "_" && @placeholder_name
+# ... file truncated after line 193; original file has 3275 lines ...
+```
+
 A new unit test was added and is failing.
 A new failing unit test was added; use it to understand expected behavior.
 
@@ -22,3 +221,4 @@ Something wrong in `initialize`. renamed variable: 'lowering' -> 'emitter'
 Fix it.
 
 Return ONLY the corrected function `initialize` in a ```ruby block.
+

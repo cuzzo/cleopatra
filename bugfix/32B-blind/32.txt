@@ -1,10 +1,8 @@
 ```ruby
-def collect_binding_moves(node, state, consumed)
-  # Existing code...
-
-  # Forgotten line to be added
+def collect_binding_moves(node, state)
+  return [] unless node
+  consumed = Set.new
   collect_ownership_transfers(node, state, consumed)
-
-  # Existing code...
+  consumed.to_a
 end
 ```

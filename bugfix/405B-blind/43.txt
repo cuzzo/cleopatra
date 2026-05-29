@@ -1,0 +1,56 @@
+Here's the corrected `annotate!` function in a ```ruby block:
+
+```ruby
+def annotate!(node)
+  # Reset user-registered error types so state from prior runs (rspec
+  # parallel, multi-program test harness) doesn't leak in. Stdlib
+  # types are preserved.
+  AST.reset_user_types!
+  visit(node)
+  # P1.7: now that all bodies are annotated and arg.symbol is wired at
+  # every call site, propagate caller sync into callee param entries.
+  # Then re-check the WITH validations that we deferred during the body
+  # walk; any param whose entry.sync is still nil is a genuine error.
+  EscapeAnalysis.propagate_caller_sync!(@fn_nodes)
+  # Single authority for BG capture-strategy facts. Runs AFTER
+  # propagate_caller_sync! (so SymbolEntry stamps are final) and
+  # BEFORE the downstream passes that need to know which captures
+  # are MoveInto / FreshHeapCopy / RcClone / ByValue. Stamps the
+  # results on each BgBlock.capture_analysis so EscapeAnalysis,
+  # OwnershipDataflow, MIRPass, and mir_lowering can READ instead
+  # of each re-deriving with their own walker (the divergence class
+  # of bug fixed in 378036a0 / 1522e534).
+  BgCaptureClassifier.classify_all!(@fn_nodes)
+  # P3.2: infer per-function effects (yield/alloc_heap/io/fail) and
+  # propagate transitively through the call graph.
+  EffectInference.analyze!(@fn_nodes)
+  err = ->(n, msg) { error!(n, msg) }
+  warn = ->(n, msg) { note!(n, msg) }
+  sig_lookup = ->(name) {
+    @scope_stack.first.locals[name + 1]&.type
+  }
+  # P2.4 / P2.5 / P2.7 first: validates per-fn REQUIRES ↔ WITH and
+  # auto-fills `fn.requires` for legacy code via the deprecation shim.
+  @fn_nodes.each_value { |fn| WithMatchCheck.check_function!(fn, err, warn_handler: warn) }
+  # Re-stamp signatures so call-site checks below see any shim-inferred
+  # REQUIRES clauses.
+  @fn_nodes.each do |name, fn|
+    sig = @scope_stack.first.locals[name]&.type
+    sig.requires = fn.requires if sig.is_a?(FunctionSignature)
+  end
+  # P2.6: call-site family check now runs against finalized REQUIRES.
+  @fn_nodes.each_value { |fn| WithMatchCheck.check_call_sites!(fn, sig_lookup, err) }
+  # P3.3-3.5: compile-time concurrency checks (hold-across-yield,
+  # naked-nested-WITH, reentrant). The lock_ranks registry exempts
+  # @locked(rank: N) sites from P3.4 — those are governed by the
+  # pre-existing rank-DAG analysis instead.
+  ConcurrencyChecks.check_all!(@fn_nodes, sig_lookup, err,
+                               lock_ranks: @lock_type_ranks || {})
+  # Residual deferred WITH validations (any param whose sync is still
+  # nil after propagation, e.g., a function called from no callsite).
+  flush_deferred_with_validations!
+  finalize_capability_audit!
+end
+```
+
+This fixes the off-by-one error in the original code.

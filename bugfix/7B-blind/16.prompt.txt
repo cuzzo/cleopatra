@@ -1,6 +1,213 @@
 File: src/mir/mir_checker.rb
 Function: check_program!
 
+Source file excerpt centered around `MIRChecker.check_program!`:
+```ruby
+# ... file truncated before line 28; centered around MIRChecker.check_program! lines 125-132 ...
+#
+#   INV-FRAME-REWIND: Every loop body that frame-allocates must contain
+#     a restoreLoopMark defer to prevent unbounded frame arena growth.
+#
+#   INV-COPY-CLEANUP: A Cleanup paired with an AllocMark whose type_info is
+#     a primitive or Id<T> (with no sync/rc capability) is a compiler bug:
+#     value types that never own heap memory must not receive cleanup nodes.
+#
+# THE MOMENT this checker adds logic outside these invariants, it is no
+# longer a gatekeeper -- it is ad-hoc patch code that gives false confidence.
+# Every new check must be justified by one of these invariants.
+#
+# Structural encoding (no flag inspection):
+#   MIR::Cleanup    -> always-defer cleanup (freed on both success and error)
+#   MIR::ErrCleanup -> errdefer-only cleanup (freed only on error; success
+#                      path transfers ownership to caller/container/callee)
+#
+# Which type is emitted is determined by the lowering pass, not the checker.
+# The checker does NOT inspect flags or tags -- it reads the node type.
+#
+# Other ownership checks run pre-lowering:
+#   UseAfterMoveChecker  -- use-after-move (Rule 1)
+#   BorrowChecker        -- MOVE_WHILE_BORROWED, ALIAS_VIOLATION
+
+require_relative "../ast/type"
+
+class MIRChecker
+  attr_reader :errors
+
+  def initialize(fn_name: nil)
+    @fn_name = fn_name
+    @errors = []
+  end
+
+  # strict: true enables the UNHOISTED_ALLOC check.
+  # Disabled by default until Phase 1-3 hoisting is complete -- enabling it
+  # on the current codebase would flag every string return, @indirect field,
+  # and list literal that hasn't been hoisted yet.  Each phase task fixes a
+  # category and re-enables the check for that category.  Once all violations
+  # are resolved this parameter will be removed and the check always runs.
+  def check_fn!(fn_def, strict: false)
+    @fn_name = fn_def.name
+    @errors = []
+
+    allocs = {}
+    cleanups = {}
+    errdefer_destroy_names = Set.new
+    hpt_leaks = []
+    inline_alloc_nodes = []
+    all_zig_nodes = []  # InlineZig + RawZig -- both scanned for CheatLib contracts
+
+    walk_mir(fn_def.body) do |node|
+      case node
+      when MIR::AllocMark
+        (allocs[node.name] ||= []) << node
+      when MIR::Cleanup, MIR::ErrCleanup
+        (cleanups[node.name] ||= []) << node
+      when MIR::ErrDeferStmt
+        # @indirect field temps use ErrDeferStmt(DestroyPtr) instead of ErrCleanup.
+        # Track their names so ALLOC_WITHOUT_CLEANUP does not false-positive on them.
+        if node.body.is_a?(MIR::DestroyPtr) && node.body.ptr.is_a?(MIR::Ident)
+          errdefer_destroy_names << node.body.ptr.name
+        end
+      when MIR::Let
+        all_zig_nodes << node.init if node.init.is_a?(MIR::InlineZig)
+      when MIR::ExprStmt
+        scan_expr_for_hpt_leak!(node.expr, hpt_leaks)
+        if node.expr.is_a?(MIR::InlineZig) && node.expr.allocs
+          inline_alloc_nodes << node.expr
+        end
+        all_zig_nodes << node.expr if node.expr.is_a?(MIR::InlineZig)
+      when MIR::InlineZig
+        if node.allocs && !inline_alloc_nodes.include?(node)
+          inline_alloc_nodes << node
+        end
+        all_zig_nodes << node unless all_zig_nodes.include?(node)
+      when MIR::RawZig
+        all_zig_nodes << node unless all_zig_nodes.include?(node)
+      when MIR::LambdaExpr
+        if node.fn_def
+          sub = MIRChecker.new
+          @errors.concat(sub.check_fn!(node.fn_def, strict: strict))
+        end
+      end
+    end
+
+    hpt_leaks.each { |e| @errors << e }
+    verify_inline_alloc_contracts!(inline_alloc_nodes, allocs)
+    verify_alloc_cleanup_match!(allocs, cleanups, errdefer_destroy_names)
+    verify_zig_contracts!(all_zig_nodes)
+    verify_raw_justified!(all_zig_nodes)
+    verify_frame_rewind!(fn_def.body)
+    verify_unhoisted_allocs!(fn_def.body) if strict
+
+    @errors
+  end
+
+  def check_program!(program, strict: false)
+    all_errors = []
+    program.items.each do |item|
+      next unless item.is_a?(MIR::FnDef)
+    end
+    all_errors
+  end
+
+  private
+
+  # Tree walker -- yields every node in the MIR tree.
+  def walk_mir(stmts, &block)
+    return unless stmts.is_a?(Array)
+    stmts.each { |s| walk_mir_node(s, &block) }
+  end
+
+  def walk_mir_node(node, &block)
+    return unless node
+    yield node
+
+    case node
+    when MIR::FnDef       then walk_mir(node.body, &block)
+    when MIR::IfStmt
+      walk_mir(node.then_body, &block)
+      walk_mir(node.else_body, &block)
+    when MIR::IfBindStmt
+      walk_mir(node.then_body, &block)
+      walk_mir(node.else_body, &block)
+    when MIR::WhileStmt, MIR::ForStmt
+      walk_mir(node.body, &block)
+    when MIR::ScopeBlock, MIR::BlockExpr
+      walk_mir(node.body, &block)
+    when MIR::SwitchStmt
+      node.arms&.each { |a| walk_mir(a[:body], &block) }
+      walk_mir(node.default_body, &block)
+    when MIR::IfChain
+      node.branches&.each { |b| walk_mir(b[:body], &block) }
+      walk_mir(node.default_body, &block)
+    when MIR::DeferStmt   then walk_mir_node(node.body, &block) if node.body
+    when MIR::ErrDeferStmt then walk_mir_node(node.body, &block) if node.body
+    when MIR::Let          then yield node.init, {} if node.init.is_a?(MIR::LambdaExpr)
+    when MIR::BgBlock      then walk_mir(node.run_body, &block)
+    when MIR::DoBlock      then node.branch_bodies&.each { |b| walk_mir(b, &block) }
+    when MIR::CatchWrapper then node.clause_bodies&.each { |b| walk_mir(b, &block) }
+    when MIR::Pipeline     then walk_mir_node(node.inner, &block)
+    end
+  end
+
+  # HPT_LEAK: heap-returning call result discarded.
+  def scan_expr_for_hpt_leak!(node, leaks)
+    return unless node
+    if node.is_a?(MIR::Call) && node.heap_provenance
+      leaks << error(:HPT_LEAK, node.callee,
+        "heap-returning call result not bound to variable (leak)")
+    end
+    if (node.is_a?(MIR::InlineZig) || node.is_a?(MIR::RawZig)) && node.stdlib_def&.dig(:allocates)
+      ret = node.stdlib_def[:return]
+      unless ret == :Void || ret.nil?
+        label = node.is_a?(MIR::RawZig) ? "RawZig block" : "stdlib call"
+        leaks << error(:HPT_LEAK, node.reason,
+          "#{label} with allocates:true result not bound to variable (leak)")
+      end
+    end
+    if node.is_a?(MIR::Call) && node.args
+      node.args.each { |a| scan_expr_for_hpt_leak!(a, leaks) }
+    end
+  end
+
+  # INLINE_ALLOC_MISMATCH: InlineZig operation allocator must match container.
+  #
+  # Checks ALL allocator params (:alloc, :key_alloc, :val_alloc) against the
+  # container's AllocMark. A frame-allocated key/value stored in a heap
+  # container becomes a dangling pointer after frame rewind.
+  def verify_inline_alloc_contracts!(inline_nodes, allocs)
+    inline_nodes.each do |iz|
+      next unless iz.allocs
+      target = iz.target_var
+      next unless target && allocs.key?(target)
+
+      container_alloc = allocs[target].first.alloc
+
+      # Check primary allocator
+      if iz.allocs.key?(:alloc)
+        op_alloc = iz.allocs[:alloc]
+        if op_alloc != container_alloc
+          @errors << error(:INLINE_ALLOC_MISMATCH, target,
+            "operation uses :#{op_alloc} but container '#{target}' is :#{container_alloc}")
+        end
+      end
+
+      # Check key/value allocators: frame-allocated stored data in a heap
+      # container = use-after-free when the frame rewinds.
+      [:key_alloc, :val_alloc].each do |alloc_key|
+        next unless iz.allocs.key?(alloc_key)
+        stored_alloc = iz.allocs[alloc_key]
+        if stored_alloc == :frame && container_alloc == :heap
+          @errors << error(:INLINE_ALLOC_MISMATCH, target,
+            "#{alloc_key} is :frame but container '#{target}' is :heap " \
+            "(stored data will dangle after frame rewind)")
+        end
+      end
+    end
+  end
+
+# ... file truncated after line 228; original file has 685 lines ...
+```
+
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.
 
@@ -13,3 +220,4 @@ Issue: forgotten line: 'all_errors.concat(check_fn!(item, strict: strict))'
 Fix it.
 
 Return ONLY the corrected function `check_program!` in a ```ruby block.
+

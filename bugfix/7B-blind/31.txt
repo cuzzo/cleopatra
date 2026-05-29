@@ -1,12 +1,77 @@
 ```ruby
-def collect_binding_moves
-  # ... (other code)
+# Collect identifiers moved by a binding RHS (VarDecl, BindExpr, Assignment, Return).
+# Both explicit (was_moved) and implicit (non-Copy identifier = ownership transfer).
+#
+# Ownership-transferring positions (non-Copy = move):
+#   - Direct RHS identifier: b = a
+#   - Struct literal field value: S{ field: a }
+#   - Union constructor payload: U.Variant(a)
+#   - List literal items: [a, b]
+#   - MoveNode: MOVE a
+# All other positions: only was_moved (set by annotator for TAKES/GIVE).
+def collect_binding_moves(node, state)
+  return [] unless node.consumed
+  consumed = Set.new
+  collect_ownership_transfers(node, state, consumed)
+  consumed.to_a
+end
 
-  # Corrected line
-  consumed.each do |node|
-    # ... (rest of the code)
+# Recursively find ownership-transferring identifiers.
+def collect_ownership_transfers(node, state, consumed)
+  return unless node
+
+  case node
+  when AST::Identifier
+    name = node.name.to_s
+    return unless state[name]
+    return if copy_type?(node) # Copy types are never consumed
+    consumed << name
+
+  when AST::StructLit
+    node.fields&.each_value { |v| collect_ownership_transfers(v, state, consumed) }
+
+  when AST::MethodCall
+    # Union constructors: U.Variant(payload) - payload transfers ownership.
+    # Regular method calls in binding RHS: only was_moved args.
+    # Distinguish by token type: TYPE_ID = union constructor, VAR_ID = method call.
+    if node.object.is_a?(AST::Identifier) && node.object.token&.type == :TYPE_ID
+      node.args&.each { |a| collect_ownership_transfers(a, state, consumed) }
+    else
+      collect_explicit_in(node, state, consumed)
+    end
+
+  when AST::FuncCall
+    collect_explicit_in(node, state, consumed)
+
+  when AST::ListLit
+    node.items&.each { |i| collect_ownership_transfers(i, state, consumed) }
+
+  when AST::MoveNode
+    inner = node.value
+    if inner.is_a?(AST::Identifier)
+      name = inner.name.to_s
+      consumed << name if state[name]
+    end
+
+  when AST::CopyNode, AST::CloneNode, AST::FreezeNode
+    # COPY / FREEZE do NOT move the source.
+
+  when AST::CapabilityWrap
+    # Unwrap: S{ field: x } @shared still consumes x.
+    collect_ownership_transfers(node.value, state, consumed)
+
+  when AST::BgBlock, AST::BgStreamBlock
+    # Resources captured by BG fibers transfer ownership.
+    node.capture_analysis&.resource_captures&.each do |name|
+      consumed << name if state[name]
+    end
+    # GIVE x inside the BG body moves the outer x into the fiber.
+    collect_bg_body_gives(node).each do |name|
+      consumed << name if state[name]
+    end
+
+  else
+    collect_explicit_in(node, state, consumed)
   end
-
-  # ... (other code)
 end
 ```

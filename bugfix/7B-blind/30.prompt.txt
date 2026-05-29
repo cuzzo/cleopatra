@@ -1,6 +1,205 @@
 File: src/annotator.rb
 Function: visit_WhileLoop
 
+Source file excerpt centered around `SemanticAnnotator.visit_WhileLoop`:
+```ruby
+# ... file truncated before line 1335; centered around SemanticAnnotator.visit_WhileLoop lines 1397-1465 ...
+
+    # 2. Analyze body in new scope with loop variable declared as immutable Int64
+    if current_fn_ctx then current_fn_ctx.loop_depth += 1 else @loop_depth += 1 end
+    analyze_control_flow_branches([
+      proc {
+        current_scope.declare(node.var_name, nil, :Int64, false, false, nil, :stack)
+        node.symbol = current_scope.locals[node.var_name]
+        classify_ownership!(node.symbol)
+        visit_stmts(node.body)
+        finalize_scope(node)
+        node.deferred_drops
+      }
+    ], merge_to_parent: false)
+    if current_fn_ctx then current_fn_ctx.loop_depth -= 1 else @loop_depth -= 1 end
+
+    # 4. TIGHT validation (same as WhileLoop).
+    if node.tight
+      validate_tight_body!(node.body, node)
+    end
+
+    # mark_per_iter is set by LoopFrameAnalysis in Pass 2, after CleanupClassifier
+    # has finalized every binding's allocator.
+    node.mark_per_iter = false
+
+    node.full_type = :Void
+  end
+
+  def visit_ForEach(node)
+    # 1. Visit collection to determine element type
+    visit(node.collection)
+    coll_type = node.collection.full_type
+    ct = coll_type.is_a?(Type) ? coll_type : Type.new(coll_type)
+
+    # Determine element type from collection
+    elem_type = if ct.array? || ct.list_collection?
+      ct.element_type || ct.value_type || :Any
+    elsif ct.map?
+      # FOR k IN map iterates over keys (strings)
+      :String
+    else
+      error!(node, "FOR ... IN requires an array, list, or map, got #{coll_type}")
+    end
+
+    elem_sym = elem_type.is_a?(Type) ? elem_type.resolved : elem_type
+
+    # 2. Analyze body with loop variable
+    if current_fn_ctx then current_fn_ctx.loop_depth += 1 else @loop_depth += 1 end
+    analyze_control_flow_branches([
+      proc {
+        current_scope.declare(node.var_name, nil, elem_sym, node.is_mutable == true, false, nil, :stack)
+        node.symbol = current_scope.locals[node.var_name]
+        classify_ownership!(node.symbol)
+        visit_stmts(node.body)
+        finalize_scope(node)
+        node.deferred_drops
+      }
+    ], merge_to_parent: false)
+    if current_fn_ctx then current_fn_ctx.loop_depth -= 1 else @loop_depth -= 1 end
+
+    node.full_type = :Void
+  end
+
+  def visit_WhileLoop(node)
+    # 1. Analyze Condition
+    node(node.condition)
+
+    if node.condition.resolved_type != :Bool
+      error!(node, "Condition must be a Boolean, got #{node.condition.resolved_type}")
+    end
+
+    # Effect tracking: WHILE TRUE or any non-trivially-bounded loop.
+    if node.condition.is_a?(AST::Identifier) && node.condition.name == "TRUE"
+      record_effect(EffectTracker::LOOP_UNBOUND)
+    elsif node.condition.is_a?(AST::Literal) && node.condition.value == true
+      record_effect(EffectTracker::LOOP_UNBOUND)
+    end
+
+    # 2. Analyze Body in a New Scope AND increment loop depth
+    if current_fn_ctx then current_fn_ctx.loop_depth += 1 else @loop_depth += 1 end
+
+    # We use analyze_control_flow_branches to handle state merging and drops.
+    # Note: For a loop, if a variable dies in the body, it dies for the next iteration (merged to parent).
+    pre_loop_states = @og&.fork_lightweight
+
+    analyze_control_flow_branches([
+      proc {
+        if node.do_branch.is_a?(Array)
+          visit_stmts(node.do_branch)
+        else
+          node(node.do_branch)
+        end
+        finalize_scope(node)
+
+        # Post-analysis check for loop-specific errors (use of moved value in next iteration)
+        # Copyable types (primitives, strings, slices, unions) are exempt — they're copied implicitly.
+        # Variables not referenced in the loop body are also exempt — they were moved before the
+        # loop (e.g. MATCH struct bindings with field extraction) and aren't consumed by iteration.
+        loop_body_names = collect_body_identifier_names(node.do_branch)
+        current_scope.locals.each do |name, _entry|
+          was_live = pre_loop_states&.dig(:node_states, name) == :live
+          is_moved = @og&.moved?(name)
+          if was_live && is_moved
+            next unless loop_body_names.include?(name)
+            var_type = current_scope.locals[name]&.type
+            type_obj = var_type.is_a?(Type) ? var_type : Type.new(var_type.to_s)
+            is_copy = type_obj.implicitly_copyable? { |t| lookup_type_schema(t) }
+            unless is_copy
+              error!(node, "Use of moved value '#{name}' in loop. The variable is moved in the first iteration and not available for the next.")
+            end
+          end
+        end
+        node.deferred_drops
+      }
+    ], merge_to_parent: false)
+
+    if current_fn_ctx then current_fn_ctx.loop_depth -= 1 else @loop_depth -= 1 end
+
+    # 4. TIGHT validation: deep-scan the entire loop body AST (including nested
+    # if/while/match blocks) for direct calls to @reentrant or EXTERN FN functions.
+    # Does NOT recurse into bodies of called CLEAR functions — those are separate
+    # compilation units and their internal behaviour is their own concern.
+    if node.tight
+      validate_tight_body!(node.do_branch, node)
+    end
+
+    # mark_per_iter is set by LoopFrameAnalysis in Pass 2, after CleanupClassifier
+    # has finalized every binding's allocator.
+    node.mark_per_iter = false
+
+    node.full_type = :Void
+  end
+
+  def visit_WhileBindLoop(node)
+    visit(node.condition)
+    ti = node.condition.type_info
+    unless ti&.optional?
+      error!(node.condition, "WHILE ... AS binding requires an optional type, got '#{node.condition.resolved_type}'")
+    end
+
+    unwrapped = ti.wrapped_type
+    if node.condition.is_a?(AST::ResolveNode) && (ti.multiowned? || ti.shared?)
+      unwrapped.ownership = ti.ownership
+      unwrapped.link_source = ti.link_source
+    end
+
+    if current_fn_ctx then current_fn_ctx.loop_depth += 1 else @loop_depth += 1 end
+
+    pre_loop_states = @og&.fork_lightweight
+
+    # Footgun guard: a MethodCall on an immutable receiver cannot advance the
+    # loop condition and will loop forever.  RESOLVE is a ResolveNode (not a
+    # MethodCall) and is safe; mutable receivers may mutate state each iteration.
+    cond = node.condition
+    if cond.is_a?(AST::MethodCall)
+      recv = cond.object
+      if recv.is_a?(AST::Identifier) && current_scope.is_immutable?(recv.name)
+        error!(node, "WHILE ... AS binding: '#{cond.name}' is called on immutable '#{recv.name}' -- the condition cannot advance and may loop forever. Declare '#{recv.name}' as MUTABLE or use a regular WHILE loop.")
+      end
+    end
+
+    analyze_control_flow_branches([
+      proc {
+        current_scope.declare(node.binding_name, nil, unwrapped, false, false, nil, :stack)
+        entry = current_scope.locals[node.binding_name]
+        classify_ownership!(entry)
+        og_declare(node.binding_name.to_s, nil, unwrapped)
+
+        visit_stmts(node.do_branch)
+        finalize_scope(node)
+
+        loop_body_names = collect_body_identifier_names(node.do_branch)
+        current_scope.locals.each do |name, _entry|
+          next if name == node.binding_name
+          was_live = pre_loop_states&.dig(:node_states, name) == :live
+          is_moved = @og&.moved?(name)
+          if was_live && is_moved
+            next unless loop_body_names.include?(name)
+            var_type = current_scope.locals[name]&.type
+            type_obj = var_type.is_a?(Type) ? var_type : Type.new(var_type.to_s)
+            is_copy = type_obj.implicitly_copyable? { |t| lookup_type_schema(t) }
+            unless is_copy
+              error!(node, "Use of moved value '#{name}' in loop.")
+            end
+          end
+        end
+        node.deferred_drops
+      }
+    ], merge_to_parent: false)
+
+    if current_fn_ctx then current_fn_ctx.loop_depth -= 1 else @loop_depth -= 1 end
+
+    node.mark_per_iter = false
+    node.full_type = :Void
+# ... file truncated after line 1527; original file has 4490 lines ...
+```
+
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.
 
@@ -12,3 +211,4 @@ CI broken.
 Fix the bug.
 
 Return ONLY the corrected function `visit_WhileLoop` in a ```ruby block.
+

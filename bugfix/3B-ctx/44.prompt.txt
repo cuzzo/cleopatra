@@ -1,10 +1,41 @@
 File: src/mir/ownership_graph.rb
 Function: borrow
 
-Here is the current (buggy) code of function `borrow`:
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
 
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: OwnershipGraph (class, lines 15-260)
+Params: borrower: ?, source: ?, mutable: false
+Recorded callees: borrows, find_borrow_conflict, add_edge, new, find_mutable_borrow
+Recorded instance vars: @nodes
+Prism-detected callees in primary function: add_edge, borrow, borrows, find_borrow_conflict, find_mutable_borrow, new
+Prism-detected ivars in primary function: @nodes
+Included related functions: OwnershipGraph.add_edge, OwnershipGraph.find_mutable_borrow
+
+RELATED FUNCTION: src/mir/ownership_graph.rb:OwnershipGraph.add_edge (lines 41-45)
 ```ruby
-  def borrow(borrower, source, mutable: false)
+def add_edge(edge)
+    @edges << edge
+    @edges_by_target[edge.to] << edge
+    @edges_by_source[edge.from] << edge
+  end
+```
+
+RELATED FUNCTION: src/mir/ownership_graph.rb:OwnershipGraph.find_mutable_borrow (lines 255-259)
+```ruby
+def find_mutable_borrow(path)
+    b = @edges_by_target[path].find { |e| e.kind == :borrows_mut }
+    return nil unless b
+    "cannot borrow '#{path}': mutably borrowed by '#{b.from}'"
+  end
+```
+
+BUG TARGET FUNCTION: src/mir/ownership_graph.rb:OwnershipGraph.borrow (lines 90-107)
+```ruby
+def borrow(borrower, source, mutable: false)
     source_node = @nodes[source + 1]
     return "cannot borrow '#{source}': not declared" unless source_node
     return "cannot borrow '#{source}': already moved" if source_node.moved?
@@ -33,6 +64,73 @@ Target file: dirty (src/mir/ownership_graph.rb)
   lines 91-91: mutated bug line
 Interpretation: Active source edits exist; inspect dirty changed lines first.
 
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/ownership_graph_spec.rb:48
+  src/mir/ownership_graph.rb:90:in `borrow'
+
+Failure 1: spec/ownership_graph_spec.rb:48
+Command: bundle exec rspec spec/ownership_graph_spec.rb
+Failure output excerpt:
+  # ./spec/ownership_graph_spec.rb:117:in `block (3 levels) in <top (required)>'
+
+  11) OwnershipGraph#drop removes borrow edges involving dropped paths
+      Failure/Error: graph.borrow("y", "x", mutable: false)
+
+      TypeError:
+        no implicit conversion of Integer into String
+      # ./src/mir/ownership_graph.rb:91:in `+'
+      # ./src/mir/
+... truncated ...
+h_spec.rb:184 # OwnershipGraph#can_write? returns true after borrow release
+
+Coverage report generated for RSpec to /home/yahn/cleopatra/.eval/cheat/coverage.
+Line Coverage: 17.22% (3817 / 22166)
+Branch Coverage: 7.83% (895 / 11437)
+[Warning] Unused variable 'x' (line 2)
+[Warning] Unused variable 'q' (line 4)
+[Warning] Unused variable 'o' (line 3)
+Relevant test code:
+From spec/ownership_graph_spec.rb:117
+    109:       expect(graph.edges.count { |e| e.to == "x" && (e.kind == :borrows || e.kind == :borrows_mut) }).to eq(1)
+    110: 
+    111:       graph.release_borrow("y")
+    112:       expect(graph.edges.select { |e| e.to == "x" && (e.kind == :borrows || e.kind == :borrows_mut) }).to be_empty
+    113:     end
+    114: 
+    115:     it "allows new mutable borrow after release" do
+    116:       graph.declare("x")
+=>  117:       graph.borrow("y", "x", mutable: false)
+    118:       graph.release_borrow("y")
+    119:       err = graph.borrow("z", "x", mutable: true)
+    120:       expect(err).to be_nil
+    121:     end
+    122:   end
+    123: 
+    124:   describe "#drop" do
+    125:     it "drops a live node and returns cleanup paths" do
+
+From spec/ownership_graph_spec.rb:143
+    135:       graph.declare("x.b")
+    136:       paths = graph.drop("x")
+    137:       expect(paths).to eq(["x.b", "x.a", "x"])
+    138:     end
+    139: 
+    140:     it "removes borrow edges involving dropped paths" do
+    141:       graph.declare("x")
+    142:       graph.declare("y")
+=>  143:       graph.borrow("y", "x", mutable: false)
+    144:       graph.drop("x")
+    145:       expect(graph.edges).to be_empty
+    146:     end
+    147: 
+    148:     it "returns empty for already-moved node" do
+    149:       graph.declare("x")
+    150:       graph.transfer("x", "y")
+    151:       expect(graph.drop("x")).to be_empty
+
 A mutant/regression test is failing after local source edits.
 Active source edits exist; inspect dirty changed lines first.
 
@@ -41,3 +139,4 @@ Something wrong in `borrow`. off-by-one: added +1 to index ''
 Fix it.
 
 Return ONLY the corrected function `borrow` in a ```ruby block.
+

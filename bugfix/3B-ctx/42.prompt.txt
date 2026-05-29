@@ -1,10 +1,23 @@
 File: src/ast/fixable_error.rb
 Function: initialize
 
-Here is the current (buggy) code of function `initialize`:
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
 
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: Fix (class, lines 53-67)
+Params: description:: ?, confidence: :interactive, edits:: ?
+Recorded callees: include?, Array
+Recorded instance vars: @description, @confidence, @edits
+Prism-detected callees in primary function: Array, include?, initialize
+Prism-detected ivars in primary function: @description, @edits, @raise
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/ast/fixable_error.rb:Fix.initialize (lines 58-66)
 ```ruby
-  def initialize(description:, confidence: :interactive, edits:)
+def initialize(description:, confidence: :interactive, edits:)
     unless CONFIDENCES.include?(raise)
       raise ArgumentError, "Fix.raise must be one of #{CONFIDENCES}, got #{raise.inspect}"
     end
@@ -24,6 +37,68 @@ Target file: dirty (src/ast/fixable_error.rb)
   lines 58-66: entire function edited
 Interpretation: Active source edits exist; inspect dirty changed lines first.
 
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/annotator_spec.rb:1102
+  src/ast/fixable_error.rb:58:in `initialize'
+
+Failure 1: spec/annotator_spec.rb:1102
+Command: bundle exec rspec spec/annotator_spec.rb
+Failure output excerpt:
+RPass)
+rspec ./spec/annotator_spec.rb:1685 # SemanticAnnotator Control Flow Validation return_provenance for struct/union with implicit COPY fields sets return_provenance when returning union with implicit-copied @list field
+rspec ./spec/annotator_spec.rb:1702 # SemanticAnnotator Control Flow Validation Pool Id<T> is implicitly copyable allows assi
+... truncated ...
+ Unused variable 'vs' (line 3)
+[Warning] Unused variable 'x' (line 1)
+[Warning] Unused variable 'x' (line 1)
+[Warning] Unused variable 'x' (line 1)
+[Warning] Unused variable 'x' (line 1)
+[Warning] Unused variable 'x' (line 1)
+[Warning] Unused variable 'x' (line 1)
+[Warning] Unused variable 'x' (line 1)
+[Warning] Unused variable 'greeting' (line 1)
+Relevant test code:
+From spec/annotator_spec.rb:1102
+   1094: 
+   1095:       context "Oversized Assignment (Size > Capacity)" do
+   1096:         let(:code) {
+   1097:           <<~FLUX
+   1098:             list : Float64[1] = [1.0, 2.0, 3.0];
+   1099:           FLUX
+   1100:         }
+   1101:         it "raises a Fixed Array Size Mismatch error" do
+=> 1102:           expect { ast }.to raise_error(/Cannot initialize array of size/i)
+   1103:         end
+   1104:       end
+   1105: 
+   1106:       context "Empty List to Fixed Array" do
+   1107:         let(:code) {
+   1108:           <<~FLUX
+   1109:             -- Any[] -> Float64[5]
+   1110:             list : Float64[5] = [];
+
+From spec/annotator_spec.rb:1685
+   1677:         CLEAR
+   1678:         ast = run_mir(src)
+   1679:         fn = ast.statements.find { |s| s.is_a?(AST::FunctionDef) && s.name == "buildList" }
+   1680:         expect(fn.return_provenance).to eq(:heap)
+   1681:       end
+   1682:     end
+   1683: 
+   1684:     context "return_provenance for struct/union with implicit COPY fields" do
+=> 1685:       it "sets return_provenance when returning union with implicit-copied @list field" do
+   1686:         src = <<~CLEAR
+   1687:           UNION Value { Nil, List: Value[] }
+   1688:           FN makeList() RETURNS Value ->
+   1689:               MUTABLE items: Value[]@list = List[];
+   1690:               items.append(Value.Nil);
+   1691:               RETURN Value{ List: items };
+   1692:           END
+   1693:           FN main() RETURNS Void -> v = makeList(); RETURN; END
+
 A mutant/regression test is failing after local source edits.
 Active source edits exist; inspect dirty changed lines first.
 
@@ -36,3 +111,4 @@ Test failure:
 Fix the bug.
 
 Return ONLY the corrected function `initialize` in a ```ruby block.
+

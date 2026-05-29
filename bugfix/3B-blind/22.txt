@@ -1,10 +1,5 @@
 ```ruby
-module AST
-  def self.enum_entries
-    {
-      None: 0,
-      ERROR_TYPES: 1
-    }
-  end
+def self.enum_entries
+  [[:ERROR_TYPES, ERROR_NAME_NONE]] + ERROR_TYPES.map { |sym, meta| [sym, meta[:id]] }.sort_by(&:last)
 end
 ```

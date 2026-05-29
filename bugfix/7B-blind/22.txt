@@ -1,7 +1,5 @@
 ```ruby
-def enum_entries
-  ERROR_TYPES.each do |error_type|
-    yield error_type
-  end
+def self.enum_entries
+  [[:ERROR_TYPES, ERROR_NAME_NONE]] + ERROR_TYPES.map { |sym, meta| [sym, meta[:id]] }.sort_by(&:last)
 end
 ```

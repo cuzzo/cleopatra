@@ -1,16 +1,28 @@
 File: src/ast/type.rb
 Function: provenance_alloc
 
-Here is the current (buggy) code of function `provenance_alloc`:
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
 
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: Type (class, lines 4-1633)
+Params: (none recorded)
+Recorded callees: (none)
+Recorded instance vars: @provenance
+Prism-detected callees in primary function: (none)
+Prism-detected ivars in primary function: @provenance
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/ast/type.rb:Type.provenance_alloc (lines 406-411)
 ```ruby
-  def provenance_alloc
+def provenance_alloc
     case @provenance
     when :heap  then :heap
     else nil
     end
   end
-
 ```
 
 ============================================================
@@ -24,6 +36,79 @@ Target file: dirty (src/ast/type.rb)
   lines 411-411: mutated bug line
 Interpretation: Active source edits exist; inspect dirty changed lines first.
 
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/type_provenance_spec.rb:22
+  src/ast/type.rb:406:in `provenance_alloc'
+
+Failure 1: spec/type_provenance_spec.rb:22
+Command: bundle exec rspec spec/type_provenance_spec.rb
+Failure output excerpt:
+Run options: exclude {:integration=>true}
+..F...
+
+Failures:
+
+  1) Type provenance can be set to :frame
+     Failure/Error: expect(t.provenance_alloc).to eq(:frame)
+
+       expected: :frame
+            got: nil
+
+       (compared using ==)
+     # ./spec/type_provenance_spec.rb:22:in `block (2 levels) in <top (required)>'
+
+Finished in 0.00553 seconds (files took 0.11196 seconds to load)
+6 examples, 1 failure
+
+Failed examples:
+
+rspec ./spec/type_provenance_spec.rb:18 # Type provenance can be set to :frame
+
+Coverage report generated for RSpec to /home/yahn/cleopatra/.eval/cheat/coverage.
+Line Coverage: 0.77% (224 / 29163)
+Branch Coverage: 2.71% (18 / 663)
+Relevant test code:
+From spec/type_provenance_spec.rb:22
+     14:     expect(t.heap_provenance?).to be false
+     15:     expect(t.frame_provenance?).to be false
+     16:   end
+     17: 
+     18:   it "can be set to :frame" do
+     19:     t = Type.new(:String)
+     20:     t.provenance = :frame
+     21:     expect(t.frame_provenance?).to be true
+=>   22:     expect(t.provenance_alloc).to eq(:frame)
+     23:   end
+     24: 
+     25:   it "can be set to :heap" do
+     26:     t = Type.new(:String)
+     27:     t.provenance = :heap
+     28:     expect(t.heap_provenance?).to be true
+     29:     expect(t.provenance_alloc).to eq(:heap)
+     30:   end
+
+From spec/type_provenance_spec.rb:18
+     10:   it "can be set to :rodata" do
+     11:     t = Type.new(:String)
+     12:     t.provenance = :rodata
+     13:     expect(t.rodata_provenance?).to be true
+     14:     expect(t.heap_provenance?).to be false
+     15:     expect(t.frame_provenance?).to be false
+     16:   end
+     17: 
+=>   18:   it "can be set to :frame" do
+     19:     t = Type.new(:String)
+     20:     t.provenance = :frame
+     21:     expect(t.frame_provenance?).to be true
+     22:     expect(t.provenance_alloc).to eq(:frame)
+     23:   end
+     24: 
+     25:   it "can be set to :heap" do
+     26:     t = Type.new(:String)
+
 A mutant/regression test is failing after local source edits.
 Active source edits exist; inspect dirty changed lines first.
 
@@ -35,3 +120,4 @@ CI broken.
 Fix the bug.
 
 Return ONLY the corrected function `provenance_alloc` in a ```ruby block.
+

@@ -1,9 +1,9 @@
 ```ruby
 def [](key)
-  if key.is_a?(Integer)
-    @fields[key]
+  if key == :return
+    { type: @return_type, lifetime: @return_lifetime }
   elsif FIELD_MAP.key?(key)
-    @fields[FIELD_MAP[key]]
+    send(FIELD_MAP[key])
   else
     nil
   end

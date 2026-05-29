@@ -1,6 +1,5 @@
 ```ruby
-def [](index)
-  # Corrected the off-by-one error by removing the +1 from the index
-  @graph[index]
+def [](path)
+  @nodes[path]
 end
 ```

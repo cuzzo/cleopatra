@@ -1,6 +1,234 @@
 File: src/ast/parser.rb
 Function: parse_fn_type_annotation
 
+Source file excerpt centered around `Parser.parse_fn_type_annotation`:
+```ruby
+# ... file truncated before line 2032; centered around Parser.parse_fn_type_annotation lines 2128-2159 ...
+  def parse_sigil_construct
+    percent_token = consume(:PERCENT)
+    # % is now a no-op for storage: escape analysis and declared types determine heap vs stack.
+    lit = parse_lit(:stack)
+    return parse_suffixes(lit) if !lit.nil?
+    if match?(:CHAR, '(')
+      params = parse_argument_list()
+      captures = []
+      if match!(:KEYWORD, 'USE')
+        captures = parse_argument_list()
+      end
+      consume(:ARROW, '->')
+      body = parse_expression
+      return AST::LambdaLit.new(percent_token, params, captures, body, :stack, nil)
+    end
+  end
+
+  # REDUCE(initial_value) expression
+  # e.g., myList s> REDUCE(0) acc + _.value
+  def parse_reduce_op
+    reduce_token = consume(:KEYWORD, 'REDUCE')
+    consume(:CHAR, '(')
+    initial_value = parse_expression
+    consume(:CHAR, ')')
+    body = parse_expression
+    AST::ReduceOp.new(reduce_token, initial_value, body)
+  end
+
+  # RECOVER(default_expr) — pipeline error recovery
+  def parse_recover_op
+    tok = consume(:KEYWORD, 'RECOVER')
+    consume(:CHAR, '(')
+    default_expr = parse_expression
+    consume(:CHAR, ')')
+    AST::RecoverOp.new(tok, default_expr)
+  end
+
+  # WINDOW(size) expression        -- sliding window (positional arg)
+  # WINDOW(size: N, time: 'Xms')  -- batch/tumbling window (named args)
+  # e.g., prices s> WINDOW(3) SUM(_) / 3.0
+  # e.g., stream s> WINDOW(size: 100) SELECT process(_)
+  # e.g., stream s> WINDOW(size: 100, time: '500ms') EACH { ... }
+  def parse_window_op
+    window_token = consume(:KEYWORD, 'WINDOW')
+    consume(:CHAR, '(')
+    # Named-param form (BatchWindowOp) if first token is VAR_ID followed by ':'
+    if match?(:VAR_ID) && peek.type == :CHAR && peek.value == ':'
+      options = {}
+      loop do
+        key_tok = consume(:VAR_ID)
+        consume(:CHAR, ':')
+        val = parse_expression
+        options[key_tok.value] = val
+        break unless match?(:CHAR, ',')
+        consume(:CHAR, ',')
+      end
+      consume(:CHAR, ')')
+      body = parse_expression(1)
+      AST::BatchWindowOp.new(window_token, options, body)
+    else
+      size = parse_expression
+      consume(:CHAR, ')')
+      body = parse_expression(1)  # pipe_expression precedence
+      AST::WindowOp.new(window_token, size, body)
+    end
+  end
+
+  # JOIN(right_source) key_expr_or_lambda
+  # e.g., users s> JOIN(orders) _.userId
+  # e.g., users s> JOIN(orders) %(a, b) -> a.id == b.userId
+  def parse_join_op
+    join_token = consume(:KEYWORD, 'JOIN')
+    consume(:CHAR, '(')
+    right_source = parse_expression
+    consume(:CHAR, ')')
+    key_expr = parse_expression(1)  # pipe_expression precedence
+    AST::JoinOp.new(join_token, right_source, key_expr)
+  end
+
+  # SHARD(key_expr, target_map)
+  # e.g., (0..<n) s> SHARD("key:" + _, map) s> CONCURRENT EACH { ... }
+  # Routes items to owning schedulers by hashing the key expression.
+  # `_` is the implicit item binding (same as SELECT/WHERE).
+  def parse_shard_op
+    shard_token = consume(:KEYWORD, 'SHARD')
+    consume(:CHAR, '(')
+    key_expr = parse_expression
+    consume(:CHAR, ',')
+    target_map = parse_expression
+    consume(:CHAR, ')')
+    AST::ShardOp.new(shard_token, key_expr, target_map)
+  end
+
+  # Parses a function type annotation: FN(Type, ...) -> ReturnType
+  # Parameter names are optional (documentation only): FN(n: Int64) -> Bool is the same as FN(Int64) -> Bool.
+  # Returns a Type whose raw is { params: [...], return: { type: Type }, fn_type: true }.
+  def parse_fn_type_annotation
+    consume(:KEYWORD, 'FN')
+    consume(:CHAR, '(')
+    param_types = []
+    until match?(:CHAR, ')')
+      # Allow optional name annotation: `name: Type` or just `Type`
+      if match?(:VAR_ID) && peek.type != :CHAR && peek.value == ':'
+        consume(:VAR_ID)   # name is for documentation only
+        consume(:CHAR, ':')
+      end
+      param_types << parse_type_annotation
+      break unless match!(:CHAR, ',')
+    end
+    consume(:CHAR, ')')
+    consume(:ARROW, '->')
+    return_type = parse_type_annotation
+    # Parse optional @reentrant capability on fn-type annotations.
+    # FN(Int64) -> Bool @reentrant means the parameter accepts @reentrant functions.
+    allows_reentrant = false
+    if match?(:VAR_ID) && current.value == '@reentrant'
+      consume(:VAR_ID)
+      allows_reentrant = true
+    end
+    Type.new({
+      params: param_types.each_with_index.map { |t, i|
+        { name: "arg#{i}", type: t, required: true, mutable: false, takes: false }
+      },
+      return: { type: return_type },
+      fn_type: true,
+      reentrant: allows_reentrant
+    })
+  end
+
+  def parse_type_annotation
+    # Function type: FN(Type, ...) -> ReturnType
+    return parse_fn_type_annotation if match?(:KEYWORD, 'FN')
+
+    # Check for tense (Promise) prefix: ~Type
+    tense_prefix = ""
+    if match!(:CHAR, '~')
+      tense_prefix = "~"
+    end
+
+    # Check for error union prefix: !Type (Zig-style error returns)
+    error_prefix = ""
+    if match!(:CHAR, '!')
+      error_prefix = "!"
+    end
+
+    # Check for optional prefix: ?Type
+    optional_prefix = ""
+    if match!(:CHAR, '?')
+      optional_prefix = "?"
+    end
+
+    # Check for heap prefix: %Type — tracked as location, not embedded in the symbol.
+    is_heap = false
+    if match?(:PERCENT)
+      consume(:PERCENT)
+      is_heap = true
+    end
+
+    base = consume(:TYPE_ID).value
+    inner = ""
+
+    # Generic type arguments: Pair<Number> or Map<String, Number>
+    # In type-annotation context, '<' is always a generic argument list, never a comparison.
+    if match?(:CHAR, '<')
+      consume(:CHAR, '<')
+      type_args = []
+      until match?(:CHAR, '>')
+        type_args << consume(:TYPE_ID).value
+        match!(:CHAR, ',')
+      end
+      consume(:CHAR, '>')
+      base = "#{base}<#{type_args.join(',')}>"
+    end
+
+    # Element-level capability: T@shared[] means Array<Arc<T>>.
+    # Parsed BEFORE the [] suffix so it attaches to the element type, not the collection.
+    # Also handles T@shared:locked[] (Arc<Mutex<T>>[]).
+    elem_ownership = nil
+    elem_sync = nil
+    if match?(:VAR_ID) && %w[@shared @multiowned @locked @writeLocked @link].include?(current.value)
+      # Lookahead: next token must be '[' (simple) or ':' followed by sync then '['
+      next_tok = peek_at(1)
+      is_elem_cap = (next_tok&.type == :CHAR && next_tok&.value == '[')
+      if !is_elem_cap && next_tok&.type == :CHAR && next_tok&.value == ':'
+        # Check for :locked[] or :writeLocked[] pattern
+        sync_tok = peek_at(2)
+        bracket_tok = peek_at(3)
+        is_elem_cap = sync_tok&.type == :VAR_ID &&
+                      %w[@locked @writeLocked locked writeLocked].include?(sync_tok&.value) &&
+                      bracket_tok&.type == :CHAR && bracket_tok&.value == '['
+      end
+      if is_elem_cap
+        cap_tok = consume(:VAR_ID)
+        case cap_tok.value
+        when "@shared"     then elem_ownership = :shared
+        when "@multiowned" then elem_ownership = :multiowned
+        when "@locked"     then elem_sync = :locked
+        when "@writeLocked" then elem_sync = :write_locked
+        when "@link"       then elem_ownership = :link
+        end
+        # Parse optional :sync suffix (e.g., @shared:locked)
+        if match?(:CHAR, ':')
+          consume(:CHAR, ':')
+          sync_tok = consume(:VAR_ID)
+          case sync_tok.value
+          when "@locked", "locked"       then elem_sync = :locked
+          when "@writeLocked", "writeLocked" then elem_sync = :write_locked
+          end
+        end
+      end
+    end
+
+    if match!(:CHAR, '[')
+      # Case 1: Dynamic "Number[]"
+      if match!(:CHAR, ']')
+        inner = "[]"
+
+      # Case 2: Fixed Inferred "Number[*]"
+      elsif match!(:CHAR, '*')
+        consume(:CHAR, ']')
+        inner = "[*]"
+
+# ... file truncated after line 2253; original file has 3167 lines ...
+```
+
 A new unit test was added and is failing.
 A new failing unit test was added; use it to understand expected behavior.
 
@@ -26,3 +254,4 @@ Test failure:
 Fix the bug.
 
 Return ONLY the corrected function `parse_fn_type_annotation` in a ```ruby block.
+

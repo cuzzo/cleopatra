@@ -1,9 +1,9 @@
 ```ruby
 def ==(other)
-  return unless other.is_a?(self.class)
-  return false unless @type == other.type
-  return false unless @value == other.value
-  return false unless @owner == other.owner # Corrected 'Symbol' to '@owner'
-  true
+  case other
+  when OwnerEntry then state == other.state
+  when Symbol     then state == other
+  else false
+  end
 end
 ```

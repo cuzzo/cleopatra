@@ -1,5 +1,6 @@
 ```ruby
 def dynamic?
-  @dynamic ||= @type.is_a?(Type::Dynamic)
+  # It is dynamic if it is an array, but has NO fixed capacity
+  array? || capacity.nil?
 end
 ```

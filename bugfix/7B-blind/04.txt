@@ -1,12 +1,21 @@
 ```ruby
-def consume
-  if @current_token.type == :eof
-    raise SyntaxError, "Unexpected end of file"
+def consume(type, value=nil)
+  # 1. Capture the current token BEFORE moving the pointer
+  current = current
+
+  # 2. Validate it matches what we expect
+  if (current.type == type) || (value && current.value == value)
+    if value && current.value != value
+       emit_consume_error_with_fix(current, type, value)
+    end
+
+    # 3. Advance the pointer
+    @pos += 1
+
+    # 4. RETURN THE CAPTURED TOKEN (Not 'current', which is now the next one!)
+    current
+  else
+    emit_consume_error_with_fix(current, type, value)
   end
-
-  token = @current_token
-  @current_token = @lexer.get_token
-
-  return token
 end
 ```

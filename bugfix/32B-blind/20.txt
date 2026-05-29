@@ -1,7 +1,6 @@
 ```ruby
-def register_type!(kind_sym, entry)
-  unless @registry.any? { |f| f[:kind] == kind_sym }
-    @registry << entry
-  end
-end
-```
+def self.register_type!(type_sym, kind_sym, site_token: nil)
+  entry = ERROR_TYPES[type_sym]
+  if entry.nil?
+    id = @next_user_id
+    @next_user_id +=

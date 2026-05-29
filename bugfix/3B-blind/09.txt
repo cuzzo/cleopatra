@@ -1,9 +1,6 @@
 ```ruby
-def release_borrow
-  # Assuming 'borrowed' is an array of indices
-  borrowed.each do |index|
-    # Correct the off-by-one error by subtracting 1 from the index
-    borrowed.delete_at(index - 1)
-  end
+def release_borrow(borrower)
+  to_remove = @edges_by_source[borrower]&.select { |e| e.kind == :borrows || e.kind == :borrows_mut } || []
+  to_remove.each { |e| remove_edge(e) }
 end
 ```

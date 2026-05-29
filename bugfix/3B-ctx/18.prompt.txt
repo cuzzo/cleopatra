@@ -1,10 +1,23 @@
 File: src/mir/ownership_graph.rb
 Function: declare
 
-Here is the current (buggy) code of function `declare`:
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
 
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: OwnershipGraph (class, lines 15-260)
+Params: path: ?, kind: :affine, type_info: nil, scope_depth: 0, line: 0
+Recorded callees: new, path, include?, rpartition, add
+Recorded instance vars: @nodes, @children
+Prism-detected callees in primary function: add, declare, include?, new, path, rpartition
+Prism-detected ivars in primary function: @children, @nodes
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/mir/ownership_graph.rb:OwnershipGraph.declare (lines 56-66)
 ```ruby
-  def declare(path, kind: :affine, type_info: nil, scope_depth: 0, line: 0)
+def declare(path, kind: :affine, type_info: nil, scope_depth: 0, line: 0)
     @nodes[path] = Register.new(
       path: path, kind: kind, state: :live,
       type_info: type_info, scope_depth: scope_depth, line: line
@@ -25,6 +38,68 @@ Worktree: clean
 Target file: clean (src/mir/ownership_graph.rb)
 Interpretation: Clean tree; treat this as a production/existing bug that slipped through tests.
 
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/propagate_caller_sync_spec.rb:124
+  src/mir/ownership_graph.rb:56:in `declare'
+
+Failure 1: spec/propagate_caller_sync_spec.rb:124
+Command: bundle exec rspec spec/propagate_caller_sync_spec.rb
+Failure output excerpt:
+    # ./src/annotator.rb:102:in `annotate!'
+     # ./spec/propagate_caller_sync_spec.rb:21:in `annotate'
+     # ./spec/propagate_caller_sync_spec.rb:153:in `block (2 levels) in <top (required)>'
+
+  6) P1.5 FunctionSignature carries per-param sync exposes a :sync field on signature params (defaulting to nil today)
+     Failure/Error: annotator.annot
+... truncated ...
+on signature params (defaulting to nil today)
+rspec ./spec/propagate_caller_sync_spec.rb:193 # P1.5 FunctionSignature carries per-param sync leaves :sync nil for params with no sync annotation
+
+Coverage report generated for RSpec to /home/yahn/cleopatra/.eval/cheat/coverage.
+Line Coverage: 12.36% (2739 / 22166)
+Branch Coverage: 2.02% (231 / 11437)
+Relevant test code:
+From spec/propagate_caller_sync_spec.rb:21
+     13: # transpile-tests/201_capability_passthrough.cht.disabled (enabled when
+     14: # P1.7 lands).
+     15: 
+     16: RSpec.describe "P1.4 caller-sync propagation" do
+     17:   def annotate(source)
+     18:     tokens = Lexer.new(source).tokenize
+     19:     ast = Parser.new(tokens, source).parse
+     20:     annotator = SemanticAnnotator.new
+=>   21:     annotator.annotate!(ast)
+     22:     [ast, annotator]
+     23:   end
+     24: 
+     25:   def fn_nodes_from(ast)
+     26:     fn_nodes = {}
+     27:     ast.statements.each { |s| fn_nodes[s.name] = s if s.is_a?(AST::FunctionDef) }
+     28:     fn_nodes
+     29:   end
+
+From spec/propagate_caller_sync_spec.rb:153
+    145:       END
+    146: 
+    147:       FN main() ->
+    148:         c = Counter{ value: 0 } @shared:locked;
+    149:         outer(c);
+    150:       END
+    151:     CHT
+    152: 
+=>  153:     ast, _ = annotate(src)
+    154:     fn_nodes = fn_nodes_from(ast)
+    155:     EscapeAnalysis.propagate_caller_sync!(fn_nodes)
+    156: 
+    157:     expect(fn_nodes["outer"].params.first[:symbol].sync).to eq(:locked)
+    158:     expect(fn_nodes["inner"].params.first[:symbol].sync).to eq(:locked)
+    159:   end
+    160: end
+    161: 
+
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.
 
@@ -37,3 +112,4 @@ Test failure:
 Fix the bug.
 
 Return ONLY the corrected function `declare` in a ```ruby block.
+

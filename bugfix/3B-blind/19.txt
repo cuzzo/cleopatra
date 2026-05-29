@@ -1,11 +1,10 @@
 ```ruby
-def stream_element_type(stream)
-  if stream.type == :array
-    stream.elements.map { |element| stream_element_type(element) }
-  elsif stream.type == :hash
-    stream.elements.map { |key, value| [stream_element_type(key), stream_element_type(value)] }
-  else
-    stream.type
+def stream_element_type
+    return nil unless bounded_stream?
+    if optional_stream_shape_type&.fixed?
+      Type.new(:"?#{optional_stream_shape_type.element_type.to_sym}")
+    else
+      tense_type.element_type
+    end
   end
-end
 ```

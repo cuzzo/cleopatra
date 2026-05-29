@@ -1,5 +1,10 @@
 ```ruby
-def provenance_alloc(type, provenance)
-  # Your corrected code here
+def provenance_alloc
+  case @provenance
+  when :heap  then :heap
+  when :frame then :frame
+  when :rodata then :rodata
+  else nil
+  end
 end
 ```

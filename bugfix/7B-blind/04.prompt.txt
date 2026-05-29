@@ -1,6 +1,243 @@
 File: src/ast/parser.rb
 Function: consume
 
+Source file excerpt centered around `Parser.consume`:
+```ruby
+# ... file truncated before line 341; centered around Parser.consume lines 447-465 ...
+  end
+
+  # Inline union variant constructor: TypeName.VariantName{ field: val, ... }
+  # Only fires when lhs is a GetField whose target is a TYPE_ID (uppercase) identifier.
+  # Returns SUFFIX_DECLINE (without consuming '{') for any other lhs, so callers
+  # like parse_with_capability that legitimately follow an expression with '{' are unaffected.
+  suffix(:CHAR, '{') do |lhs|
+    if !@suppress_struct_lit && lhs.is_a?(AST::GetField) && lhs.target.is_a?(AST::Identifier) &&
+        lhs.target.name[0] =~ /[A-Z]/
+      tok = current
+      _, field_pairs = parse_comma_seq(:CHAR, '{', '}') do
+        k = (current.type == :TYPE_ID ? consume(:TYPE_ID) : consume(:VAR_ID)).value
+        consume(:CHAR, ':')
+        v = parse_expression
+        [k, v]
+      end
+      AST::UnionVariantLit.new(tok, lhs.target.name, lhs.field, field_pairs.to_h, :stack)
+    else
+      SUFFIX_DECLINE
+    end
+  end
+
+  def parse_literal(type, storage)
+    token = consume(type)
+    node = AST::Literal.new(token, type, token.value, storage)
+    parse_suffixes(node)
+  end
+
+  ## START PATTERN DSL
+  def process_pattern(pattern)
+    captures = []
+
+    pattern.each do |item|
+      case item
+      # RULE 1: String Literal -> Match & Ignore
+      # Example: '=', ';'
+      when String
+        consume_literal(item)
+
+      # RULE 2: Hash -> Optional
+      # Example: { ':' => :type_annotation }
+      when Hash
+        trigger, action = item.first # Get key/value pair
+
+        if match_literal!(trigger)
+          captures << run_action(action)
+        else
+          captures << :Any
+        end
+
+      # RULE 3: Symbol -> Capture Token or Run Method
+      when Symbol
+        captures << run_action(item)
+      end
+    end
+
+    captures
+  end
+
+  def run_action(item)
+    # Convention: :UPPER_CASE is a Token Type to eat
+    return consume(item).value if item == item.upcase
+    # :pipe_expression → parse_expression with min precedence = s> (1)
+    # Excludes s> (prec 1, since 1 > 1 is false) but includes OR (prec 2).
+    return parse_expression(1) if item == :pipe_expression
+    # :down_case => parse function to run
+    return send("parse_#{item}")
+  end
+
+  # Helpers for the literals (Keywords or Chars)
+  def consume_literal(val)
+    if val == '_'
+      consume(:UNDERSCORE)
+    elsif val.match?(/[a-zA-Z]/)
+      consume(:KEYWORD, val)
+    else
+      consume(:CHAR, val)
+    end
+  end
+
+  def match_literal!(val)
+    type = val.match?(/[a-zA-Z]/) ? :KEYWORD : :CHAR
+    match!(type, val)
+  end
+  ## END PATTERN DSL
+
+
+  def current
+    @tokens[@pos]
+  end
+
+  def previous
+    @tokens[@pos-1]
+  end
+
+  # Consume a numeric literal (either :NUMBER float or :INT64 integer).
+  def consume_number
+    if current.type == :NUMBER || current.type == :INT64
+      tok = current
+      @pos += 1
+      tok
+    else
+      error!(current, "Expected a number, got #{current.value} (#{current.type})")
+    end
+  end
+
+  def consume(type, value=nil)
+    # 1. Capture the current token BEFORE moving the pointer
+    current = current
+
+    # 2. Validate it matches what we expect
+    if (current.type == type) || (value && current.value == value)
+      if value && current.value != value
+         emit_consume_error_with_fix(current, type, value)
+      end
+
+      # 3. Advance the pointer
+      @pos += 1
+
+      # 4. RETURN THE CAPTURED TOKEN (Not 'current', which is now the next one!)
+      current
+    else
+      emit_consume_error_with_fix(current, type, value)
+    end
+  end
+
+  # Intercepts consume-failures with pattern-specific fixable findings
+  # where they're safe. Every helper ultimately calls `error!` (directly
+  # or via `fixable!` with `raise_in_collector: true`) so a parser error
+  # still halts parsing at the first unrecoverable site — callers of
+  # `clear fix` see the one finding in the collector and can apply the
+  # suggested edit, then re-run.
+  #
+  # Two insertion strategies:
+  #   end-of-prev-line — used when the missing token belongs after what
+  #     the user wrote on the previous line (`;` after a statement,
+  #     `THEN`/`DO`/`->` after a condition/signature that finished on
+  #     the previous line).
+  #   before-current   — used when the missing token belongs on the
+  #     same line as the unexpected token (`THEN`/`DO` directly before
+  #     an inline body on the same line as the condition).
+  SYNTAX_TOKENS_AT_STATEMENT_END = %w[; THEN DO ->].freeze
+
+  def emit_consume_error_with_fix(token, expected_type, expected_value)
+    prev_tok = @pos > 0 ? @tokens[@pos - 1] : nil
+
+    if expected_value && SYNTAX_TOKENS_AT_STATEMENT_END.include?(expected_value) && prev_tok
+      if prev_tok.line < token.line
+        return emit_syntax_insert_end_of_line!(prev_tok, token, expected_value)
+      end
+      if %w[THEN DO ->].include?(expected_value) && prev_tok.line == token.line
+        return emit_syntax_insert_before_token!(token, expected_value)
+      end
+    end
+
+    error!(token, "Expected #{expected_value || expected_type}, got #{token.value} (#{token.type}) line #{token.line}")
+  end
+
+  # Insert `<expected>` at the end of the previous source line (right
+  # after its last non-whitespace character, so canonical formatting is
+  # preserved). Works uniformly for `;`, `THEN`, `DO`, `->`.
+  def emit_syntax_insert_end_of_line!(prev_tok, next_tok, expected_value)
+    line_text  = @source_code.lines[prev_tok.line - 1] || ''
+    insert_col = line_text.rstrip.length + 1
+    leader     = (expected_value == ';') ? '' : ' '
+
+    fix = Fix.new(
+      description: "Insert `#{expected_value}` at end of line #{prev_tok.line}.",
+      confidence: :auto,
+      edits: [Edit.new(
+        span: Span.new(file: nil, line: prev_tok.line, col: insert_col, length: 0),
+        replacement: "#{leader}#{expected_value}"
+      )]
+    )
+
+    message = "Expected `#{expected_value}` at end of line #{prev_tok.line}; got '#{next_tok.value}' on line #{next_tok.line}."
+    fixable!(next_tok, message: message, category: :type, level: :error,
+             fixes: [fix], raise_in_collector: true)
+  end
+
+  # Insert `<expected>` just before the unexpected token (same-line
+  # missing-keyword shape, e.g., `IF x RETURN 1` needs `THEN` before
+  # `RETURN`).
+  def emit_syntax_insert_before_token!(token, expected_value)
+    fix = Fix.new(
+      description: "Insert `#{expected_value}` before '#{token.value}' at line #{token.line}.",
+      confidence: :auto,
+      edits: [Edit.new(
+        span: Span.new(file: nil, line: token.line, col: token.column, length: 0),
+        replacement: "#{expected_value} "
+      )]
+    )
+    fixable!(token,
+      message: "Expected `#{expected_value}`, got '#{token.value}' (line #{token.line}).",
+      category: :type, level: :error,
+      fixes: [fix], raise_in_collector: true)
+  end
+
+  def match?(type, val=nil)
+    current.type == type && (val.nil? || current.value == val)
+  end
+
+  # Match and immediately eat
+  def match!(type, value=nil)
+    if match?(type, value)
+      consume(type) # We already know it matches, so this is safe
+    else
+      false
+    end
+  end
+
+  def parse_statement
+    # Keywordless bind/assign: x = ..., x: Type = ..., x.field = ..., x[0] = ...
+    if current.type == :VAR_ID
+      result = try_parse_bind_or_assign
+      return result if result
+    end
+
+    rule = @@stmt_rules[[current.type, current.value]]
+    return instance_exec(&rule) if rule
+    expr = parse_expression
+    consume(:CHAR, ';')
+    expr
+  end
+
+  # Speculatively parse `target [: Type] = expression ;` as a BindExpr or Assignment.
+  # Returns nil (and backtracks) if no `=` follows the target, so we fall through to
+  # expression-statement parsing (e.g. method calls like `foo();`).
+  def try_parse_bind_or_assign
+    saved_pos = @pos
+    target_token = current
+# ... file truncated after line 571; original file has 3167 lines ...
+```
+
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.
 
@@ -9,3 +246,4 @@ Something wrong in `consume`. renamed variable: 'token' -> 'current'
 Fix it.
 
 Return ONLY the corrected function `consume` in a ```ruby block.
+

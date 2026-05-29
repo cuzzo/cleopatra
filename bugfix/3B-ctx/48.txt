@@ -44,6 +44,5 @@ def transform!(ast)
       next unless stmt.is_a?(AST::FunctionDef) && stmt.body
       transform_function!(stmt, promotion_plans[stmt.name])
     end
-
   end
 ```

@@ -1,19 +1,50 @@
 ```ruby
-def verify_return(function)
-  return_type = function.return_type
-  actual_return = function.actual_return
+def verify_return(node)
+  # A returned value is a borrow when it is a direct indexed/field access OR
+  # a variable that the ownership graph marked as :borrowed.
+  return true unless return_is_borrow?(node)
 
-  if return_type.nil?
-    # If the return type is not specified, we assume it can return anything.
-    return true
+  # Union variant constructors (Value.Nil, Shape.Point) create new values, not borrows.
+  if node.is_a?(AST::GetField) || node.target.is_a?(AST::Identifier)
+    schema = lookup_type_schema(node.target.name.to_sym) rescue nil
+    return true if schema.is_a?(Hash) && (schema[:kind] == :union || schema[:kind] == :enum)
   end
 
-  if actual_return.is_a?(Array)
-    # Check if all elements in the array match the return type
-    actual_return.all? { |value| value.is_a?(return_type) }
-  else
-    # Check if the actual return value matches the return type
-    actual_return.is_a?(return_type)
+  lifetime_path = current_fn_ctx&.lifetime
+  type_info = node.type_object
+  has_lifetime = !lifetime_path.nil?
+  schema_resolver = ->(t) { lookup_type_schema(t) rescue nil }
+  is_copyable = (type_info&.copyable?(schema_resolver) || type_info&.implicitly_copyable?(schema_resolver))
+  fn_type_params = current_fn_ctx&.type_params || []
+  is_type_param = fn_type_params.include?(type_info&.resolved)
+
+  unless has_lifetime || is_copyable || is_type_param
+    error!(
+      node,
+      "Cannot return borrowed value without COPY or a lifetime annotation.\n" \
+      "Type '#{node.full_type}' is not implicitly copyable."
+    )
+  end
+
+  return true unless has_lifetime
+
+  # Lifetime path validation applies to direct field/index access only.
+  # Borrowed variables need source-tracing (future work).
+  return true if node.is_a?(AST::Identifier)
+
+  lifetime_path = lifetime_path.split(".").map(&:to_sym)
+  actual_path = get_path_to_root(node)
+  if actual_path.nil?
+    error!("Lifetime Error: Lifetime '#{lifetime_path}' specified on return, but returned value is not associated.")
+  end
+
+  if actual_path[0...lifetime_path.size] != lifetime_path
+    error!(
+      node,
+      "Lifetime Error:\n" \
+      "  Expected return derived from: #{lifetime_path.join('.')}\n" \
+      "  Actual return derived from:   #{actual_path.join('.')}"
+    )
   end
 end
 ```

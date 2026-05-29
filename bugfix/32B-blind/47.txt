@@ -1,13 +1,15 @@
 ```ruby
-def stmt
-  pattern = @lexer.next_token
-  case pattern.type
-  when :IDENTIFIER
-    handle_identifier(pattern)
-  when :LITERAL
-    handle_literal(pattern)
+def self.stmt(type, value, node_class = nil, pattern = nil, inject: [], &block)
+  if block
+    # If block provided, create a block that runs the engine
+    @@stmt_rules[[type, value]] = lambda do
+      start_token = current
+      args = process_pattern(pattern)
+      args.concat(inject)
+      node_class.new(start_token, *args)
+    end
   else
-    raise SyntaxError, "Unexpected token: #{pattern.type}"
+    @@stmt_rules[[type, value]] = block
   end
 end
 ```

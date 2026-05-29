@@ -1,11 +1,7 @@
 ```ruby
 def any_rc?
-  # Original code
-  # return true if @rc || @rc == false
-  # return false if @rc == nil
-
-  # Fixed code
-  return true if @rc || @rc == false
-  return false if @rc.nil?
-end
+    # SharedPromise uses its own ref-counting internally — it is NOT an Rc/Arc wrapper.
+    return false if shared_promise? && split_open_stream?
+    multiowned? || shared?
+  end
 ```

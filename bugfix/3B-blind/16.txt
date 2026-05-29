@@ -1,7 +1,8 @@
 ```ruby
 def check_program!(program, strict: false)
   all_errors = []
-  program.each do |item|
+  program.items.each do |item|
+    next unless item.is_a?(MIR::FnDef)
     all_errors.concat(check_fn!(item, strict: strict))
   end
   all_errors

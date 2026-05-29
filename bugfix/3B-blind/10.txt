@@ -1,13 +1,5 @@
 ```ruby
-module AST
-  class ErrorRegistry
-    def enum_entries
-      # Corrected constant name
-      ERROR_TYPES = {
-        # Existing entries
-      }
-      ERROR_TYPES
-    end
-  end
+def self.enum_entries
+  [[:None, ERROR_TYPES]] + ERROR_TYPES.map { |sym, meta| [sym, meta[:id]] }.sort_by(&:last)
 end
 ```

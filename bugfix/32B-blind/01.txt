@@ -1,3 +1,3 @@
 ```ruby
-def scc_is_cyclic?(scc)
-  return false if scc.length <=
+def scc_is_cyclic?(scc, adj)
+  return true if scc.length >

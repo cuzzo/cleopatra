@@ -1,8 +1,3 @@
 ```ruby
 def initialize
-  @nodes = []
-  @edges =
-  @edges_by_source = Hash.new { |h, k| h[k] = [] }  # source_path => [Edge]
-  @edges_by_target = Hash.new { |h, k| h[k] = [] }  # target_path => [Edge]
-end
-```
+  @nodes =

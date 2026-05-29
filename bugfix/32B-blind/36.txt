@@ -1,6 +1,4 @@
 ```ruby
 def initialize
-  @types = {}
-  # other initialization code...
-end
-```
+  @locals = {}
+  @dependencies =

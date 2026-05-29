@@ -1,6 +1,8 @@
 ```ruby
 def [](key)
-  return nil unless FIELD_MAP.key?(key)
-  FIELD_MAP[key]
-end
+    if key == :return
+      { type: @return_type, lifetime: @return_lifetime }
+    end
+    send(FIELD_MAP[key])
+  end
 ```

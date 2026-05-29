@@ -1,10 +1,35 @@
 File: src/annotator.rb
 Function: visit_MethodCall
 
-Here is the current (buggy) code of function `visit_MethodCall`:
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
 
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: SemanticAnnotator (class, lines 26-4489)
+Params: node: ?
+Recorded callees: visit, dispatch, resolve_collection_method, is_a?, lookup_type_schema, key?, instance_variable_set, respond_to?, dig, record_effect, method, resolve_call
+Recorded instance vars: @extern_method
+Prism-detected callees in primary function: dig, dispatch, instance_variable_set, is_a?, key?, lookup_type_schema, method, record_effect, resolve_call, resolve_collection_method, visit, visit_MethodCall
+Prism-detected ivars in primary function: @extern_method
+Included related functions: SemanticAnnotator.visit
+
+RELATED FUNCTION: src/annotator.rb:SemanticAnnotator.visit (lines 223-230)
 ```ruby
-  def visit_MethodCall(node)
+def visit(node)
+    return unless node
+    return if node.is_a?(Symbol)
+
+    # Dynamic Dispatch
+    method_name = "visit_#{node.class.name.split('::').last}"
+    send(method_name, node)
+  end
+```
+
+BUG TARGET FUNCTION: src/annotator.rb:SemanticAnnotator.visit_MethodCall (lines 1885-1921)
+```ruby
+def visit_MethodCall(node)
     visit(node.object)
     node.args.each { |arg| visit(arg) }
 
@@ -41,7 +66,6 @@ Here is the current (buggy) code of function `visit_MethodCall`:
     ufcs_args = [node.object] + node.args
     resolve_call(node, ufcs_args)
   end
-
 ```
 
 ============================================================
@@ -54,21 +78,52 @@ Other dirty files:
   added spec/generated/annotator_spec.rb (test)
 Interpretation: A new failing unit test was added; use it to understand expected behavior.
 
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/annotator_spec.rb:1783
+  src/annotator.rb:1885:in `visit_MethodCall'
+
+Failure 1: spec/annotator_spec.rb:1783
+Command: bundle exec rspec spec/annotator_spec.rb
+Failure output excerpt:
+BLE 'vals' is never reassigned — consider removing MUTABLE (line 4)
+[Warning] MUTABLE 'all' is never reassigned — consider removing MUTABLE (line 2)
+[Warning] MUTABLE 'keys' is never reassigned — consider removing MUTABLE (line 2)
+[Warning] MUTABLE 'keys' is never reassigned — consider removing MUTABLE (line 2)
+[Warning] Unused variable 'result' (l
+... truncated ...
+sed variable 'x' (line 1)
+[Warning] Unused variable 'x' (line 1)
+[Warning] Unused variable 'x' (line 1)
+[Warning] Unused variable 'x' (line 1)
+[Warning] Unused variable 'x' (line 1)
+[Warning] Unused variable 'x' (line 1)
+[Warning] Unused variable 'greeting' (line 1)
+[Warning] MUTABLE 'items' is never reassigned — consider removing MUTABLE (line 2)
+Relevant test code:
+From spec/annotator_spec.rb:1783
+   1775:         }
+   1776:         it "raises error even inside a function if no loop is present" do
+   1777:           expect { ast }.to raise_error(/BREAK must be used inside a loop/)
+   1778:         end
+   1779:       end
+   1780:     end
+   1781:   end
+   1782: 
+=> 1783:   describe "Method Calls / Unified Call Syntax (visit_MethodCall)" do
+   1784:     # Define a Point struct and functions that operate on it
+   1785:     let(:base_funcs) {
+   1786:       <<~FLUX
+   1787:         STRUCT Point {
+   1788:           x: Float64,
+   1789:           y: Float64
+   1790:         }
+   1791: 
+
 A new unit test was added and is failing.
 A new failing unit test was added; use it to understand expected behavior.
-
-New test file: spec/generated/annotator_spec.rb
-```ruby
-# Generated failing test for Cleopatra mutant SemanticAnnotator.visit_MethodCall.
-# Mutation under test: forgotten line: 'node.full_type = method_sig.respond_to?(:return_type) ? (method_sig.return_type || :Void) : (method_sig[:return]&.dig(:type) || :Void)'
-require "minitest/autorun"
-
-class GeneratedVisit_methodcallTest < Minitest::Test
-  def test_visit_MethodCall_regression
-    flunk "Regression for SemanticAnnotator.visit_MethodCall: forgotten line: 'node.full_type = method_sig.respond_to?(:return_type) ? (method_sig.return_type || :Void) : (method_sig[:return]&.dig(:type) || :Void)'"
-  end
-end
-```
 
 Test failure:
   forgotten line: 'node.full_type = method_sig.respond_to?(:return_type) ? (method_sig.return_type || :Void) : (method_sig[:return]&.dig(:type) || :Void)'
@@ -79,3 +134,4 @@ Test failure:
 Fix the bug.
 
 Return ONLY the corrected function `visit_MethodCall` in a ```ruby block.
+

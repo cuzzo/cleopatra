@@ -1,6 +1,189 @@
 File: src/ast/parser.rb
 Function: stmt
 
+Source file excerpt centered around `Parser.stmt`:
+```ruby
+# ... file truncated before line 1; centered around Parser.stmt lines 17-29 ...
+require_relative "./ast"
+require_relative "./lexer"
+require_relative "./error_registry"
+require_relative "./source_error"
+require_relative "./fixable_error"
+
+# ==========================================
+# PARSER
+# ==========================================
+class Parser
+  include ErrorHelper
+
+  @@stmt_rules = {}
+  @@primary_rules = {}
+  @@suffix_rules = {}
+
+  def self.stmt(type, value, node_class = nil, pattern = nil, inject: [], &block)
+    if block
+      # If block provided, create a block that runs the engine
+      @@stmt_rules[[type, value]] = lambda do
+        start_token = current
+        args = process_pattern(block)
+        args.concat(inject)
+        node_class.new(start_token, *args)
+      end
+    else
+      @@stmt_rules[[type, value]] = block
+    end
+  end
+
+  def self.primary(type, value=nil, node_class = nil, pattern = nil,  &block)
+    if pattern
+      # If pattern provided, create a block that runs the engine
+      @@primary_rules[[type, value]] = lambda do
+        start_token = current
+        args = process_pattern(pattern)
+        node_class.new(start_token, *args)
+      end
+    else
+      @@primary_rules[[type, value]] = block
+    end
+  end
+
+  def self.suffix(type, value, &block)
+    @@suffix_rules[[type, value]] = block
+  end
+
+  def initialize(tokens, source_code = "")
+    @tokens = tokens
+    @pos = 0
+    @source_code = source_code
+  end
+
+  def parse
+    stmts = []
+    stmts << parse_statement() while current.type != :EOF
+    AST::Program.new(current, stmts)
+  end
+
+  private
+
+  def peek
+    @tokens[@pos + 1] || Token.new(:EOF, "", current.line, current.column)
+  end
+
+  def peek_at(n)
+    @tokens[@pos + n]
+  end
+
+  # COMMANDS
+  stmt(:KEYWORD, 'REQUIRE') { parse_require }
+  stmt(:KEYWORD, 'EXTERN')  { parse_extern_decl }
+  stmt(:KEYWORD, 'MUTABLE', AST::VarDecl, ['MUTABLE', :VAR_ID, {':' => :type_annotation}, '=', :expression, ';'], inject: [true])
+  stmt(:KEYWORD, 'FN')      { parse_function_def }
+  stmt(:KEYWORD, 'PUB')     { parse_visibility_decl(:pub) }
+  stmt(:KEYWORD, 'PRIVATE') { parse_visibility_decl(:private) }
+  stmt(:KEYWORD, 'IF') { parse_if_statement }
+  stmt(:KEYWORD, 'STRUCT') { parse_struct_def }
+  stmt(:KEYWORD, 'ENUM')   { parse_enum_def }
+  stmt(:KEYWORD, 'UNION')  { parse_union_def }
+  stmt(:KEYWORD, 'WHILE') { parse_while_loop }
+  stmt(:KEYWORD, 'FOR') { parse_for_range }
+  stmt(:KEYWORD, 'TIGHT') { parse_tight_stmt }
+  stmt(:KEYWORD, 'RETURN') { parse_return }
+  stmt(:KEYWORD, 'ASSERT', AST::Assert, ['ASSERT', :expression, {',' => :STRING}, ';'])
+  stmt(:KEYWORD, 'ASSERT_RAISES') { parse_assert_raises }
+  stmt(:KEYWORD, 'TEST') { parse_test_block }
+  stmt(:KEYWORD, 'STUB') { parse_stub }
+  stmt(:KEYWORD, 'BENCHMARK') { parse_benchmark_stmt }
+  stmt(:KEYWORD, 'SMASH') { parse_smash_stmt }
+  stmt(:KEYWORD, 'PROFILE') { parse_profile_stmt }
+  stmt(:KEYWORD, 'RAISE') { parse_raise_stmt }
+  stmt(:KEYWORD, 'EXIT') { parse_exit }
+  stmt(:KEYWORD, 'DIE') { parse_die }
+  stmt(:KEYWORD, 'BREAK', AST::BreakNode, ['BREAK', ';'])
+  stmt(:KEYWORD, 'CONTINUE', AST::ContinueNode, ['CONTINUE', ';'])
+  stmt(:KEYWORD, 'WITH') { parse_with_capability }
+  stmt(:KEYWORD, 'DO')   { parse_do_block }
+  stmt(:KEYWORD, 'BG')   { parse_bg_block }
+  stmt(:KEYWORD, 'YIELD') { parse_yield_expr }
+  stmt(:KEYWORD, 'MATCH') { parse_match_statement }
+  stmt(:KEYWORD, 'PASS') do
+    tok = consume(:KEYWORD, 'PASS')
+    match!(:CHAR, ';')  # optional semicolon — PASS may appear bare before a ','
+    AST::PassStmt.new(tok)
+  end
+
+
+  # IF and MATCH as expressions: x = IF cond THEN a ELSE b END
+  primary(:KEYWORD, 'IF')    { parse_if_expr }
+  primary(:KEYWORD, 'MATCH') { parse_match_expr }
+
+  # Primaries
+  primary(:NUMBER) { parse_literal(:NUMBER, :stack) }
+  primary(:INT64) { parse_literal(:INT64, :stack) }
+  primary(:STRING) { parse_literal(:STRING, :stack) }
+  # Symbol literal: :identifier — only valid in expression position.
+  # The ':' char is already consumed by the time the primary body runs.
+  primary(:CHAR, ':') do
+    colon_tok = consume(:CHAR, ':')
+    error!(colon_tok, "Expected a symbol name (lowercase identifier) after ':'") unless match?(:VAR_ID)
+    ident_tok = consume(:VAR_ID)
+    AST::Literal.new(colon_tok, :SYMBOL, ident_tok.value, :stack)
+  end
+  primary(:BYTE) { parse_literal(:BYTE, :stack) }
+  primary(:PREFIXED_INT) { parse_literal(:PREFIXED_INT, :stack) }
+  primary(:INT8)    { parse_literal(:INT8,    :stack) }
+  primary(:INT16)   { parse_literal(:INT16,   :stack) }
+  primary(:INT32)   { parse_literal(:INT32,   :stack) }
+  primary(:UINT16)  { parse_literal(:UINT16,  :stack) }
+  primary(:UINT32)  { parse_literal(:UINT32,  :stack) }
+  primary(:UINT64)  { parse_literal(:UINT64,  :stack) }
+  primary(:FLOAT32) { parse_literal(:FLOAT32, :stack) }
+  primary(:VAR_ID) { parse_var_id }
+
+  primary(:KEYWORD, 'TRUE') { t = consume(:KEYWORD); AST::Literal.new(t, :BOOLEAN, true) }
+  primary(:KEYWORD, 'FALSE') { t = consume(:KEYWORD); AST::Literal.new(t, :BOOLEAN, false) }
+  primary(:KEYWORD, 'NIL') { t = consume(:KEYWORD); AST::Literal.new(t, :NIL, nil) }
+  primary(:KEYWORD, 'DEFAULT') { t = consume(:KEYWORD, 'DEFAULT'); AST::DefaultLit.new(t) }
+  primary(:KEYWORD, 'CAST', AST::Cast, ['CAST', '(', :expression, 'AS', :type_annotation, ')'])
+  primary(:KEYWORD, 'COPY', AST::Copy, ['COPY', :expression])
+  primary(:KEYWORD, 'MOVE', AST::MoveNode, ['MOVE', :expression])
+  primary(:KEYWORD, 'GIVE', AST::MoveNode, ['GIVE', :expression])
+  primary(:KEYWORD, 'COPY', AST::CopyNode, ['COPY', :expression])
+  primary(:KEYWORD, 'CLONE', AST::CloneNode, ['CLONE', :expression])
+  primary(:KEYWORD, 'LINK', AST::LinkNode, ['LINK', :expression])
+  primary(:KEYWORD, 'RESOLVE', AST::ResolveNode, ['RESOLVE', :expression])
+  primary(:KEYWORD, 'FREEZE', AST::FreezeNode, ['FREEZE', :expression])
+  primary(:KEYWORD, 'BG')   { parse_bg_block }
+  primary(:KEYWORD, 'NEXT') { parse_next_expr }
+  primary(:PERCENT, '%') { parse_sigil_construct }
+  primary(:KEYWORD, 'REQUIRE', AST::Require, ['REQUIRE', :STRING])
+
+  # Pipeline operators use :pipe_expression (min precedence 2) so their
+  # body expression stops before `s>` (precedence 1), enabling chaining:
+  #   list s> SELECT _ * 2.0 s> WHERE _ > 5.0
+  primary(:KEYWORD, 'SELECT', AST::SelectOp, ['SELECT', :pipe_expression])
+  primary(:KEYWORD, 'WHERE', AST::WhereOp, ['WHERE', :pipe_expression])
+  primary(:KEYWORD, 'INDEX', AST::IndexOp, ['INDEX', :pipe_expression])
+  primary(:KEYWORD, 'REDUCE') { parse_reduce_op }
+  primary(:KEYWORD, 'ORDER_BY', AST::OrderByOp, ['ORDER_BY', :pipe_expression])
+  primary(:KEYWORD, 'LIMIT', AST::LimitOp, ['LIMIT', :pipe_expression])
+  primary(:KEYWORD, 'SKIP', AST::SkipOp, ['SKIP', :pipe_expression])
+  primary(:KEYWORD, 'UNNEST', AST::UnnestOp, ['UNNEST', :pipe_expression])
+  primary(:KEYWORD, 'DISTINCT', AST::DistinctOp, ['DISTINCT', :pipe_expression])
+  primary(:KEYWORD, 'EACH')  { parse_each_op }
+  primary(:KEYWORD, 'TAP')   { parse_tap_op }
+  primary(:KEYWORD, 'FIND',    AST::FindOp,    ['FIND',    :pipe_expression])
+  primary(:KEYWORD, 'ANY',     AST::AnyOp,     ['ANY',     :pipe_expression])
+  primary(:KEYWORD, 'ALL',     AST::AllOp,     ['ALL',     :pipe_expression])
+  primary(:KEYWORD, 'COUNT',   AST::CountOp,   ['COUNT',   :pipe_expression])
+  primary(:KEYWORD, 'SUM',     AST::SumOp,     ['SUM',     :pipe_expression])
+  primary(:KEYWORD, 'AVERAGE', AST::AverageOp, ['AVERAGE', :pipe_expression])
+  primary(:KEYWORD, 'MIN',     AST::MinOp,     ['MIN',     :pipe_expression])
+  primary(:KEYWORD, 'MAX',     AST::MaxOp,     ['MAX',     :pipe_expression])
+  primary(:KEYWORD, 'TAKE_WHILE', AST::TakeWhileOp, ['TAKE_WHILE', :pipe_expression])
+  primary(:KEYWORD, 'RECOVER') { parse_recover_op }
+# ... file truncated after line 177; original file has 3167 lines ...
+```
+
 A new unit test was added and is failing.
 A new failing unit test was added; use it to understand expected behavior.
 
@@ -26,3 +209,4 @@ Test failure:
 Fix the bug.
 
 Return ONLY the corrected function `stmt` in a ```ruby block.
+

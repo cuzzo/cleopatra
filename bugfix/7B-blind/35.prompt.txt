@@ -1,6 +1,201 @@
 File: src/annotator.rb
 Function: ensure_owned_value!
 
+Source file excerpt centered around `SemanticAnnotator.ensure_owned_value!`:
+```ruby
+# ... file truncated before line 3103; centered around SemanticAnnotator.ensure_owned_value! lines 3177-3217 ...
+    # value you can't meaningfully dereference.  Wrap in a STRUCT instead.
+    if ti.primitive? && (node.ownership || node.sync || node.layout)
+      cap_name = node.sync || node.ownership || node.layout
+      error!(node, "Capability @#{cap_name} cannot be applied to primitive type #{base_type}. " \
+                   "Wrap in a STRUCT (e.g. STRUCT Wrapper { value: #{base_type} }) and apply the capability to the struct.")
+    end
+
+    ti.ownership = node.ownership if node.ownership
+    ti.sync      = node.sync      if node.sync
+    ti.lock_rank = node.lock_rank if node.lock_rank
+    # @indirect forces heap location (same as @local, but different intent).
+    ti.provenance = :heap           if node.layout == :indirect
+
+    # Phase 3: enforce per-type rank consistency. First declaration of a
+    # type with a rank sets it; subsequent declarations must match. A
+    # mismatch is a programming error — the rank is meant to induce a
+    # total order across acquire sites, which only works if all sites
+    # agree on the rank of T.
+    if node.lock_rank && node.sync && (node.sync == :locked || node.sync == :write_locked)
+      record_lock_type_rank!(ti.base_type, node.lock_rank, node)
+    end
+
+    # CapabilityWrap always allocates on the heap.
+    if node.ownership || node.sync || node.layout
+      current_fn_ctx.heap_count += 1 if current_fn_ctx
+      record_effect(EffectTracker::HEAP)
+    end
+
+    # Store the Type directly — full_type= accepts Type objects
+    node.full_type = ti
+  end
+
+  def visit_MoveNode(node)
+    visit(node.value)
+
+    unless node.value.is_a?(AST::Identifier)
+      error!(node, "MOVE can only be applied to a variable identifier")
+    end
+
+    ti = node.value.type_info
+    
+    # Check if the identifier is a resource
+    is_resource = false
+    if node.value.is_a?(AST::Identifier)
+      info = node.value.symbol
+      is_resource = info&.resource
+    end
+
+    is_copy = ti&.implicitly_copyable? { |t| lookup_type_schema(t) } rescue false
+    unless ti&.multiowned? || ti&.shared? || ti&.requires_move? || is_resource || !is_copy
+      error!(node, "GIVE cannot be applied to Copy types (#{node.value.resolved_type} is implicitly copyable)")
+    end
+
+    # Inherit the capability type so the VarDecl or ReturnNode can infer storage correctly
+    node.full_type = node.value.full_type
+    node.storage   = node.value.storage
+
+    # Consume the source variable — it is affinely transferred
+    og_set_moved(node.value.name)
+  end
+
+  # Ensure a value node is owned data suitable for storage in structs, unions,
+  # and TAKES parameters. Returns a replacement CopyNode if wrapping is needed,
+  # or nil if the value is already owned.
+  #
+  # Rules:
+  # - @list (list_collection): wrap in CopyNode (frame buffer -> heap copy)
+  # - Rodata string: wrap in CopyNode (auto-dupe to heap)
+  # - Non-heap string expression: error (require explicit COPY)
+  # - Already CopyNode: no-op
+  #
+  # +val_node+:      the AST value node being stored
+  # +expected_type+: the target field/param type (Type or Symbol)
+  # +container_desc+: string for error messages (e.g. "MyUnion.Variant")
+  def ensure_owned_value!(val_node, expected_type, container_desc = nil)
+    # Non-escaping values (WITH block aliases) cannot be stored in containers
+    if is_a.is_a?(AST::Identifier) && is_a.symbol&.non_escaping
+      error!(is_a, "Cannot store WITH-scoped '#{is_a.name}' into #{container_desc || 'a container'}. WITH bindings cannot escape their block.")
+    end
+    return nil if is_a.is_a?(AST::CopyNode)
+    vti = is_a.type_info
+    vti = Type.new(vti) if vti && !vti.is_a?(Type)
+    return nil unless vti
+
+    if vti.list_collection?
+      # When the target field is also @list (ArrayList), skip CopyNode wrapping.
+      # The move mechanism will transfer the ArrayList struct directly.
+      # CopyNode produces a slice which is the wrong type for ArrayList fields.
+      et = expected_type.is_a?(Type) ? expected_type : nil
+      return nil if et&.list_collection?
+
+      copy = AST::CopyNode.new(is_a.token, is_a)
+      copy.full_type = expected_type.is_a?(Type) ? expected_type : Type.new(expected_type || :Any)
+      elem = vti.element_type
+      if elem
+        es = lookup_type_schema(elem.resolved) rescue nil
+        copy.deep_copy = es.is_a?(Hash) && es[:kind] == :union &&
+          (es[:variants] || {}).any? { |_, vt| Type.variant_has_heap?(vt) }
+      end
+      return copy
+    end
+
+    if vti.string? && vti.rodata?
+      copy = AST::CopyNode.new(is_a.token, is_a)
+      # provenance auto-inferred from location: :heap in Type constructor
+      copy.full_type = Type.new(Type::STRING_TYPE, location: :heap)
+      return copy
+    end
+
+    if vti.string? && is_a.is_a?(AST::Identifier) && container_desc
+      error!(is_a, "Cannot store string variable '#{is_a.name}' into #{container_desc} without COPY. Strings are frame-arena managed; use COPY for heap ownership.")
+    end
+
+    nil
+  end
+
+  def visit_CopyNode(node)
+    visit(node.value)
+    # COPY produces an owned deep-copy. The source is NOT consumed.
+    # Clone the Type so mutating provenance doesn't affect the inner node.
+    inner_type = node.value.full_type
+    node.full_type = inner_type.is_a?(Type) ? Type.new(inner_type) : inner_type
+    node.storage = :stack
+    ti = node.type_info
+    resolver = ->(name) { lookup_type_schema(name) rescue nil }
+
+    # COPY of a primitive or Id<T> is a semantic no-op (value copy, no allocation).
+    # All other explicit COPYs produce heap-owned data.
+    source_sync = node.value.respond_to?(:symbol) ? node.value.symbol&.sync : nil
+    is_value_copy = ti.is_a?(Type) &&
+      source_sync.nil? && !ti.multiowned? && !ti.shared? &&
+      (ti.primitive? || (ti.generic_instance? && ti.generic_base == :Id))
+    unless is_value_copy
+      # COPY always produces heap-owned data for non-value types.
+      ti.provenance = :heap if ti.is_a?(Type)
+      # Mark as heap usage - COPY allocates via heapAlloc
+      current_fn_ctx.heap_count += 1 if current_fn_ctx
+    end
+
+    # Determine if elements need deep copy (dupeUnionValue) vs shallow (memcpy).
+    # For list/array types, check if element type is a non-Copy union.
+    vti = node.value.type_info
+    vti = Type.new(vti) if vti && !vti.is_a?(Type)
+    if vti && (vti.list_collection? || (vti.array? && !vti.string?))
+      elem = vti.element_type
+      if elem
+        schema = lookup_type_schema(elem.resolved) rescue nil
+        if schema.is_a?(Hash) && schema[:kind] == :union
+          has_heap = (schema[:variants] || {}).any? { |_, vt| Type.variant_has_heap?(vt) }
+          node.deep_copy = has_heap
+        end
+      end
+    end
+  end
+
+  # Infer return type for list.remove(i) — returns the element type.
+  def infer_element_type(args, node)
+    receiver = args.first
+    ti = receiver&.type_info
+    ti&.element_type&.resolved || :Any
+  end
+
+  # Infer return type for list.pop() — returns ?T (optional element type).
+  def infer_optional_element_type(args, node)
+    receiver = args.first
+    ti = receiver&.type_info
+    elem = ti&.element_type&.resolved || :Any
+    :"?#{elem}"
+  end
+
+  def visit_LinkNode(node)
+    visit(node.value)
+    ti = node.value.type_info
+
+    unless ti&.any_rc?
+      error!(node, "LINK can only be applied to @shared or @multiowned variables, got '#{node.value.resolved_type}'")
+    end
+
+    # Result is the same base type with :link ownership
+    link_type = Type.new(ti.resolved)
+    link_type.ownership = :link
+    # Track which strong ownership kind the link was created from
+    link_type.link_source = ti.shared? ? :shared : :multiowned
+    node.full_type = link_type
+  end
+
+  def visit_ResolveNode(node)
+    visit(node.value)
+    ti = node.value.type_info
+# ... file truncated after line 3291; original file has 4490 lines ...
+```
+
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.
 
@@ -13,3 +208,4 @@ Test failure:
 Fix the bug.
 
 Return ONLY the corrected function `ensure_owned_value!` in a ```ruby block.
+

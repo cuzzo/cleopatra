@@ -1,5 +1,5 @@
 ```ruby
-def match?(current, type, val)
+def match?(type, val=nil)
   current.type == type && (val.nil? || current.value == val)
 end
 ```

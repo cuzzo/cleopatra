@@ -1,13 +1,42 @@
 ```ruby
-def transform!
-  # Assuming the issue is with how elements are being modified or accessed
-  # Let's add some debugging or correct a common mistake like modifying the array while iterating
+def transform!(ast)
+  # E1: compute which functions return heap-owned values (fixed-point over call graph).
+  fn_nodes = EscapeAnalysis.compute_heap_return_fns!(@fn_nodes)
 
-  # Example of a common mistake and its correction:
-  # Incorrect: @elements.each { |element| @elements.delete(element) if some_condition }
-  # Correct: @elements.reject! { |element| some_condition }
+  # E3a: propagate heap return_provenance to caller binding type_info.
+  # Must run before PromotionClassifier so HPT downgrade sees stable provenance.
+  EscapeAnalysis.tag_transitive_provenance!(@fn_nodes, fn_nodes)
 
-  @elements.reject! { |element| should_remove?(element) }
-  @elements.map! { |element| transform_element(element) }
-end
-```
+  # E3c: propagate caller arg sync into callee param SymbolEntry#sync.
+  # Runs after annotation has stamped local bindings; before classification
+  # passes that read sync (CleanupClassifier, mir_lowering).
+  EscapeAnalysis.propagate_caller_sync!(@fn_nodes)
+
+  # Phase 1: classify promotions for all functions.
+  # Must run before E2 so promotion_plans are available for :always_returned detection.
+  promotion_plans = {}
+  @fn_nodes.each do |name, fn|
+    promotion_plans[name] = PromotionClassifier.classify(fn, schema_lookup: @schema_lookup)
+  end
+
+  # E2: per-declaration escape scan.
+  # Applies all 6 escape conditions; replaces the upgrade_* methods below.
+  # Sets fn.heap_carry_return for E3b (tag_carry_call_sites!).
+  @bg_heap_upgraded = EscapeAnalysis.analyze!(
+    @fn_nodes, fn_nodes: fn_nodes, promotion_plans: promotion_plans
+  )
+
+  # E3b: stamp heap provenance on call-site expressions for carry-return functions.
+  # Runs after E2 because E2 sets fn.heap_carry_return on loop-carry functions.
+  EscapeAnalysis.tag_carry_call_sites!(@fn_nodes)
+
+  # Phase 2: set mark_per_iter on all loops so CleanupClassifier sees stable
+  # provenance before classification.
+  LoopFrameAnalysis.analyze!(@fn_nodes)
+
+  # Phase 2.5: classify cleanup bindings (uses finalized provenance from Phase 2).
+  @fn_nodes.each do |name, fn|
+    @cleanup_bindings[name] = CleanupClassifier.classify(fn, fn_nodes: @fn_nodes, schema_lookup: @schema_lookup)
+  end
+
+  # Phase

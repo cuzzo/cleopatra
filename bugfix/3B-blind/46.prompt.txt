@@ -1,6 +1,251 @@
 File: src/ast/type.rb
 Function: payload_type
 
+Source file excerpt centered around `Type.payload_type`:
+```ruby
+# ... file truncated before line 606; centered around Type.payload_type lines 724-727 ...
+    File:      "CheatLib.File",
+    TCPServer: "i32",
+    TCPClient: "i32",
+  }.freeze
+
+  # True when this type is a resource (File, TCPClient, TCPServer, etc.)
+  # Checks the explicit flag (set by annotator after resolve_resource_close)
+  # and falls back to checking known resource type names.
+  def resource?
+    @is_resource || RESOURCE_TYPES.include?(resolved)
+  end
+
+  # Resolve the Zig close/deinit statement for resource types.
+  # Returns [is_resource, close_zig_template] where close_zig_template uses
+  # {0} as placeholder for the variable name. Returns [false, nil] for non-resources.
+  #
+  # Group 1 / Group 2 separation: when a Group-2 shape (pool/set/...) is
+  # wrapped with Group-1 ownership (Arc/Rc), the bare-shape `.deinit()`
+  # call doesn't apply against the wrapper. Skip the resource path so the
+  # cleanup classifier picks the rc/sync entry instead, which cascades
+  # through the wrapper down to the inner shape's destruction.
+  def resolve_resource_close(schema_lookup = nil)
+    return [false, nil] if any_rc?
+    return [true, "{0}.deinit(rt.heapAlloc())"] if pool?
+    return [true, "{0}.deinit(rt.heapAlloc())"] if set_collection?
+    return [true, "{0}.deinit()"] if open_stream? || inf_stream? || split_open_stream?
+
+    return [false, nil] unless schema_lookup
+    schema = schema_lookup.call(resolved) rescue nil
+
+    if schema&.dig(:kind) == :resource
+      return [true, schema[:close_zig]]
+    end
+
+    # Struct with resource fields: compose close statements from fields.
+    if schema.is_a?(Hash) && schema[:kind].nil?
+      closes = []
+      schema.each do |fname, ftype|
+        next if fname.is_a?(Symbol)  # skip metadata keys; field names are strings
+        f_resolved = Type.new(ftype).resolved
+        f_schema = schema_lookup.call(f_resolved) rescue nil
+        if f_schema&.dig(:kind) == :resource
+          closes << f_schema[:close_zig].gsub("{0}", "{0}.#{fname}")
+        end
+      end
+      return [true, closes.join("; ")] if closes.any?
+    end
+
+    [false, nil]
+  end
+
+  # True when this is a list of promises: ~T[]@list — a dynamic list of BG tasks.
+  # Declared as `MUTABLE futures: ~T[]@list = []`; populated via append(futures, BG { ... }).
+  def promise_list?
+    future? && list_collection?
+  end
+
+  # True when the collection has a sharding topology modifier (@pool:sharded(N) / @list:sharded(N)).
+  def sharded?
+    !@shard_count.nil?
+  end
+
+  def soa?
+    !!@soa
+  end
+
+  # Fixed-size SOA array without collection wrapper (T[N]@soa).
+  def fixed_soa?
+    fixed? && soa? && !collection?
+  end
+
+  # A sharded collection with sync capability = lock-striped (skew-safe).
+  # Replaces the old :striped(N) keyword — now expressed via composition:
+  #   HashMap<V>:sharded(N) @locked → StripedStringMap
+  def striped?
+    sharded? && any_sync?
+  end
+
+  def value_type
+    return nil unless map?
+    @value_type_obj ||= Type.new(@value_type_raw || :Any)
+  end
+
+  # Generic struct instance: Pair<Number>, Map<String, Number>
+  def generic_instance?
+    !!@is_generic_instance
+  end
+
+  # The base type name of a generic instance: :"Pair<Number>" → :Pair
+  def generic_base
+    @generic_base_raw
+  end
+
+  # The type arguments as Type objects: [Type(:Float64), Type(:String)]
+  def generic_args
+    return nil unless @is_generic_instance
+    @generic_args_obj ||= @generic_args_raw.map { |a| Type.new(a) }
+  end
+
+  # TODO: keep metatype from ast, use that
+  def struct?
+    !primitive? && !any? && !void? && !string? && !array? && !map? && !optional? && !error_union? && !tense? && !fn_type?
+  end
+
+  def optional?
+    @is_optional
+  end
+
+  def wrapped_type
+    return nil unless optional?
+    @wrapped_type_obj ||= Type.new(@wrapped_type_raw || :Any)
+  end
+
+  # Error union types: !T (Zig-style error returns)
+  def error_union?
+    @is_error_union
+  end
+
+  def payload_type
+    return nil unless error_union?
+    @payload_type_obj &&= Type.new(@payload_type_raw || :Any)
+  end
+
+  # Tense (Promise) types: ~T — a background task that will produce T
+  def tense?
+    !!@is_tense
+  end
+
+  # Preferred predicate name for ~T / stream-like future values.
+  def future?
+    tense?
+  end
+
+  def tense_type
+    return nil unless future?
+    @tense_type_obj ||= Type.new(@tense_type_raw || :Void)
+  end
+
+  # Finite dynamic stream: ~T[].
+  # Used for lazy finite producers like ranges. NEXT returns ?T until exhausted.
+  def dynamic_stream?
+    future? && tense_type.dynamic? && !tense_type.optional? && !list_collection?
+  end
+
+  # New syntax alias: ~?T[] means an open stream of T (NEXT returns ?T).
+  # Parsed as future of ?T[] by the general type parser, then reinterpreted here.
+  def optional_stream_shape_type
+    return nil unless future? && tense_type.optional?
+    wrapped = tense_type.wrapped_type
+    wrapped if wrapped&.array?
+  end
+
+  def open_stream_alias?
+    shape = optional_stream_shape_type
+    shape&.dynamic? || false
+  end
+
+  def stream?
+    dynamic_stream? || bounded_stream? || open_stream? || inf_stream? || split_open_stream?
+  end
+
+  def split_open_stream?
+    split? && open_stream?
+  end
+
+  # Bounded stream: ~T[N] or ~?T[N] — a fixed stream of N elements consumed via NEXT.
+  # Distinct from a single promise (~T): NEXT can be called N times, not exactly once.
+  def bounded_stream?
+    # ~T[N] is a bounded stream of N elements. ~String is NOT a bounded stream
+    # even though String is internally []const u8 (a fixed array) - it's a Promise.
+    !!(future? && (
+      (tense_type.fixed? && !tense_type.string?) ||
+      (optional_stream_shape_type&.fixed? && !optional_stream_shape_type.string?)
+    ))
+  end
+
+  # Shared promise: ~T@shared — a memoized promise backed by Arc-style ref counting.
+  # Multiple holders can call NEXT independently; NEXT is idempotent per handle.
+  # NOT linearly affine — can be retained (cloned) without consuming it.
+  def shared_promise?
+    future? && shared?
+  end
+
+  # Open stream: ~?T[] (preferred) or legacy ~T[?].
+  # Generator-backed stream; NEXT returns ?T (nil when exhausted).
+  # Resource semantics: call deinit() to free the heap-allocated buffer.
+  def open_stream?
+    future? && (tense_type.open_stream_marker? || open_stream_alias?)
+  end
+
+  # The element type T in ~?T[] / ~T[?].
+  def open_stream_element_type
+    return nil unless open_stream?
+    return optional_stream_shape_type.element_type if open_stream_alias?
+    tense_type.element_type
+  end
+
+  # Infinite stream: ~T[INF] — a lazy rendezvous generator; NEXT returns T (never nil).
+  # Generator and consumer rendezvous on each value: push() blocks until next() reads it.
+  # Resource semantics: call deinit() to free the heap-allocated Inner.
+  def inf_stream?
+    future? && tense_type.inf_stream_marker?
+  end
+
+  # The element type T in ~T[INF].
+  def inf_stream_element_type
+    return nil unless inf_stream?
+    tense_type.element_type
+  end
+
+  # The element type T in ~T[N], or ?T in ~?T[N].
+  def stream_element_type
+    return nil unless bounded_stream?
+    if optional_stream_shape_type&.fixed?
+      Type.new(:"?#{optional_stream_shape_type.element_type.to_sym}")
+    else
+      tense_type.element_type
+    end
+  end
+
+  # The capacity N in ~T[N] / ~?T[N].
+  def stream_capacity
+    return nil unless bounded_stream?
+    optional_stream_shape_type&.capacity || tense_type.capacity
+  end
+
+  def element_type
+    return nil unless array?
+    # Uses the capture from parse_raw_input, ensuring "Number[3]" becomes "Float64"
+    @element_type_obj ||= begin
+      t = Type.new(@element_type_raw || :Any)
+      t.ownership = @elem_ownership if @elem_ownership
+      t.sync = @elem_sync if @elem_sync
+      t
+    end
+  end
+
+  def slot_size(lookup_arg = nil, &lookup_block)
+    resolver = lookup_arg || lookup_block
+# ... file truncated after line 844; original file has 1674 lines ...
+```
+
 A mutant/regression test is failing after local source edits.
 Active source edits exist; inspect dirty changed lines first.
 
@@ -13,3 +258,4 @@ Test failure:
 Fix the bug.
 
 Return ONLY the corrected function `payload_type` in a ```ruby block.
+

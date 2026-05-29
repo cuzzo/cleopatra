@@ -1,5 +1,5 @@
 ```ruby
-def [](key)
-  @graph[key]
+def [](path)
+  @nodes[path]
 end
 ```

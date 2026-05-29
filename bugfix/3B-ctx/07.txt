@@ -23,7 +23,7 @@ def resolve_catch_clause!(clause)
             "closest registered type"
           )
         end
-        types << item[:name] if AST.error_type?(type_sym)
+        types << type_sym if AST.error_type?(type_sym)
       end
     end
     clause[:kinds] = kinds.uniq
@@ -39,7 +39,7 @@ def resolve_catch_clause!(clause)
           error!(f[:token],
                  "CATCH ... WITH(#{f[:value]}): error type '#{f[:value]}' is not registered.")
         end
-        filter_types << f[:value]
+        filter_types << type_sym
       when :message
         # value is the parsed STRING expression. Visit so the string
         # literal gets its Type stamped for downstream lowering.

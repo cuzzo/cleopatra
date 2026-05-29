@@ -1,16 +1,35 @@
 File: src/annotator-helpers/function_signature.rb
 Function: []
 
-Here is the current (buggy) code of function `[]`:
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
 
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: FunctionSignature (class, lines 7-136)
+Params: (none recorded)
+Recorded callees: key?, send
+Recorded instance vars: @return_type, @return_lifetime
+Prism-detected callees in primary function: send
+Prism-detected ivars in primary function: @return_lifetime, @return_type
+Included related functions: FunctionSignature.key?
+
+RELATED FUNCTION: src/annotator-helpers/function_signature.rb:FunctionSignature.key? (lines 94-96)
 ```ruby
-  def [](key)
+def key?(key)
+    FIELD_MAP.key?(key)
+  end
+```
+
+BUG TARGET FUNCTION: src/annotator-helpers/function_signature.rb:FunctionSignature.[] (lines 74-79)
+```ruby
+def [](key)
     if key == :return
       { type: @return_type, lifetime: @return_lifetime }
       send(FIELD_MAP[key])
     end
   end
-
 ```
 
 ============================================================
@@ -23,21 +42,70 @@ Other dirty files:
   added spec/generated/function_signature_spec.rb (test)
 Interpretation: A new failing unit test was added; use it to understand expected behavior.
 
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/generics_spec.rb:268
+  src/annotator-helpers/function_signature.rb:74:in `[]'
+
+Failure 1: spec/generics_spec.rb:268
+Command: bundle exec rspec spec/generics_spec.rb
+Failure output excerpt:
+mits Pair(T) as return type when RETURNS Pair<T>
+rspec ./spec/generics_spec.rb:569 # SemanticAnnotator GENERICS generic struct literals parses and annotates Pair<Float64>{ first: 1.0, second: 2.0 } without error
+rspec ./spec/generics_spec.rb:575 # SemanticAnnotator GENERICS generic struct literals sets full_type to :"Pair<Float64>" on the StructLit
+... truncated ...
+Unused variable 'opt' (line 4)
+[Warning] Unused variable 'opt' (line 4)
+[Warning] Unused variable 'n' (line 4)
+[Warning] Unused variable 'r' (line 4)
+[Warning] Unused variable 'got' (line 5)
+[Warning] Unused variable 'opt' (line 3)
+[Warning] Unused variable 'r' (line 3)
+[Warning] Unused variable 'p' (line 3)
+[Warning] Unused variable 'kv' (line 3)
+Relevant test code:
+From spec/generics_spec.rb:268
+    260:             RETURN 0.0;
+    261:           END
+    262:           FN main() RETURNS Void -> PASS END
+    263:         CLEAR
+    264:         out = ZigTranspiler.new.transpile(src)
+    265:         expect(out).to include("Pair(f64)")
+    266:       end
+    267: 
+=>  268:       it "emits Map([]const u8, f64) for Map<String, Float64>" do
+    269:         src = <<~CLEAR
+    270:           STRUCT Map<K, V> { key: K, value: V }
+    271:           FN use(m: Map<String, Float64>) RETURNS Float64 ->
+    272:             RETURN 0.0;
+    273:           END
+    274:           FN main() RETURNS Void -> PASS END
+    275:         CLEAR
+    276:         out = ZigTranspiler.new.transpile(src)
+
+From spec/generics_spec.rb:569
+    561:           STRUCT Pair<T> { first: T, second: T }
+    562:           STRUCT KeyValue<K, V> { key: K, value: V }
+    563:           FN main() RETURNS Void ->
+    564:             #{extra}
+    565:           END
+    566:         CLEAR
+    567:       end
+    568: 
+=>  569:       it "parses and annotates Pair<Float64>{ first: 1.0, second: 2.0 } without error" do
+    570:         expect {
+    571:           run(generic_lit_src("p = Pair<Float64>{ first: 1.0, second: 2.0 };"))
+    572:         }.not_to raise_error
+    573:       end
+    574: 
+    575:       it "sets full_type to :\"Pair<Float64>\" on the StructLit node" do
+    576:         ast = run(generic_lit_src("p = Pair<Float64>{ first: 1.0, second: 2.0 };"))
+    577:         fn = ast.statements.last
+
 A new unit test was added and is failing.
 A new failing unit test was added; use it to understand expected behavior.
-
-New test file: spec/generated/function_signature_spec.rb
-```ruby
-# Generated failing test for Cleopatra mutant FunctionSignature.[].
-# Mutation under test: forgotten line: 'elsif FIELD_MAP.key?(key)'
-require "minitest/autorun"
-
-class Generated_Test < Minitest::Test
-  def test___regression
-    flunk "Regression for FunctionSignature.[]: forgotten line: 'elsif FIELD_MAP.key?(key)'"
-  end
-end
-```
 
 Test failure:
   forgotten line: 'elsif FIELD_MAP.key?(key)'
@@ -48,3 +116,4 @@ Test failure:
 Fix the bug.
 
 Return ONLY the corrected function `[]` in a ```ruby block.
+

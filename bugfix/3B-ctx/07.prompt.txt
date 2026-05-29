@@ -1,10 +1,23 @@
 File: src/annotator.rb
 Function: resolve_catch_clause!
 
-Here is the current (buggy) code of function `resolve_catch_clause!`:
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
 
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: SemanticAnnotator (class, lines 26-4490)
+Params: clause: ?
+Recorded callees: error_kind?, emit_registry_mismatch!, join, error_type?, error!, WITH, visit
+Recorded instance vars: (none)
+Prism-detected callees in primary function: WITH, emit_registry_mismatch!, error!, error_kind?, error_type?, join, resolve_catch_clause!, visit
+Prism-detected ivars in primary function: (none)
+Included related functions: SemanticAnnotator.visit
+
+BUG TARGET FUNCTION: src/annotator.rb:SemanticAnnotator.resolve_catch_clause! (lines 687-737)
 ```ruby
-  def resolve_catch_clause!(clause)
+def resolve_catch_clause!(clause)
     kinds = []
     types = []
     (clause[:items] || []).each do |item|
@@ -57,6 +70,18 @@ Here is the current (buggy) code of function `resolve_catch_clause!`:
   end
 ```
 
+RELATED FUNCTION: src/annotator.rb:SemanticAnnotator.visit (lines 223-230)
+```ruby
+def visit(node)
+    return unless node
+    return if node.is_a?(Symbol)
+
+    # Dynamic Dispatch
+    method_name = "visit_#{node.class.name.split('::').last}"
+    send(method_name, node)
+  end
+```
+
 ============================================================
 WORKTREE STATE
 ============================================================
@@ -64,6 +89,61 @@ Scenario: production_stack_trace
 Worktree: clean
 Target file: clean (src/annotator.rb)
 Interpretation: Clean tree; treat this as a production/existing bug that slipped through tests.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/capabilities_spec.rb:2120
+  src/annotator.rb:687:in `resolve_catch_clause!'
+
+Failure 1: spec/capabilities_spec.rb:2120
+Command: bundle exec rspec spec/capabilities_spec.rb
+Failure output excerpt:
+pec.rb:2441 # SemanticAnnotator OR EXIT grammar — unified with inherit semantics parses OR EXIT Kind, "msg"
+rspec ./spec/capabilities_spec.rb:2445 # SemanticAnnotator OR EXIT grammar — unified with inherit semantics parses OR EXIT Kind, Type (registers the type on first use)
+rspec ./spec/capabilities_spec.rb:2451 # SemanticAnnotator OR EXIT grammar
+... truncated ...
+er line 3). Reviewer: verify this cannot actually self-acquire at runtime (distinct instances, sorted acquire, etc.). (line 4)
+[Note] Lock rank violation: acquiring ':B' at rank 1 while ':A' (rank 2) is held. Ranks must be strictly ascending along the acquire path to prove LockCycle freedom by construction. (POSSIBLE_LOCK_CYCLE accepted.) (line 6)
+Relevant test code:
+From spec/capabilities_spec.rb:2120
+   2112:   # ---------------------------------------------------------------------------
+   2113:   # CATCH grammar — every form
+   2114:   # ---------------------------------------------------------------------------
+   2115:   # The unified CATCH surface:
+   2116:   #   CATCH Kind                          — by kind
+   2117:   #   CATCH Kind WITH(Type)               — kind + single type
+   2118:   #   CATCH Kind WITH(T1, T2, ...)        — kind + multi-type filter
+   2119:   #   CATCH Type                          — direct type match (kind inferred)
+=> 2120:   # Every form feeds the annotator's resolve_catch_clause!, which must
+   2121:   # populate clause[:kind] + clause[:error_names] so mir-lowering can
+   2122:   # emit the right dispatch.
+   2123: 
+   2124:   describe "CATCH grammar — kind-only form" do
+   2125:     it "accepts CATCH Kind" do
+   2126:       src = <<~FLUX
+   2127:         FN go(mode: Int64) RETURNS Int64 ->
+   2128:           IF mode == 0 THEN RAISE Input, "bad"; END
+
+From spec/capabilities_spec.rb:2445
+   2437:     it "parses OR EXIT Kind (kind only)" do
+   2438:       expect { run(outer_wrap('OR EXIT NotFound')) }.not_to raise_error
+   2439:     end
+   2440: 
+   2441:     it "parses OR EXIT Kind, \"msg\"" do
+   2442:       expect { run(outer_wrap('OR EXIT NotFound, "msg"')) }.not_to raise_error
+   2443:     end
+   2444: 
+=> 2445:     it "parses OR EXIT Kind, Type (registers the type on first use)" do
+   2446:       src = outer_wrap('OR EXIT NotFound, SomeNew')
+   2447:       expect { run(src) }.not_to raise_error
+   2448:       expect(AST.kind_of_type(:SomeNew)).to eq(:NotFound)
+   2449:     end
+   2450: 
+   2451:     it "parses OR EXIT Kind, Type, \"msg\" (full override)" do
+   2452:       src = outer_wrap('OR EXIT System, SysIssue, "whoops"')
+   2453:       expect { run(src) }.not_to raise_error
 
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.
@@ -77,3 +157,4 @@ Test failure:
 Fix the bug.
 
 Return ONLY the corrected function `resolve_catch_clause!` in a ```ruby block.
+

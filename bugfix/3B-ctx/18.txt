@@ -7,7 +7,11 @@ def declare(path, kind: :affine, type_info: nil, scope_depth: 0, line: 0)
     # Register as child of parent path (e.g., "x.child" is child of "x")
     if path.include?('.')
       parent = path.rpartition('.').first
-      @children[parent].add(path)
+      @children[parent] ||= {}
+      @children[parent][path] = Register.new(
+        path: path, kind: kind, state: :live,
+        type_info: type_info, scope_depth: scope_depth, line: line
+      )
     end
   end
 ```

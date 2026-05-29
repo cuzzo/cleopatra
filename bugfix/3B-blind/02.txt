@@ -1,5 +1,22 @@
 ```ruby
-def register_type!(type_sym)
-  # Your corrected code here
+def self.register_type!(type_sym, kind_sym, site_token: nil)
+  if ERROR_TYPES[type_sym].nil?
+    id = @next_user_id
+    @next_user_id += 1
+    ERROR_TYPES[type_sym] = {
+      kind: kind_sym,
+      zig_name: type_sym.to_s,
+      id: id,
+      first_site: site_token,
+    }
+    return [false, nil]
+  end
+  return [true, nil] if ERROR_TYPES[type_sym][:kind] == kind_sym
+  [true, {
+    existing_kind: ERROR_TYPES[type_sym][:kind],
+    given_kind:    kind_sym,
+    first_site:    ERROR_TYPES[type_sym][:first_site],
+    is_stdlib:     @stdlib_frozen.include?(ERROR_TYPES[type_sym]),
+  }]
 end
 ```
