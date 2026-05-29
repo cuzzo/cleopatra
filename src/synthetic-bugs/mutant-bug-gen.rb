@@ -22,7 +22,7 @@ require 'securerandom'
 require 'tempfile'
 require 'timeout'
 
-ROOT = File.expand_path('..', __dir__)
+ROOT = File.expand_path('../..', __dir__)
 DEFAULT_BUNDLE = File.expand_path('archives/cheat.bundle', ROOT)
 DEFAULT_REPO = File.expand_path('.eval/cheat', ROOT)
 DEFAULT_OUT = File.join(ROOT, 'bugs.jsonl')
@@ -45,7 +45,7 @@ OPTIONS = {
 
 opts = OPTIONS.dup
 OptionParser.new do |o|
-  o.banner = 'Usage: ruby src/mutant-bug-gen.rb [options]'
+  o.banner = 'Usage: ruby src/synthetic-bugs/mutant-bug-gen.rb [options]'
   o.on('--repo PATH', 'Local restored repo checkout to generate from') { |v| opts[:repo] = File.expand_path(v) }
   o.on('--bundle PATH', 'Git bundle used to restore the repo') { |v| opts[:bundle] = File.expand_path(v) }
   o.on('--ref REF', 'Bundle/restored repo ref to pin for generation') { |v| opts[:ref] = v }
@@ -206,7 +206,7 @@ def apply_mutation_to_file(fn, mutated_body)
     tmp.close
     out, err, status = Open3.capture3(
       'ruby',
-      File.join(ROOT, 'src', 'apply_mutation.rb'),
+      File.join(__dir__, 'apply_mutation.rb'),
       fn[:file],
       tmp.path,
       fn[:name],

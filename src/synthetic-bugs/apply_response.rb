@@ -9,7 +9,7 @@ response_path = ARGV[1]
 target_function = ARGV[2]
 
 unless source_path && response_path && target_function
-  warn 'Usage: ruby src/apply_response.rb SOURCE RESPONSE TARGET_FUNCTION'
+  warn 'Usage: ruby src/synthetic-bugs/apply_response.rb SOURCE RESPONSE TARGET_FUNCTION'
   exit 2
 end
 
