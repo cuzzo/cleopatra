@@ -1,5 +1,0 @@
-```ruby
-guarded_cleanup_names.merge(guarded_names_in_surface(root))
-@lowered_guarded_cleanup_names = guarded_cleanup_names
-nil
-```

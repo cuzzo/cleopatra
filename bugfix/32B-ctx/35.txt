@@ -1,6 +1,0 @@
-```ruby
-return  unless node
-return false if node.is_a?(Prism::DefNode) || node.is_a?(Prism::ClassNode) || node.is_a?(Prism::ModuleNode)
-return true if node.is_a?(Prism::EnsureNode)
-node.respond_to?(:child_nodes) && node.child_nodes.compact.any? { |child| contains_ensure?(child) }
-```

@@ -1,6 +1,0 @@
-```ruby
-consume(:REQUIRE)
-path = consume(:STRING).value
-consume(:OPERATOR) # ;
-inline_tokens_from(path)
-```

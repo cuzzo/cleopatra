@@ -1,3 +1,0 @@
-```ruby
-messiness = (n_writes + n_reads + n_reder) * scatter * fix_churn
-```

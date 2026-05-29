@@ -1,9 +1,0 @@
-```ruby
-T.bind(self, T.untyped) rescue nil
-unfilled = @segments.each_with_index.select { |s, _| s == :placeholder }
-if unfilled.any?
-  raise "RecursiveSplitter: unfilled segments at indices " \
-        "#{unfilled.map(&:last).inspect}"
-end
-@segments
-```

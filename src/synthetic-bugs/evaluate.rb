@@ -18,7 +18,7 @@ DEFAULT_BUNDLE_PATH = '/home/yahn/cheat/vendor/bundle'
 
 opts = {
   count: 50,
-  cats: '3B-blind,3B-ctx,7B-blind,32B-blind,32B-ctx',
+  cats: '3B-blind,3B-ctx,7B-blind,32B-blind',
   verbose_failures: false,
   failure_log: File.join(BUGFIX_DIR, 'evaluation_failures.jsonl'),
   test_timeout: 300,
@@ -255,15 +255,38 @@ def record_failure(opts, category, index, bug, response_path, raw_response, stat
   File.open(opts[:failure_log], 'a') { |f| f.puts(JSON.generate(rec)) }
 end
 
+def result_label(status)
+  case status
+  when 'TEST_PASSED'
+    'PASS'
+  when 'TEST_FAILED'
+    'FAIL'
+  when 'SYNTAX_ERROR', 'MUTATION_SYNTAX_ERROR'
+    'SYNTAX'
+  when 'TEST_TIMEOUT'
+    'TIMEOUT'
+  when 'TEST_ENV_ERROR'
+    'ENVERR'
+  when 'NO_TEST_SUITE', 'NO_RECORDED_TEST_FAILURE'
+    'NOSUITE'
+  when nil
+    'MISSING'
+  else
+    'ERROR'
+  end
+end
+
 started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 FileUtils.mkdir_p(File.dirname(opts[:failure_log]))
 File.write(opts[:failure_log], '')
+categories = opts[:cats].split(',').map(&:strip).reject(&:empty?)
+matrix = Hash.new { |hash, key| hash[key] = {} }
 
 puts
 printf "%-15s %-10s %-9s %-9s %-7s %-8s %-7s\n", 'Category', 'Responses', 'TestPass', 'TestFail', 'EnvErr', 'NoSuite', 'Errors'
 puts '-' * 76
 
-opts[:cats].split(',').map(&:strip).reject(&:empty?).each do |cat|
+categories.each do |cat|
   dir = File.join(BUGFIX_DIR, cat)
   next unless Dir.exist?(dir)
 
@@ -272,7 +295,10 @@ opts[:cats].split(',').map(&:strip).reject(&:empty?).each do |cat|
 
   opts[:count].times do |i|
     fp = File.join(dir, format('%02d.txt', i + 1))
-    next unless File.exist?(fp)
+    unless File.exist?(fp)
+      matrix[i + 1][cat] = 'MISSING'
+      next
+    end
 
     n += 1
     txt = File.read(fp)
@@ -281,6 +307,7 @@ opts[:cats].split(',').map(&:strip).reject(&:empty?).each do |cat|
     if unsupported_response_format?(txt)
       err += 1
       statuses['UNSUPPORTED_RESPONSE_FORMAT'] += 1
+      matrix[i + 1][cat] = 'ERROR'
       record_failure(opts, cat, i + 1, bug, fp, txt, 'UNSUPPORTED_RESPONSE_FORMAT')
       next
     end
@@ -288,6 +315,7 @@ opts[:cats].split(',').map(&:strip).reject(&:empty?).each do |cat|
     result = eval_bug(bug, txt, opts)
     status = result[:status] || result['status']
     statuses[status] += 1
+    matrix[i + 1][cat] = result_label(status)
 
     case status
     when 'TEST_PASSED'
@@ -316,7 +344,21 @@ opts[:cats].split(',').map(&:strip).reject(&:empty?).each do |cat|
 end
 
 puts
+puts 'Per-Test Results'
+printf "%-6s", 'Test'
+categories.each { |cat| printf " %-12s", cat }
+puts
+puts '-' * (6 + (13 * categories.length))
+opts[:count].times do |i|
+  test_number = i + 1
+  printf "%-6s", format('%02d', test_number)
+  categories.each { |cat| printf " %-12s", matrix[test_number][cat] || 'MISSING' }
+  puts
+end
+
+puts
 puts 'TestPass = response was applied with Prism and the full mapped unit test suite passed'
+puts 'Per-test labels: PASS, FAIL, SYNTAX, TIMEOUT, ENVERR, NOSUITE, ERROR, MISSING'
 puts 'NoSuite/EnvErr are failures for scoring; syntax-only success is never counted as a pass'
 puts 'The evaluator resets the pinned checkout before and after every bug'
 puts "Failure log: #{opts[:failure_log]}"

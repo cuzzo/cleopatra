@@ -1,4 +1,0 @@
-```ruby
-case lookup["index"].to_s
-  when /\A:([A-Za-z_]\w*[!?=]?)\z/
-    Regexp.last_match(
