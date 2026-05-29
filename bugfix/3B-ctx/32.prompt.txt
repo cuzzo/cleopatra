@@ -106,26 +106,13 @@ Recorded stack trace:
 Failure 1: spec/use_after_move_dataflow_spec.rb:278
 Command: bundle exec rspec spec/use_after_move_dataflow_spec.rb
 Failure output excerpt:
-state=:owned, allocator=:frame, needs_cleanup=false>
-
-       (compared using ==)
-
-       Diff:
-       @@ -1 +1 @@
-       -:moved
-       +"#<struct OwnershipDataflow::OwnerEntry state=:owned, allocator=:frame, needs_cleanup=false>"
-     # ./spec/use_after_move_dataflow_spec.rb:279:in `block (3 levels) in <top (required)>'
-
-  4) UseAfterMoveChecker p
-... truncated ...
-moving MUTABLE (line 2)
-[Warning] MUTABLE 'items' is never reassigned — consider removing MUTABLE (line 3)
-[Warning] MUTABLE 'items' is never reassigned — consider removing MUTABLE (line 2)
-[Warning] Unused variable 'n' (line 7)
-[Warning] MUTABLE 'vals' is never reassigned — consider removing MUTABLE (line 5)
-[Warning] Unused variable 'b' (line 4)
-Relevant test code:
+     Failure/Error: expect(entry.state).to eq(:moved)
+       expected: :moved
+     Failure/Error: expect(df.exit_states["a"]).to eq(:moved)
+       expected: :moved
+Failing test code:
 From spec/use_after_move_dataflow_spec.rb:279
+    270:     it "direct return of collection marks source as moved" do
     271:       df = analyze_state(<<~CLEAR, "makeList")
     272:         FN makeList() RETURNS Int64[] ->
     273:           MUTABLE items: Int64[]@list = List[];
@@ -136,32 +123,6 @@ From spec/use_after_move_dataflow_spec.rb:279
     278:       # Direct return of identifier: marked as moved by collect_binding_moves
 =>  279:       expect(df.exit_states["items"]).to eq(:moved)
     280:     end
-    281: 
-    282:     it "struct literal return copies fields (CopyNode), source stays owned" do
-    283:       df = analyze_state(<<~CLEAR, "wrap")
-    284:         STRUCT Wrapper { data: Int64[] }
-    285:         FN wrap() RETURNS %Wrapper ->
-    286:           MUTABLE items: Int64[]@list = List[];
-    287:           items.append(1_i64);
-
-From spec/use_after_move_dataflow_spec.rb:306
-    298:         FN makeList() RETURNS Int64[] ->
-    299:           MUTABLE items: Int64[]@list = List[];
-    300:           items.append(1_i64);
-    301:           RETURN items;
-    302:         END
-    303:       CLEAR
-    304:       entry = df.exit_states["items"]
-    305:       if entry.is_a?(OwnershipDataflow::OwnerEntry)
-=>  306:         expect(entry.state).to eq(:moved)
-    307:         expect(entry.allocator).not_to be_nil
-    308:       end
-    309:     end
-    310: 
-    311:     it "GIVE on @list creates copy, source stays owned" do
-    312:       df = analyze_state(<<~CLEAR)
-    313:         FN consume(TAKES items: Int64[]) RETURNS Int64 ->
-    314:           RETURN items.length();
 
 A mutant/regression test is failing after local source edits.
 Active source edits exist; inspect dirty changed lines first.

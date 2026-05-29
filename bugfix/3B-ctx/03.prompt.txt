@@ -104,20 +104,9 @@ Recorded stack trace:
 Failure 1: spec/lifetimes_spec.rb:353
 Command: bundle exec rspec spec/lifetimes_spec.rb
 Failure output excerpt:
-/function_analysis.rb:680:in `verify_return'
-         # ./src/annotator.rb:1726:in `visit_ReturnNode'
-         # ./src/annotator.rb:229:in `visit'
-         # ./src/annotator.rb:774:in `block in visit_stmts'
-         # ./src/annotator.rb:772:in `each'
-         # ./src/annotator.rb:772:in `each_with_index'
-         # ./src/annotator.rb:772:in `visit_
-... truncated ...
-ifetimes_spec.rb:386 # SemanticAnnotator Lifetimes indirect field borrow escape (via variable, non-copyable field) errors: cannot return a borrowed field via variable without COPY or lifetime
-
-Coverage report generated for RSpec to /home/yahn/cleopatra/.eval/cheat/coverage.
-Line Coverage: 18.36% (4069 / 22166)
-Branch Coverage: 9.07% (1037 / 11437)
-Relevant test code:
+     Failure/Error: expect { result }.to raise_error(/Cannot return borrowed/i)
+       expected Exception with message matching /Cannot return borrowed/i, got #<NoMethodError: undefined method `target' for #<struct AST::Identifier token=#<struct Lexer::Token type=:VAR_ID, value="v", line=6, column=10>, name="v">> with backtrace:
+Failing test code:
 From spec/lifetimes_spec.rb:14
       6: require_relative "../src/backends/transpiler"
       7: require_relative "../src/ast/ast"
@@ -136,25 +125,6 @@ From spec/lifetimes_spec.rb:14
      20:   end
      21: 
      22:   let(:ast) { run(code) }
-
-From spec/lifetimes_spec.rb:22
-     14:     annotator.annotate!(ast)
-     15:     return ast
-     16:   end
-     17: 
-     18:   def get_last_type(source)
-     19:     run(source).statements.last.resolved_type
-     20:   end
-     21: 
-=>   22:   let(:ast) { run(code) }
-     23:   let(:result) { ast.statements.last.resolved_type }
-     24: 
-     25:   # LIFETIMES
-     26:   describe "Lifetimes" do
-     27:     let(:func_def) { ast.statements.find { |n| n.is_a?(AST::FunctionDef) } }
-     28:     context "simple valid lifetime" do
-     29:       let(:code) {
-     30:         <<~FLUX
 
 A mutant/regression test is failing after local source edits.
 Active source edits exist; inspect dirty changed lines first.

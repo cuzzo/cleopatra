@@ -42,28 +42,9 @@ Recorded stack trace:
 
 Failure 1: spec/symbol_spec.rb:111
 Command: bundle exec rspec spec/symbol_spec.rb
-Failure output excerpt:
-ler state.
-        +    if (num_workers > 0) {
-        +        while (fp.global_registry.count() < num_workers) {
-        +            CheatLib.sleep(1);
-        +        }
-        +    }
-        +
-        +    // 7. Main scheduler (runs on the main thread).
-        +    var sched = try fp.Scheduler.init(allocator, &global_ctx, &stack_pool);
-     
-... truncated ...
-ig code generation emits != between symbols as negated pointer check
-
-Coverage report generated for RSpec to /home/yahn/cleopatra/.eval/cheat/coverage.
-Line Coverage: 19.93% (4417 / 22166)
-Branch Coverage: 10.59% (1211 / 11437)
-[Warning] Unused variable 'x' (line 2)
-[Warning] Unused variable 'status' (line 2)
-[Warning] Unused variable 'x' (line 2)
-Relevant test code:
+Failing test code:
 From spec/symbol_spec.rb:273
+    264:     it "emits != between symbols as negated pointer check" do
     265:       zig = compile_symbol_src(<<~CLEAR)
     266:         FN main() RETURNS Void ->
     267:           a = :foo;
@@ -74,32 +55,6 @@ From spec/symbol_spec.rb:273
     272:       CLEAR
 =>  273:       expect(zig).to include(".ptr ==")
     274:     end
-    275: 
-    276:     it "emits ASSERT with symbol comparison" do
-    277:       expect {
-    278:         compile_symbol_src(<<~CLEAR)
-    279:           FN main() RETURNS Void ->
-    280:             ASSERT :ok == :ok, "must match";
-    281:             RETURN;
-
-From spec/symbol_spec.rb:111
-    103:           RETURN "x";
-    104:         END
-    105:       CLEAR
-    106:       fn = ast.statements.find { |s| s.is_a?(AST::FunctionDef) && s.name == "label" }
-    107:       expect(fn).not_to be_nil
-    108:       # params are { name:, type: <Type object>, ... } — sync lives on the Type
-    109:       param_type = fn.params.first[:type]
-    110:       expect(param_type).to be_a(Type)
-=>  111:       expect(param_type.symbol?).to be true
-    112:     end
-    113:   end
-    114: 
-    115:   # =========================================================================
-    116:   # Type system
-    117:   # =========================================================================
-    118:   describe "Type" do
-    119:     it "symbol? is true for sync: :symbol" do
 
 A mutant/regression test is failing after local source edits.
 Active source edits exist; inspect dirty changed lines first.

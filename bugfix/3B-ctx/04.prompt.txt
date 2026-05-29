@@ -73,20 +73,14 @@ Recorded stack trace:
 
 Failure 1: spec/transpiler_spec.rb:835
 Command: bundle exec rspec spec/transpiler_spec.rb
-Failure output excerpt:
-s
-rspec ./spec/transpiler_spec.rb:1539 # ZigTranspiler INV-1: HPT string dupe matches return_provenance uses heapAlloc for dupe when function has heap return_provenance
-rspec ./spec/transpiler_spec.rb:1557 # ZigTranspiler INV-7: string concat flag is annotation-driven emits std.mem.concat for string addition
-rspec ./spec/transpiler_spec.rb:1572 # Z
-... truncated ...
-WHERE accesses a non-existent field on _
-rspec ./spec/transpiler_spec.rb:1963 # ZigTranspiler pipeline placeholder field errors raises a type error when SELECT accesses a non-existent field on _
-
-Coverage report generated for RSpec to /home/yahn/cleopatra/.eval/cheat/coverage.
-Line Coverage: 10.33% (2290 / 22165)
-Branch Coverage: 0.4% (46 / 11437)
-Relevant test code:
+Failing test code:
 From spec/transpiler_spec.rb:835
+    821:     it "emits source_moved for MATCH AS on non-Copy variant (auto-TAKES)" do
+    822:       src = <<~CLEAR
+    823:         STRUCT Env { x: Int64 }
+    824:         UNION Value { Nil, Num: Float64, Str: String, List: Value[], Lambda { body: Value @indirect, id: Int64 } }
+    825:         FN test!(TAKES v: Value, MUTABLE pool: Env[10]@pool) RETURNS Value ->
+    826:             pool.insert(Env{ x: 1 });
     827:             MATCH v START
     828:                 Value.Lambda AS lam -> RETURN Value.Nil;,
     829:                 DEFAULT -> RETURN Value.Nil;
@@ -104,25 +98,73 @@ From spec/transpiler_spec.rb:835
     841:         STRUCT Env { x: Int64 }
     842:         UNION Value { Nil, Num: Float64, Str: String, List: Value[], Lambda { body: Value @indirect, id: Int64 } }
     843:         FN test!(TAKES v: Value, MUTABLE pool: Env[10]@pool) RETURNS Value ->
-
-From spec/transpiler_spec.rb:1539
-   1531:       CLEAR
-   1532:       zig = transpile(src)
-   1533:       # Int64 is a Copy type -- no cleanup needed, no __tmp hoisting
-   1534:       expect(zig).not_to include("defer CheatLib.cleanup(Int64")
-   1535:     end
-   1536:   end
-   1537: 
-   1538:   describe "INV-1: HPT string dupe matches return_provenance" do
-=> 1539:     it "uses heapAlloc for dupe when function has heap return_provenance" do
-   1540:       # Use a named binding so makeStr!'s result is properly cleaned up
-   1541:       # (inline `transform!(makeStr!())` would leak the temp string -- ERRDEFER_LEAK).
-   1542:       src = <<~CLEAR
-   1543:         FN makeStr!() RETURNS String -> RETURN COPY "hi"; END
-   1544:         FN transform!(s: String) RETURNS String -> RETURN COPY s; END
-   1545:         FN caller!() RETURNS String ->
-   1546:             s = makeStr!();
-   1547:             RETURN transform!(s);
+    844:             pool.insert(Env{ x: 1 });
+    845:             MATCH TAKES v START
+    846:                 Value.Lambda AS lam -> RETURN Value.Nil;,
+    847:                 DEFAULT -> RETURN Value.Nil;
+    848:             END
+    849:             RETURN Value.Nil;
+    850:         END
+    851:       CLEAR
+    852:       zig = transpile(src)
+    853:       # pool.insert can fail → error unwind leaves v OWNED → moved guard needed
+    854:       expect(zig).to include("v_moved")
+    855:     end
+    856: 
+    857:     it "does NOT emit source_moved for MATCH AS on Copy payload" do
+    858:       src = <<~CLEAR
+    859:         STRUCT Env { x: Int64 }
+    860:         UNION Value { Nil, Num: Float64, Str: String, List: Value[], Lambda { body: Value @indirect, id: Int64 } }
+    861:         FN test!(TAKES v: Value, MUTABLE pool: Env[10]@pool) RETURNS Value ->
+    862:             pool.insert(Env{ x: 1 });
+    863:             MATCH v START
+    864:                 Value.Num AS n -> RETURN Value{ Num: n };,
+    865:                 DEFAULT -> RETURN Value.Nil;
+    866:             END
+    867:             RETURN Value.Nil;
+    868:         END
+    869:       CLEAR
+    870:       zig = transpile(src)
+    871:       # Copy payload: no move needed, source still usable
+    872:       expect(zig).not_to include("v_moved = true")
+    873:     end
+    874:     it "heap-dupes string literal value in HashMap assignment" do
+    875:       src = <<~CLEAR
+    876:         FN test!(MUTABLE map: HashMap<String>) RETURNS Void ->
+    877:             map["key"] = "hello";
+    878:             RETURN;
+    879:         END
+    880:       CLEAR
+    881:       zig = transpile(src)
+    882:       # String literal "hello" must be heap-duped before storing in HashMap.
+    883:       # Without this, HashMap.deinit tries to free rodata -> crash.
+    884:       expect(zig).to match(/heapAlloc\(\)\.dupe\(u8.*"hello"/)
+    885:     end
+    886: 
+    887:     it "heap-dupes string literal inside union value in HashMap assignment" do
+    888:       src = <<~CLEAR
+    889:         UNION Value { Nil, Str: String }
+    890:         FN test!(MUTABLE map: HashMap<Value>) RETURNS Void ->
+    891:             map["key"] = Value{ Str: "world" };
+    892:             RETURN;
+    893:         END
+    894:       CLEAR
+    895:       zig = transpile(src)
+    896:       expect(zig).to match(/heapAlloc\(\)\.dupe\(u8.*"world"/)
+    897:     end
+    898: 
+    899:     it "MATCH AS on non-Copy variant emits cleanup on binding (auto-TAKES)" do
+    900:       src = <<~CLEAR
+    901:         UNION Value { Num: Float64, List: Value[] }
+    902:         FN test!() RETURNS Void ->
+    903:             result = Value{ Num: 1.0 };
+    904:             MATCH result START
+    905:                 Value.List AS items -> RETURN;,
+    906:                 DEFAULT -> RETURN;
+    907:             END
+    908:             RETURN;
+    909:         END
+    910:       CLEAR
 
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.

@@ -167,20 +167,7 @@ Recorded stack trace:
 
 Failure 1: spec/cleanup_plan_spec.rb:34
 Command: bundle exec rspec spec/cleanup_plan_spec.rb
-Failure output excerpt:
-7 # CleanupClassifier collections local HashMap marks for heap cleanup with _moved guard
-rspec ./spec/cleanup_plan_spec.rb:336 # CleanupClassifier heap-promoted direct binding of promoted list return marks for heap cleanup
-rspec ./spec/cleanup_plan_spec.rb:361 # CleanupClassifier heap-promoted chained promoted return marks for heap cleanup (transit
-... truncated ...
-le 'p' (line 4)
-[Warning] Unused variable 'p' (line 3)
-[Warning] Unused variable 'r' (line 11)
-[Warning] Unused variable 'x' (line 4)
-[Warning] Unused variable 'items' (line 3)
-[Warning] Unused variable 'result' (line 5)
-[Warning] Unused variable 'result' (line 5)
-[Warning] MUTABLE 'futures' is never reassigned — consider removing MUTABLE (line 4)
-Relevant test code:
+Failing test code:
 From spec/cleanup_plan_spec.rb:34
      26:     ast = Parser.new(tokens, src).parse
      27:     annotator = SemanticAnnotator.new
@@ -199,25 +186,6 @@ From spec/cleanup_plan_spec.rb:34
      40:       fn_node,
      41:       fn_nodes: fn_nodes,
      42:       schema_lookup: schema_lookup,
-
-From spec/cleanup_plan_spec.rb:336
-    328:           FN main() RETURNS Void ->
-    329:               list1 = makeList();
-    330:               ASSERT list1.length() == 1;
-    331:               RETURN;
-    332:           END
-    333:         CLEAR
-    334:       end
-    335: 
-=>  336:       it "marks for heap cleanup" do
-    337:         entry = plan["list1"]
-    338:         expect(entry[:alloc]).to eq(:heap)
-    339:         expect(entry[:has_moved_guard]).to eq(true)
-    340:       end
-    341:     end
-    342: 
-    343:     context "chained promoted return" do
-    344:       let(:plan) do
 
 A mutant/regression test is failing after local source edits.
 Active source edits exist; inspect dirty changed lines first.

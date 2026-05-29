@@ -44,19 +44,8 @@ Recorded stack trace:
 Failure 1: spec/loop_frame_analysis_spec.rb:38
 Command: bundle exec rspec spec/loop_frame_analysis_spec.rb
 Failure output excerpt:
-Run options: exclude {:integration=>true}
-
-
-Finished in 44.51 seconds (files took 0.21164 seconds to load)
-1 example, 0 failures
-
-Coverage report generated for RSpec to /home/yahn/cleopatra/.eval/cheat/coverage.
-Line Coverage: 19.43% (4307 / 22166)
-Branch Coverage: 10.13% (1158 / 11437)
-[Warning] MUTABLE 'parts' is never reassigned — consider removing MUTABLE (line 4)
-
 TIMEOUT after 45s: bundle exec rspec spec/loop_frame_analysis_spec.rb
-Relevant test code:
+Failing test code:
 From spec/loop_frame_analysis_spec.rb:38
      30:     ast
      31:   end

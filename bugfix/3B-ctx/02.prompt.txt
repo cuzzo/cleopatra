@@ -58,29 +58,20 @@ Recorded stack trace:
 Failure 1: spec/error_registry_spec.rb:50
 Command: bundle exec rspec spec/error_registry_spec.rb
 Failure output excerpt:
-il
-
-       (compared using ==)
-     # ./spec/error_registry_spec.rb:61:in `block (3 levels) in <top (required)>'
-     # ./spec/error_registry_spec.rb:53:in `block (3 levels) in <top (required)>'
-
-  2) AST.register_type! returns existed=true with no conflict on a matching second registration
      Failure/Error: expect(existed).to be true
-
-       exp
-... truncated ...
-stry_spec.rb:115 # AST.reset_user_types! rewinds the next user id so subsequent user types start at 4
-rspec ./spec/error_registry_spec.rb:138 # AST.enum_entries includes user types at >=4 sorted by id
-
-Coverage report generated for RSpec to /home/yahn/cleopatra/.eval/cheat/coverage.
-Line Coverage: 0.13% (39 / 29419)
-Branch Coverage: 100.0% (6 / 6)
-Relevant test code:
+       expected true
+            got false
+     Failure/Error: expect(conflict).not_to be_nil
+       expected: not nil
+     Failure/Error: expect(conflict[:is_stdlib]).to be true
+       expected true
+            got false
+     Failure/Error: expect(AST::ERROR_TYPES[:ParseError][:first_site]).to equal(tok)
+     NoMethodError:
+       undefined method `[]' for nil:NilClass
+     Failure/Error: expect(AST.id_of_type(:A)).to eq(AST::ERROR_NAME_USER_FIRST)
+Failing test code:
 From spec/error_registry_spec.rb:61
-     53:       example.run
-     54:       AST.reset_user_types!
-     55:     end
-     56: 
      57:     it "registers a new user type and assigns the next user id" do
      58:       existed, conflict = AST.register_type!(:ParseError, :Input)
      59:       expect(existed).to be false
@@ -88,31 +79,6 @@ From spec/error_registry_spec.rb:61
 =>   61:       expect(AST.kind_of_type(:ParseError)).to eq(:Input)
      62:       expect(AST.id_of_type(:ParseError)).to eq(AST::ERROR_NAME_USER_FIRST)
      63:     end
-     64: 
-     65:     it "returns existed=true with no conflict on a matching second registration" do
-     66:       AST.register_type!(:ParseError, :Input)
-     67:       existed, conflict = AST.register_type!(:ParseError, :Input)
-     68:       expect(existed).to be true
-     69:       expect(conflict).to be_nil
-
-From spec/error_registry_spec.rb:53
-     45:     it "user types start at id 4" do
-     46:       expect(AST::ERROR_NAME_USER_FIRST).to eq(4)
-     47:     end
-     48:   end
-     49: 
-     50:   describe ".register_type!" do
-     51:     around do |example|
-     52:       AST.reset_user_types!
-=>   53:       example.run
-     54:       AST.reset_user_types!
-     55:     end
-     56: 
-     57:     it "registers a new user type and assigns the next user id" do
-     58:       existed, conflict = AST.register_type!(:ParseError, :Input)
-     59:       expect(existed).to be false
-     60:       expect(conflict).to be_nil
-     61:       expect(AST.kind_of_type(:ParseError)).to eq(:Input)
 
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.

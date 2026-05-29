@@ -468,6 +468,63 @@ def test_source_window(bug, failure, line, radius: 5)
   "From #{failure['file_rel']}:#{line}\n#{body}"
 end
 
+def ruby_block_delta(line)
+  stripped = line.sub(/#.*/, '')
+  opens = stripped.scan(/\b(do|def|class|module|if|unless|case|begin|while|until|for)\b/).size
+  closes = stripped.scan(/\bend\b/).size
+  opens - closes
+end
+
+def test_source_block(bug, failure, line, max_lines: 90)
+  path = File.join(repo_path_for(bug), failure['file_rel'].to_s)
+  return nil unless File.file?(path)
+
+  lines = File.readlines(path, chomp: true)
+  return nil if lines.empty?
+
+  idx = [[line.to_i - 1, 0].max, lines.length - 1].min
+  start_idx = idx.downto(0).find do |i|
+    lines[i].match?(/^\s*(it|specify|example|test)\b.*\bdo\b/) ||
+      lines[i].match?(/^\s*def\s+test_/)
+  end
+  return test_source_window(bug, failure, line, radius: 8) unless start_idx
+
+  depth = 0
+  end_idx = [start_idx + max_lines - 1, lines.length - 1].min
+  (start_idx..end_idx).each do |i|
+    depth += ruby_block_delta(lines[i])
+    if i > start_idx && depth <= 0
+      end_idx = i
+      break
+    end
+  end
+
+  body = lines[start_idx..end_idx].each_with_index.map do |src, offset|
+    actual = start_idx + offset + 1
+    marker = actual == line.to_i ? '=>' : '  '
+    "#{marker} #{actual.to_s.rjust(4)}: #{src}"
+  end.join("\n")
+  "From #{failure['file_rel']}:#{line}\n#{body}"
+end
+
+def new_unit_test_context(bug)
+  new_test = bug.dig('discovery', 'new_test') || {}
+  content = new_test['content'].to_s.strip
+  return nil if content.empty?
+
+  file_rel = new_test['file_rel'] || (bug.dig('discovery', 'dirty_files') || []).find { |f| f['role'] == 'test' }&.dig('file_rel')
+  [
+    '=' * 60,
+    'TEST FAILURE CONTEXT',
+    '=' * 60,
+    'New failing unit test:',
+    "File: #{file_rel}",
+    '```ruby',
+    content,
+    '```'
+  ].join("\n")
+end
+
 def sanitized_bug_prompt(bug)
   text = bug['prompt'].to_s.dup
   text.gsub!(/\n\nNew test file: .+?```ruby\n.*?```\n/m, "\n")
@@ -476,6 +533,11 @@ def sanitized_bug_prompt(bug)
 end
 
 def test_diagnostics_context(bug)
+  if bug.dig('discovery', 'scenario') == 'new_unit_test'
+    context = new_unit_test_context(bug)
+    return context if context
+  end
+
   failures = bug['test_failures'] || []
   lines = [
     '=' * 60,
@@ -495,14 +557,17 @@ def test_diagnostics_context(bug)
 
     excerpt = failure['failure_excerpt'].to_s
     if excerpt.strip != ''
-      lines << 'Failure output excerpt:'
-      lines << truncate_middle(excerpt, 700).rstrip
+      focused = excerpt.lines.grep(/Failure\/Error|expected|got |NoMethodError|NameError|undefined method|ArgumentError|TypeError|SyntaxError|Error:|TIMEOUT/i).first(12).join
+      unless focused.strip.empty?
+        lines << 'Failure output excerpt:'
+        lines << truncate_middle(focused, 700).rstrip
+      end
     end
 
-    windows = failure_lines_for(failure).first(2).filter_map { |line| test_source_window(bug, failure, line, radius: 8) }
+    windows = failure_lines_for(failure).first(1).filter_map { |line| test_source_block(bug, failure, line) }
     next if windows.empty?
 
-    lines << 'Relevant test code:'
+    lines << 'Failing test code:'
     lines << windows.join("\n\n")
   end
 

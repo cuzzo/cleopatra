@@ -82,70 +82,19 @@ Interpretation: A new failing unit test was added; use it to understand expected
 ============================================================
 TEST FAILURE CONTEXT
 ============================================================
-Recorded stack trace:
-  spec/first_class_function_spec.rb:35
-  src/ast/parser.rb:2128:in `parse_fn_type_annotation'
+New failing unit test:
+File: spec/generated/parser_spec.rb
+```ruby
+# Generated failing test for Cleopatra mutant Parser.parse_fn_type_annotation.
+# Mutation under test: swapped comparison: '==' -> '!=' near ') && peek.type == :CHAR && pee'
+require "minitest/autorun"
 
-Failure 1: spec/first_class_function_spec.rb:35
-Command: bundle exec rspec spec/first_class_function_spec.rb
-Failure output excerpt:
-Run options: exclude {:integration=>true}
-...F.........................................
-
-Failures:
-
-  1) SemanticAnnotator Function Types — Phase 1 (FN(T) -> R type annotations) Parser FN(n: Int64) -> Bool with optional parameter name parses without error (name is documentation only)
-     Failure/Error: expect { run(code) }.not_to raise_error
-
-    
-... truncated ...
-.eval/cheat/coverage.
-Line Coverage: 21.02% (4659 / 22166)
-Branch Coverage: 12.0% (1373 / 11437)
-[Warning] Unused variable 'cb' (line 2)
-[Warning] Unused variable 'cb' (line 2)
-[Warning] Unused variable 'result' (line 3)
-[Warning] Unused variable 'sum' (line 3)
-[Warning] Unused variable 'result' (line 8)
-[Warning] Unused variable 'result' (line 8)
-Relevant test code:
-From spec/first_class_function_spec.rb:12
-      4: require "fileutils"
-      5: 
-      6: require_relative "../src/backends/transpiler"
-      7: require_relative "../src/ast/ast"
-      8: 
-      9: RSpec.describe SemanticAnnotator do
-     10:   def run(source)
-     11:     tokens = Lexer.new(source).tokenize
-=>   12:     ast = Parser.new(tokens, source).parse
-     13:     annotator = SemanticAnnotator.new
-     14:     annotator.annotate!(ast)
-     15:     return ast
-     16:   end
-     17: 
-     18:   def get_last_type(source)
-     19:     run(source).statements.last.resolved_type
-     20:   end
-
-From spec/first_class_function_spec.rb:62
-     54:         it "parses without error" do
-     55:           expect { run(code) }.not_to raise_error
-     56:         end
-     57:       end
-     58: 
-     59:       context "FN(n: Int64) -> Bool with optional parameter name" do
-     60:         let(:code) { "cb: FN(n: Int64) -> Bool = %(n: Int64) -> n > 0;" }
-     61:         it "parses without error (name is documentation only)" do
-=>   62:           expect { run(code) }.not_to raise_error
-     63:         end
-     64:       end
-     65: 
-     66:       context "FN type in a named-function parameter position" do
-     67:         let(:code) {
-     68:           <<~CLEAR
-     69:             FN apply(cb: FN(Int64) -> Bool, n: Int64) RETURNS Bool ->
-     70:               RETURN FALSE;
+class GeneratedParse_fn_type_annotationTest < Minitest::Test
+  def test_parse_fn_type_annotation_regression
+    flunk "Regression for Parser.parse_fn_type_annotation: swapped comparison: '==' -> '!=' near ') && peek.type == :CHAR && pee'"
+  end
+end
+```
 
 A new unit test was added and is failing.
 A new failing unit test was added; use it to understand expected behavior.

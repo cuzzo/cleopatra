@@ -99,66 +99,28 @@ Recorded stack trace:
 Failure 1: spec/mir_comparison_spec.rb:31
 Command: bundle exec rspec spec/mir_comparison_spec.rb
 Failure output excerpt:
-Run options: exclude {:integration=>true}
-.........F............
-
-Failures:
-
-  1) MIR pipeline comparison old MIR nodes passthrough translates MIR::SuppressCleanup from MIRPass
      Failure/Error: annotator.annotate!(ast)
-
      TypeError:
-       no implicit conversion of Integer into String
-     # ./src/annotator.rb:120:in `+'
-     # ./src/annotato
-... truncated ...
-4.17% (5358 / 22166)
-Branch Coverage: 16.4% (1876 / 11437)
-[Warning] Unused variable 'x' (line 2)
-[Warning] Unused variable 'name' (line 2)
-[Warning] Unused variable 'flag' (line 2)
-[Warning] Unused variable 'name' (line 2)
-[Warning] Unused variable 'result' (line 5)
-[Warning] Unused variable 's' (line 3)
-[Warning] Unused variable 'first' (line 3)
-Relevant test code:
+Failing test code:
 From spec/mir_comparison_spec.rb:169
-    161:   # =========================================================================
-    162: 
-    163:   # For function body comparison, we need a different approach:
-    164:   # extract the function body statements after MIRPass and lower each one.
-    165:   def compare_fn_body(src)
-    166:     tokens = Lexer.new(src).tokenize
-    167:     ast = Parser.new(tokens, src).parse
-    168:     annotator = SemanticAnnotator.new(importer: nil, source_dir: ".", strict_test: false)
-=>  169:     annotator.annotate!(ast)
-    170:     PipelineRewriter.new(annotator).rewrite!(ast)
-    171:     StringConcatRewriter.new.rewrite!(ast)
-    172: 
-    173:     fn_nodes = {}
-    174:     ast.statements.each { |s| fn_nodes[s.name] = s if s.is_a?(AST::FunctionDef) }
-    175:     schema_lookup = ->(name) { annotator.lookup_type_schema(name) }
-    176:     mir = MIRPass.new(fn_nodes: fn_nodes, schema_lookup: schema_lookup)
-    177:     mir.transform!(ast)
-
-From spec/mir_comparison_spec.rb:314
-    306:       src = <<~CLEAR
-    307:         FN consume(TAKES s: String) RETURNS Void -> RETURN; END
-    308:         FN main() RETURNS Void ->
-    309:           x = "hello";
-    310:           consume(GIVE x);
-    311:           RETURN;
-    312:         END
-    313:       CLEAR
-=>  314:       results = compare_fn_body(src)
-    315:       suppress = results.find { |r| r[:ast_class] == "MIR::SuppressCleanup" }
-    316:       if suppress
-    317:         expect(suppress[:error]).to be_nil
-    318:         expect(suppress[:new_zig]).to include("_moved = true")
-    319:       end
-    320:     end
-    321:   end
-    322: 
+    139:     it "produces correct union Zig" do
+    140:       src = <<~CLEAR
+    141:         UNION Result { Ok: Number, Err: String, Empty }
+    142:         FN main() RETURNS Void -> RETURN; END
+    143:       CLEAR
+    144:       old = old_transpile(src)
+    145:       results = compare_statements(src)
+    146: 
+    147:       union_result = results.find { |r| r[:ast].include?("UnionDef") }
+    148:       expect(union_result).not_to be_nil
+    149:       expect(union_result[:new_zig]).to include("union(enum)")
+    150:       expect(union_result[:new_zig]).to include("Ok: f64")
+    151:       expect(union_result[:new_zig]).to include("Err: []const u8")
+    152:       expect(union_result[:new_zig]).to include("Empty: void")
+    153:       # Old transpiler
+    154:       expect(old).to include("union(enum)")
+    155:       expect(old).to include("Ok: f64")
+    156:     end
 
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.

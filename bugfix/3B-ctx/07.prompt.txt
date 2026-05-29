@@ -99,51 +99,14 @@ Recorded stack trace:
 
 Failure 1: spec/capabilities_spec.rb:2120
 Command: bundle exec rspec spec/capabilities_spec.rb
-Failure output excerpt:
-pec.rb:2441 # SemanticAnnotator OR EXIT grammar — unified with inherit semantics parses OR EXIT Kind, "msg"
-rspec ./spec/capabilities_spec.rb:2445 # SemanticAnnotator OR EXIT grammar — unified with inherit semantics parses OR EXIT Kind, Type (registers the type on first use)
-rspec ./spec/capabilities_spec.rb:2451 # SemanticAnnotator OR EXIT grammar
-... truncated ...
-er line 3). Reviewer: verify this cannot actually self-acquire at runtime (distinct instances, sorted acquire, etc.). (line 4)
-[Note] Lock rank violation: acquiring ':B' at rank 1 while ':A' (rank 2) is held. Ranks must be strictly ascending along the acquire path to prove LockCycle freedom by construction. (POSSIBLE_LOCK_CYCLE accepted.) (line 6)
-Relevant test code:
+Failing test code:
 From spec/capabilities_spec.rb:2120
-   2112:   # ---------------------------------------------------------------------------
-   2113:   # CATCH grammar — every form
-   2114:   # ---------------------------------------------------------------------------
-   2115:   # The unified CATCH surface:
-   2116:   #   CATCH Kind                          — by kind
-   2117:   #   CATCH Kind WITH(Type)               — kind + single type
-   2118:   #   CATCH Kind WITH(T1, T2, ...)        — kind + multi-type filter
-   2119:   #   CATCH Type                          — direct type match (kind inferred)
-=> 2120:   # Every form feeds the annotator's resolve_catch_clause!, which must
-   2121:   # populate clause[:kind] + clause[:error_names] so mir-lowering can
-   2122:   # emit the right dispatch.
-   2123: 
-   2124:   describe "CATCH grammar — kind-only form" do
-   2125:     it "accepts CATCH Kind" do
-   2126:       src = <<~FLUX
-   2127:         FN go(mode: Int64) RETURNS Int64 ->
-   2128:           IF mode == 0 THEN RAISE Input, "bad"; END
-
-From spec/capabilities_spec.rb:2445
-   2437:     it "parses OR EXIT Kind (kind only)" do
-   2438:       expect { run(outer_wrap('OR EXIT NotFound')) }.not_to raise_error
-   2439:     end
-   2440: 
-   2441:     it "parses OR EXIT Kind, \"msg\"" do
-   2442:       expect { run(outer_wrap('OR EXIT NotFound, "msg"')) }.not_to raise_error
-   2443:     end
-   2444: 
-=> 2445:     it "parses OR EXIT Kind, Type (registers the type on first use)" do
-   2446:       src = outer_wrap('OR EXIT NotFound, SomeNew')
-   2447:       expect { run(src) }.not_to raise_error
-   2448:       expect(AST.kind_of_type(:SomeNew)).to eq(:NotFound)
-   2449:     end
-   2450: 
-   2451:     it "parses OR EXIT Kind, Type, \"msg\" (full override)" do
-   2452:       src = outer_wrap('OR EXIT System, SysIssue, "whoops"')
-   2453:       expect { run(src) }.not_to raise_error
+   2104:     it "accepts re-using a stdlib type name with its stdlib kind (no-op)" do
+   2105:       src = <<~FLUX
+   2106:         FN a() RETURNS !Void -> RAISE Transient, LockTimeout, "bad"; END
+   2107:       FLUX
+   2108:       expect { run(src) }.not_to raise_error
+   2109:     end
 
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.

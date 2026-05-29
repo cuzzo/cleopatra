@@ -35,62 +35,19 @@ Interpretation: A new failing unit test was added; use it to understand expected
 ============================================================
 TEST FAILURE CONTEXT
 ============================================================
-Recorded stack trace:
-  spec/transpiler_spec.rb:1397
-  src/ast/parser.rb:539:in `match?'
+New failing unit test:
+File: spec/generated/parser_spec.rb
+```ruby
+# Generated failing test for Cleopatra mutant Parser.match?.
+# Mutation under test: swapped comparison: '==' -> '!=' near 'current.type == type && (val.n'
+require "minitest/autorun"
 
-Failure 1: spec/transpiler_spec.rb:1397
-Command: bundle exec rspec spec/transpiler_spec.rb
-Failure output excerpt:
-
-rspec ./spec/transpiler_spec.rb:1539 # ZigTranspiler INV-1: HPT string dupe matches return_provenance uses heapAlloc for dupe when function has heap return_provenance
-rspec ./spec/transpiler_spec.rb:1557 # ZigTranspiler INV-7: string concat flag is annotation-driven emits std.mem.concat for string addition
-rspec ./spec/transpiler_spec.rb:1572 # Zi
-... truncated ...
-HERE accesses a non-existent field on _
-rspec ./spec/transpiler_spec.rb:1963 # ZigTranspiler pipeline placeholder field errors raises a type error when SELECT accesses a non-existent field on _
-
-Coverage report generated for RSpec to /home/yahn/cleopatra/.eval/cheat/coverage.
-Line Coverage: 10.79% (2391 / 22166)
-Branch Coverage: 0.71% (81 / 11437)
-Relevant test code:
-From spec/transpiler_spec.rb:1397
-   1389:             RETURN;
-   1390:         END
-   1391:       CLEAR
-   1392:       zig = transpile(src)
-   1393:       # BG is inside a MethodCall arg. If MIR::Promote was missed, there
-   1394:       # should be NO defer free (freeing un-duped data crashes).
-   1395:       # After the fix: both msg and needle should be duped AND freed.
-   1396:       has_msg_dupe = zig.include?("dupe(u8, msg)")
-=> 1397:       has_msg_free = zig.match?(/free.*msg/)
-   1398:       # Either both dupe+free, or neither. Never free without dupe.
-   1399:       expect(has_msg_free && !has_msg_dupe).to be(false),
-   1400:         "free without dupe is a crash: msg is freed but was never duped to heap"
-   1401:     end
-   1402:   end
-   1403: 
-   1404:   # ===========================================================================
-   1405:   # BG spawn: @local uses same-scheduler, not round-robin
-
-From spec/transpiler_spec.rb:1539
-   1531:       CLEAR
-   1532:       zig = transpile(src)
-   1533:       # Int64 is a Copy type -- no cleanup needed, no __tmp hoisting
-   1534:       expect(zig).not_to include("defer CheatLib.cleanup(Int64")
-   1535:     end
-   1536:   end
-   1537: 
-   1538:   describe "INV-1: HPT string dupe matches return_provenance" do
-=> 1539:     it "uses heapAlloc for dupe when function has heap return_provenance" do
-   1540:       # Use a named binding so makeStr!'s result is properly cleaned up
-   1541:       # (inline `transform!(makeStr!())` would leak the temp string -- ERRDEFER_LEAK).
-   1542:       src = <<~CLEAR
-   1543:         FN makeStr!() RETURNS String -> RETURN COPY "hi"; END
-   1544:         FN transform!(s: String) RETURNS String -> RETURN COPY s; END
-   1545:         FN caller!() RETURNS String ->
-   1546:             s = makeStr!();
-   1547:             RETURN transform!(s);
+class GeneratedMatch_Test < Minitest::Test
+  def test_match__regression
+    flunk "Regression for Parser.match?: swapped comparison: '==' -> '!=' near 'current.type == type && (val.n'"
+  end
+end
+```
 
 A new unit test was added and is failing.
 A new failing unit test was added; use it to understand expected behavior.

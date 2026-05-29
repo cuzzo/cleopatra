@@ -1,5 +1,5 @@
 ```ruby
 def symbol?
-    @sync == :symbol
-  end
+  @sync == :symbol
+end
 ```

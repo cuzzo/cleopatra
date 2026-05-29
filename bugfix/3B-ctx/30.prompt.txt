@@ -130,43 +130,11 @@ Recorded stack trace:
 
 Failure 1: spec/annotator_spec.rb:1447
 Command: bundle exec rspec spec/annotator_spec.rb
-Failure output excerpt:
-loop
-
-Coverage report generated for RSpec to /home/yahn/cleopatra/.eval/cheat/coverage.
-Line Coverage: 35.72% (7917 / 22166)
-Branch Coverage: 32.19% (3682 / 11437)
-[Warning] MUTABLE 'nodes' is never reassigned — consider removing MUTABLE (line 3)
-[Warning] MUTABLE 'nv' is never reassigned — consider removing MUTABLE (line 5)
-[Warning] Unused variab
-... truncated ...
-sed variable 'x' (line 1)
-[Warning] Unused variable 'x' (line 1)
-[Warning] Unused variable 'x' (line 1)
-[Warning] Unused variable 'x' (line 1)
-[Warning] Unused variable 'x' (line 1)
-[Warning] Unused variable 'x' (line 1)
-[Warning] Unused variable 'greeting' (line 1)
-[Warning] MUTABLE 'items' is never reassigned — consider removing MUTABLE (line 2)
-Relevant test code:
+Failing test code:
 From spec/annotator_spec.rb:1447
-   1439:       StringConcatRewriter.new.rewrite!(ast)
-   1440:       fn_nodes = {}
-   1441:       ast.statements.each { |s| fn_nodes[s.name] = s if s.is_a?(AST::FunctionDef) }
-   1442:       mir = MIRPass.new(fn_nodes: fn_nodes, schema_lookup: ->(n) { annotator.lookup_type_schema(n) })
-   1443:       mir.transform!(ast)
-   1444:       ast
-   1445:     end
-   1446: 
-=> 1447:     context "While Loops (visit_WhileLoop)" do
-   1448:       context "Valid Loops" do
-   1449:         let(:code) {
-   1450:           <<~FLUX
-   1451:             MUTABLE i = 0;
-   1452:             WHILE i < 10 DO
-   1453:               i = i + 1;
-   1454:             END
-   1455:           FLUX
+   1424:         it "raises error because Float64[2] != Float64[1]" do
+   1425:           expect { ast }.to raise_error(/List literal contains mixed types/)
+   1426:         end
 
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.

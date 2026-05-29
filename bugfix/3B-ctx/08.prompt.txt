@@ -42,64 +42,19 @@ Interpretation: A new failing unit test was added; use it to understand expected
 ============================================================
 TEST FAILURE CONTEXT
 ============================================================
-Recorded stack trace:
-  spec/annotator_spec.rb:1102
-  src/ast/fixable_error.rb:78:in `initialize'
+New failing unit test:
+File: spec/generated/fixable_error_spec.rb
+```ruby
+# Generated failing test for Cleopatra mutant FixableFinding.initialize.
+# Mutation under test: swapped constant: 'LEVELS' -> 'ArgumentError'
+require "minitest/autorun"
 
-Failure 1: spec/annotator_spec.rb:1102
-Command: bundle exec rspec spec/annotator_spec.rb
-Failure output excerpt:
-RPass)
-rspec ./spec/annotator_spec.rb:1685 # SemanticAnnotator Control Flow Validation return_provenance for struct/union with implicit COPY fields sets return_provenance when returning union with implicit-copied @list field
-rspec ./spec/annotator_spec.rb:1702 # SemanticAnnotator Control Flow Validation Pool Id<T> is implicitly copyable allows assi
-... truncated ...
- Unused variable 'vs' (line 3)
-[Warning] Unused variable 'x' (line 1)
-[Warning] Unused variable 'x' (line 1)
-[Warning] Unused variable 'x' (line 1)
-[Warning] Unused variable 'x' (line 1)
-[Warning] Unused variable 'x' (line 1)
-[Warning] Unused variable 'x' (line 1)
-[Warning] Unused variable 'x' (line 1)
-[Warning] Unused variable 'greeting' (line 1)
-Relevant test code:
-From spec/annotator_spec.rb:1102
-   1094: 
-   1095:       context "Oversized Assignment (Size > Capacity)" do
-   1096:         let(:code) {
-   1097:           <<~FLUX
-   1098:             list : Float64[1] = [1.0, 2.0, 3.0];
-   1099:           FLUX
-   1100:         }
-   1101:         it "raises a Fixed Array Size Mismatch error" do
-=> 1102:           expect { ast }.to raise_error(/Cannot initialize array of size/i)
-   1103:         end
-   1104:       end
-   1105: 
-   1106:       context "Empty List to Fixed Array" do
-   1107:         let(:code) {
-   1108:           <<~FLUX
-   1109:             -- Any[] -> Float64[5]
-   1110:             list : Float64[5] = [];
-
-From spec/annotator_spec.rb:1685
-   1677:         CLEAR
-   1678:         ast = run_mir(src)
-   1679:         fn = ast.statements.find { |s| s.is_a?(AST::FunctionDef) && s.name == "buildList" }
-   1680:         expect(fn.return_provenance).to eq(:heap)
-   1681:       end
-   1682:     end
-   1683: 
-   1684:     context "return_provenance for struct/union with implicit COPY fields" do
-=> 1685:       it "sets return_provenance when returning union with implicit-copied @list field" do
-   1686:         src = <<~CLEAR
-   1687:           UNION Value { Nil, List: Value[] }
-   1688:           FN makeList() RETURNS Value ->
-   1689:               MUTABLE items: Value[]@list = List[];
-   1690:               items.append(Value.Nil);
-   1691:               RETURN Value{ List: items };
-   1692:           END
-   1693:           FN main() RETURNS Void -> v = makeList(); RETURN; END
+class GeneratedInitializeTest < Minitest::Test
+  def test_initialize_regression
+    flunk "Regression for FixableFinding.initialize: swapped constant: 'LEVELS' -> 'ArgumentError'"
+  end
+end
+```
 
 A new unit test was added and is failing.
 A new failing unit test was added; use it to understand expected behavior.

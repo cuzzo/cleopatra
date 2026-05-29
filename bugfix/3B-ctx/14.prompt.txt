@@ -74,55 +74,24 @@ Recorded stack trace:
 
 Failure 1: spec/allocation_strategy_spec.rb:136
 Command: bundle exec rspec spec/allocation_strategy_spec.rb
-Failure output excerpt:
-ame local @list → storage :frame, cleanup :frame [CURRENTLY FAILS storage]
-rspec ./spec/allocation_strategy_spec.rb:234 # Allocation Strategy Invariants Group C: INV-FRAME — non-escaping collections are :frame local String built by concat → no heap allocation (not over-promoted)
-rspec ./spec/allocation_strategy_spec.rb:251 # Allocation Strategy Inv
-... truncated ...
-me or :heap)
-rspec ./spec/allocation_strategy_spec.rb:618 # Allocation Strategy Invariants Group H: INV-RODATA — string literals are :rodata empty string literal → :rodata, not frame-allocated
-
-Coverage report generated for RSpec to /home/yahn/cleopatra/.eval/cheat/coverage.
-Line Coverage: 14.46% (3206 / 22166)
-Branch Coverage: 4.21% (482 / 11437)
-Relevant test code:
+Failing test code:
 From spec/allocation_strategy_spec.rb:136
-    128: 
-    129:   end
-    130: 
-    131:   # ===========================================================================
-    132:   # Group B: INV-SROA + INV-LARGE
-    133:   #   SROA candidates (small pure-value structs) → :stack
-    134:   #   Large non-SROA (many fields, > threshold bytes) → :frame, not :stack
-    135:   #
-=>  136:   # [CURRENTLY FAILS] The large-struct cases fail because finalize_storage uses
-    137:   # slot_size > 128 where slot_size counts fields (not bytes). A struct with 20
-    138:   # Int64 fields has slot_size=20 which is < 128, so it incorrectly gets :stack.
-    139:   # The fix (Phase B): change the threshold or measure in bytes.
-    140:   # ===========================================================================
-    141:   describe "Group B: INV-SROA — SROA candidates :stack; large structs :frame" do
-    142: 
-    143:     it "small struct (2 Int64 fields) → storage :stack" do
-    144:       ast = run_mir(<<~CLEAR)
-
-From spec/allocation_strategy_spec.rb:234
-    226:       d = find_decl_in(fn, "parts")
-    227:       entry = cleanup_entry(fn, "parts")
-    228:       expect(entry&.dig(:needs_cleanup)).to be true
-    229:       expect(entry&.dig(:alloc)).to eq(:frame)
-    230:       # storage is WRONG: should be :frame but is currently :stack
-    231:       expect(d.storage).to eq(:frame)
-    232:     end
-    233: 
-=>  234:     it "local String built by concat → no heap allocation (not over-promoted)" do
-    235:       ast = run_mir(<<~CLEAR)
-    236:         FN main() RETURNS Void ->
-    237:           MUTABLE resp = "";
-    238:           resp = resp + "hello";
-    239:           RETURN;
-    240:         END
-    241:       CLEAR
-    242:       fn = main_fn(ast)
+    112:     it "primitive stays :stack even in a loop — never over-promoted" do
+    113:       ast = run_mir(<<~CLEAR)
+    114:         FN main() RETURNS Void ->
+    115:           MUTABLE sum = 0_i64;
+    116:           MUTABLE i = 0_i64;
+    117:           WHILE i < 10 DO
+    118:             sum = sum + i;
+    119:             i = i + 1_i64;
+    120:           END
+    121:           RETURN;
+    122:         END
+    123:       CLEAR
+    124:       fn = main_fn(ast)
+    125:       expect(find_decl_in(fn, "sum").storage).to eq(:stack)
+    126:       expect(find_decl_in(fn, "i").storage).to eq(:stack)
+    127:     end
 
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.

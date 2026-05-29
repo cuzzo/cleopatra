@@ -45,66 +45,19 @@ Interpretation: A new failing unit test was added; use it to understand expected
 ============================================================
 TEST FAILURE CONTEXT
 ============================================================
-Recorded stack trace:
-  spec/allocation_strategy_spec.rb:83
-  src/annotator-helpers/function_signature.rb:104:in `dig'
+New failing unit test:
+File: spec/generated/function_signature_spec.rb
+```ruby
+# Generated failing test for Cleopatra mutant FunctionSignature.dig.
+# Mutation under test: negated condition: 'keys.length == 1'
+require "minitest/autorun"
 
-Failure 1: spec/allocation_strategy_spec.rb:83
-Command: bundle exec rspec spec/allocation_strategy_spec.rb
-Failure output excerpt:
-/annotator.rb:557:in `visit_FunctionDef'
-      # ./src/annotator.rb:229:in `visit'
-      # ./src/annotator.rb:288:in `block in visit_Program'
-      # ./src/annotator.rb:282:in `each'
-      # ./src/annotator.rb:282:in `visit_Program'
-      # ./src/annotator.rb:229:in `visit'
-      # ./src/annotator.rb:102:in `annotate!'
-      # ./spec/allocation_str
-... truncated ...
-ine 2)
-[Warning] Unused variable 'counter' (line 2)
-[Note] Variable 'counter' is @locked but never mutated via WITH EXCLUSIVE. You are paying for lock acquire/release on every access. Consider @local or removing the lock. (line 2)
-[Warning] Unused variable 's' (line 2)
-[Warning] Unused variable 'msg' (line 2)
-[Warning] Unused variable 's' (line 2)
-Relevant test code:
-From spec/allocation_strategy_spec.rb:36
-     28: 
-     29:   # --- helpers ----------------------------------------------------------------
-     30: 
-     31:   def run_mir(src)
-     32:     tokens = Lexer.new(src).tokenize
-     33:     ast = Parser.new(tokens, src).parse
-     34:     PipelineRewriter.new.rewrite!(ast)
-     35:     annotator = SemanticAnnotator.new
-=>   36:     annotator.annotate!(ast)
-     37:     StringConcatRewriter.new.rewrite!(ast)
-     38:     fn_nodes = {}
-     39:     ast.statements.each { |s| fn_nodes[s.name] = s if s.is_a?(AST::FunctionDef) }
-     40:     mir = MIRPass.new(fn_nodes: fn_nodes,
-     41:                       schema_lookup: ->(n) { annotator.lookup_type_schema(n) })
-     42:     mir.transform!(ast)
-     43:     ast
-     44:   end
-
-From spec/allocation_strategy_spec.rb:569
-    561:       d = find_decl_in(fn, "trimmed")
-    562:       entry = cleanup_entry(fn, "trimmed")
-    563:       expect(d.type_info.provenance).to eq(:borrow)
-    564:       expect(entry&.dig(:needs_cleanup)).to be_falsey
-    565:       expect(entry&.dig(:alloc)).to be_nil
-    566:     end
-    567: 
-    568:     it "borrow return has no MIR::Drop in function body" do
-=>  569:       ast = run_mir(<<~CLEAR)
-    570:         FN main() RETURNS Void ->
-    571:           MUTABLE raw = "  world  ";
-    572:           MUTABLE trimmed: String = raw.trim();
-    573:           RETURN;
-    574:         END
-    575:       CLEAR
-    576:       fn = main_fn(ast)
-    577:       drops = fn.body.select { |s| s.is_a?(MIR::Drop) }
+class GeneratedDigTest < Minitest::Test
+  def test_dig_regression
+    flunk "Regression for FunctionSignature.dig: negated condition: 'keys.length == 1'"
+  end
+end
+```
 
 A new unit test was added and is failing.
 A new failing unit test was added; use it to understand expected behavior.

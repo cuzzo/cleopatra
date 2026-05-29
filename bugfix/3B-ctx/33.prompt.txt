@@ -37,45 +37,19 @@ Interpretation: A new failing unit test was added; use it to understand expected
 ============================================================
 TEST FAILURE CONTEXT
 ============================================================
-Recorded stack trace:
-  spec/stream_spec.rb:67
-  src/ast/type.rb:492:in `any_rc?'
+New failing unit test:
+File: spec/generated/type_spec.rb
+```ruby
+# Generated failing test for Cleopatra mutant Type.any_rc?.
+# Mutation under test: swapped || -> &&
+require "minitest/autorun"
 
-Failure 1: spec/stream_spec.rb:67
-Command: bundle exec rspec spec/stream_spec.rb
-Failure output excerpt:
-able 'a' (line 3)
-[Warning] Unused variable 'b' (line 4)
-[Warning] Unused variable 'c' (line 5)
-[Note] Variable 'sp' is @shared (Arc) but never leaves the local scheduler. You are paying for atomic ref-counting but never crossing cores. Consider @multiowned or @local. (line 2)
-[Warning] Unused variable 'x' (line 3)
-[Warning] Unused variable 'y' (li
-... truncated ...
-MUTABLE (line 2)
-[Warning] Unused variable 'v' (line 4)
-[Warning] MUTABLE 'futures' is never reassigned — consider removing MUTABLE (line 2)
-[Warning] MUTABLE 'futures' is never reassigned — consider removing MUTABLE (line 2)
-[Warning] Unused variable 'v' (line 4)
-[Warning] MUTABLE 'futures' is never reassigned — consider removing MUTABLE (line 2)
-Relevant test code:
-From spec/stream_spec.rb:67
-     59:         t = Parser.new(tokens, "~Float64 @shared").send(:parse_type_annotation)
-     60:         expect(t.requires_move?).to be false
-     61:       end
-     62: 
-     63:       it "requires_move? is still true for plain ~Float64" do
-     64:         expect(Type.new(:"~Float64").requires_move?).to be true
-     65:       end
-     66: 
-=>   67:       it "any_rc? is false for shared promises (SharedPromise is not Rc/Arc)" do
-     68:         tokens = Lexer.new("~Float64 @shared").tokenize
-     69:         t = Parser.new(tokens, "~Float64 @shared").send(:parse_type_annotation)
-     70:         expect(t.any_rc?).to be false
-     71:       end
-     72: 
-     73:       it "any_rc? is still true for plain Float64@shared (Arc wrapper)" do
-     74:         tokens = Lexer.new("Float64 @shared").tokenize
-     75:         t = Parser.new(tokens, "Float64 @shared").send(:parse_type_annotation)
+class GeneratedAny_rc_Test < Minitest::Test
+  def test_any_rc__regression
+    flunk "Regression for Type.any_rc?: swapped || -> &&"
+  end
+end
+```
 
 A new unit test was added and is failing.
 A new failing unit test was added; use it to understand expected behavior.

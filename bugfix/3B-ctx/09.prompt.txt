@@ -51,32 +51,14 @@ Recorded stack trace:
 Failure 1: spec/ownership_graph_spec.rb:105
 Command: bundle exec rspec spec/ownership_graph_spec.rb
 Failure output excerpt:
-Run options: exclude {:integration=>true}
-.............FF.........F............
-
-Failures:
-
-  1) OwnershipGraph#release_borrow removes borrow edges from a borrower
      Failure/Error: graph.release_borrow("y")
-
      TypeError:
-       no implicit conversion of Integer into String
-     # ./src/mir/ownership_graph.rb:111:in `+'
-     # ./src/mir/owners
-... truncated ...
-h_spec.rb:184 # OwnershipGraph#can_write? returns true after borrow release
-
-Coverage report generated for RSpec to /home/yahn/cleopatra/.eval/cheat/coverage.
-Line Coverage: 17.33% (3842 / 22166)
-Branch Coverage: 7.99% (914 / 11437)
-[Warning] Unused variable 'x' (line 2)
-[Warning] Unused variable 'q' (line 4)
-[Warning] Unused variable 'o' (line 3)
-Relevant test code:
+     Failure/Error: graph.release_borrow("y")
+     TypeError:
+     Failure/Error: graph.release_borrow("y")
+     TypeError:
+Failing test code:
 From spec/ownership_graph_spec.rb:111
-    103:   end
-    104: 
-    105:   describe "#release_borrow" do
     106:     it "removes borrow edges from a borrower" do
     107:       graph.declare("x")
     108:       graph.borrow("y", "x", mutable: false)
@@ -85,31 +67,6 @@ From spec/ownership_graph_spec.rb:111
 =>  111:       graph.release_borrow("y")
     112:       expect(graph.edges.select { |e| e.to == "x" && (e.kind == :borrows || e.kind == :borrows_mut) }).to be_empty
     113:     end
-    114: 
-    115:     it "allows new mutable borrow after release" do
-    116:       graph.declare("x")
-    117:       graph.borrow("y", "x", mutable: false)
-    118:       graph.release_borrow("y")
-    119:       err = graph.borrow("z", "x", mutable: true)
-
-From spec/ownership_graph_spec.rb:118
-    110: 
-    111:       graph.release_borrow("y")
-    112:       expect(graph.edges.select { |e| e.to == "x" && (e.kind == :borrows || e.kind == :borrows_mut) }).to be_empty
-    113:     end
-    114: 
-    115:     it "allows new mutable borrow after release" do
-    116:       graph.declare("x")
-    117:       graph.borrow("y", "x", mutable: false)
-=>  118:       graph.release_borrow("y")
-    119:       err = graph.borrow("z", "x", mutable: true)
-    120:       expect(err).to be_nil
-    121:     end
-    122:   end
-    123: 
-    124:   describe "#drop" do
-    125:     it "drops a live node and returns cleanup paths" do
-    126:       graph.declare("x")
 
 A mutant/regression test is failing after local source edits.
 Active source edits exist; inspect dirty changed lines first.

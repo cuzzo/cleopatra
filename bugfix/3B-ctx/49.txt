@@ -7,6 +7,6 @@ def ==(other)
       return false unless other_t&.fn_type?
       return @raw == other_t.raw
     end
-    resolved == other.to_sym && @raw == other
+    resolved == other.to_sym && @raw == other.to_sym
   end
 ```

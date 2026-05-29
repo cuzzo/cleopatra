@@ -103,18 +103,7 @@ Recorded stack trace:
 
 Failure 1: spec/use_after_move_dataflow_spec.rb:278
 Command: bundle exec rspec spec/use_after_move_dataflow_spec.rb
-Failure output excerpt:
-ataflow_spec.rb:131 # UseAfterMoveChecker valid programs produce no errors if/else where no branch moves
-rspec ./spec/use_after_move_dataflow_spec.rb:145 # UseAfterMoveChecker valid programs produce no errors loop with no move
-rspec ./spec/use_after_move_dataflow_spec.rb:160 # UseAfterMoveChecker valid programs produce no errors string reuse (strin
-... truncated ...
-moving MUTABLE (line 2)
-[Warning] MUTABLE 'items' is never reassigned — consider removing MUTABLE (line 3)
-[Warning] MUTABLE 'items' is never reassigned — consider removing MUTABLE (line 2)
-[Warning] Unused variable 'n' (line 7)
-[Warning] MUTABLE 'vals' is never reassigned — consider removing MUTABLE (line 5)
-[Warning] Unused variable 'b' (line 4)
-Relevant test code:
+Failing test code:
 From spec/use_after_move_dataflow_spec.rb:278
     270:     it "direct return of collection marks source as moved" do
     271:       df = analyze_state(<<~CLEAR, "makeList")
@@ -127,31 +116,6 @@ From spec/use_after_move_dataflow_spec.rb:278
 =>  278:       # Direct return of identifier: marked as moved by collect_binding_moves
     279:       expect(df.exit_states["items"]).to eq(:moved)
     280:     end
-    281: 
-    282:     it "struct literal return copies fields (CopyNode), source stays owned" do
-    283:       df = analyze_state(<<~CLEAR, "wrap")
-    284:         STRUCT Wrapper { data: Int64[] }
-    285:         FN wrap() RETURNS %Wrapper ->
-    286:           MUTABLE items: Int64[]@list = List[];
-
-From spec/use_after_move_dataflow_spec.rb:145
-    137:             vals.append(2_i64);
-    138:           END
-    139:           n = vals.length();
-    140:           RETURN;
-    141:         END
-    142:       CLEAR
-    143:     end
-    144: 
-=>  145:     it "loop with no move" do
-    146:       expect_no_error(<<~CLEAR)
-    147:         FN main() RETURNS Void ->
-    148:           MUTABLE vals: Int64[]@list = List[];
-    149:           MUTABLE i = 0;
-    150:           WHILE i < 5 DO
-    151:             vals.append(i);
-    152:             i = i + 1;
-    153:           END
 
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.

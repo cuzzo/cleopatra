@@ -77,19 +77,7 @@ Recorded stack trace:
 
 Failure 1: spec/provenance_annotation_spec.rb:64
 Command: bundle exec rspec spec/provenance_annotation_spec.rb
-Failure output excerpt:
-, value="append", line=4, column=10>, object=#<struct AST::Identifier token=#<struct Lexer::Token type=:VAR_ID, value="vals", line=4, column=5>, name="vals">, name="append", args=[#<struct AST::Literal token=#<struct Lexer::Token type=:INT64, value=1, line=4, column=17>, type=:INT64, value=1, storage=:stack>]>, #<struct AST::ReturnNode token=#<stru
-... truncated ...
- caller binding has :heap provenance
-
-Coverage report generated for RSpec to /home/yahn/cleopatra/.eval/cheat/coverage.
-Line Coverage: 12.71% (3171 / 24958)
-Branch Coverage: 15.32% (997 / 6509)
-[Warning] Unused variable 'x' (line 1)
-[Warning] Unused variable 'y' (line 1)
-[Warning] Unused variable 'x' (line 1)
-[Warning] Unused variable 's' (line 8)
-Relevant test code:
+Failing test code:
 From spec/provenance_annotation_spec.rb:13
       5: 
       6: # Phase 2 validation: provenance is set correctly during annotation
@@ -108,25 +96,6 @@ From spec/provenance_annotation_spec.rb:13
      19:     fn.body.find { |s| (s.is_a?(AST::BindExpr) || s.is_a?(AST::VarDecl)) && s.name == var_name }
      20:   end
      21: 
-
-From spec/provenance_annotation_spec.rb:74
-     66:       ti = name_field.type_info
-     67:       ti = Type.new(ti) if !ti.is_a?(Type)
-     68:       expect(ti.provenance).to eq(:heap)
-     69:     end
-     70:   end
-     71: 
-     72:   describe "function returning promoted data" do
-     73:     it "caller binding has :heap provenance" do
-=>   74:       ast, _ = annotate(<<~CLEAR)
-     75:         STRUCT Holder { items: Int64[], label: String }
-     76:         FN build() RETURNS Holder ->
-     77:             MUTABLE vals: Int64[]@list = [];
-     78:             vals.append(1_i64);
-     79:             RETURN Holder{ items: vals, label: "test" };
-     80:         END
-     81:         FN main() RETURNS Void ->
-     82:             h = build();
 
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.

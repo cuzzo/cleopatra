@@ -119,17 +119,7 @@ Recorded stack trace:
 
 Failure 1: spec/concurrency_spec.rb:1433
 Command: bundle exec rspec spec/concurrency_spec.rb
-Failure output excerpt:
-awn and spawnBest (default)
-rspec ./spec/concurrency_spec.rb:1704 # SemanticAnnotator BG/NEXT — Phase 4: parser and transpiler Transpiler BgBlock captures outer variable by value (no pointer)
-rspec ./spec/concurrency_spec.rb:1719 # SemanticAnnotator BG/NEXT — Phase 4: parser and transpiler Transpiler NextExpr emits .next() on the promise
-rspec ./sp
-... truncated ...
-signed — consider removing MUTABLE (line 2)
-[Note] DO branch auto-pinned — captures shared/locked resource. Use @parallel to distribute. (line 3)
-[Note] DO branch auto-pinned — captures shared/locked resource. Use @parallel to distribute. (line 3)
-[Note] DO branch auto-pinned — captures shared/locked resource. Use @parallel to distribute. (line 3)
-Relevant test code:
+Failing test code:
 From spec/concurrency_spec.rb:1433
    1425:       it "wraps the last expression's type in ~ (Float64 literal body)" do
    1426:         annotator = SemanticAnnotator.new
@@ -137,36 +127,6 @@ From spec/concurrency_spec.rb:1433
    1428:         annotator.send(:visit_BgBlock, bg)
    1429:         expect(bg.full_type).to eq(:"~Float64")
    1430:       end
-   1431:     end
-   1432: 
-=> 1433:     describe "visit_NextExpr" do
-   1434:       it "raises when NEXT is called on a Float64 literal (non-tense)" do
-   1435:         annotator = SemanticAnnotator.new
-   1436:         next_node = make_next_expr(make_num_lit)
-   1437:         expect { annotator.send(:visit_NextExpr, next_node) }
-   1438:           .to raise_error(SourceError, /NEXT requires a future value/)
-   1439:       end
-   1440:     end
-   1441: 
-
-From spec/concurrency_spec.rb:1704
-   1696:         src = "FN f() RETURNS Void -> p: ~Float64 = BG { 42.0; }; r: Float64 = NEXT p; RETURN; END"
-   1697:         out = transpile_fn(src)
-   1698:         expect(out).to include("CheatLib.Promise(f64).spawn(")
-   1699:         expect(out).to include("spawnBest(")
-   1700:         expect(out).to include("break :")
-   1701:         expect(out).to include("__ctx_0.inner.result = 42")
-   1702:       end
-   1703: 
-=> 1704:       it "BgBlock captures outer variable by value (no pointer)" do
-   1705:         src = "FN f() RETURNS Void -> x: Float64 = 7.0; q: ~Float64 = BG { x + 1.0; }; r: Float64 = NEXT q; RETURN; END"
-   1706:         out = transpile_fn(src)
-   1707:         # Field type uses @TypeOf so Zig deduces the actual local type --
-   1708:         # this handles Arc-wrapped captures and already-pointer collection
-   1709:         # params correctly without per-case Ruby logic.
-   1710:         expect(out).to include("x: @TypeOf(x)")
-   1711:         # Initialized as .x = x  (never .x = &x: doubling pointers breaks
-   1712:         # collection params and Arc captures.)
 
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.

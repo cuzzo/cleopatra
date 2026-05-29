@@ -42,62 +42,18 @@ Recorded stack trace:
 Failure 1: spec/lock_helper_spec.rb:7
 Command: bundle exec rspec spec/lock_helper_spec.rb
 Failure output excerpt:
-Run options: exclude {:integration=>true}
-..........FFF
-
-Failures:
-
-  1) LockHelper#scc_is_cyclic? flags a multi-node SCC as cyclic
      Failure/Error: expect(host.scc_is_cyclic?([:A, :B], adj)).to be true
-
      NameError:
-       undefined local variable or method `node' for #<#<Class:0x00007fd9b89efdd8>:0x00007fd9b86b2698>
-     # ./src/annotator-h
-... truncated ...
-elper#scc_is_cyclic? flags a single-node SCC with a self-loop as cyclic
-rspec ./spec/lock_helper_spec.rb:132 # LockHelper#scc_is_cyclic? does not flag a single-node SCC without a self-loop as cyclic
-
-Coverage report generated for RSpec to /home/yahn/cleopatra/.eval/cheat/coverage.
-Line Coverage: 0.19% (57 / 29359)
-Branch Coverage: 16.16% (16 / 99)
-Relevant test code:
+     Failure/Error: expect(host.scc_is_cyclic?([:A], adj)).to be true
+     NameError:
+     Failure/Error: expect(host.scc_is_cyclic?([:A], adj)).to be false
+     NameError:
+Failing test code:
 From spec/lock_helper_spec.rb:124
-    116:       sccs = host.tarjan_scc(nodes, adj)
-    117:       expect(sccs.length).to eq(n) # each node is its own singleton SCC
-    118:     end
-    119:   end
-    120: 
-    121:   describe "#scc_is_cyclic?" do
     122:     it "flags a multi-node SCC as cyclic" do
     123:       _, adj = adj_from([[:A, :B], [:B, :A]])
 =>  124:       expect(host.scc_is_cyclic?([:A, :B], adj)).to be true
     125:     end
-    126: 
-    127:     it "flags a single-node SCC with a self-loop as cyclic" do
-    128:       _, adj = adj_from([[:A, :A]])
-    129:       expect(host.scc_is_cyclic?([:A], adj)).to be true
-    130:     end
-    131: 
-    132:     it "does not flag a single-node SCC without a self-loop as cyclic" do
-
-From spec/lock_helper_spec.rb:129
-    121:   describe "#scc_is_cyclic?" do
-    122:     it "flags a multi-node SCC as cyclic" do
-    123:       _, adj = adj_from([[:A, :B], [:B, :A]])
-    124:       expect(host.scc_is_cyclic?([:A, :B], adj)).to be true
-    125:     end
-    126: 
-    127:     it "flags a single-node SCC with a self-loop as cyclic" do
-    128:       _, adj = adj_from([[:A, :A]])
-=>  129:       expect(host.scc_is_cyclic?([:A], adj)).to be true
-    130:     end
-    131: 
-    132:     it "does not flag a single-node SCC without a self-loop as cyclic" do
-    133:       _, adj = adj_from([[:A, :B]])
-    134:       expect(host.scc_is_cyclic?([:A], adj)).to be false
-    135:     end
-    136:   end
-    137: end
 
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.

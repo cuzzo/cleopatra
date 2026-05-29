@@ -44,48 +44,19 @@ Interpretation: A new failing unit test was added; use it to understand expected
 ============================================================
 TEST FAILURE CONTEXT
 ============================================================
-Recorded stack trace:
-  spec/higher_order_spec.rb:1631
-  src/backends/pipeline_host.rb:22:in `initialize'
+New failing unit test:
+File: spec/generated/pipeline_host_spec.rb
+```ruby
+# Generated failing test for Cleopatra mutant PipelineHost.initialize.
+# Mutation under test: renamed variable: 'lowering' -> 'emitter'
+require "minitest/autorun"
 
-Failure 1: spec/higher_order_spec.rb:1631
-Command: bundle exec rspec spec/higher_order_spec.rb
-Failure output excerpt:
-e 4)
-[Warning] Unused variable 'n' (line 3)
-[Warning] MUTABLE 'm' is never reassigned — consider removing MUTABLE (line 2)
-[Warning] Unused variable 'm' (line 1)
-[Warning] Unused variable 'm' (line 1)
-[Warning] Unused variable 'v' (line 4)
-[Warning] Unused variable 'm' (line 1)
-[Warning] Unused variable 'v' (line 4)
-[Warning] Unused variable 'n' (l
-... truncated ...
-result' (line 4)
-[Warning] MUTABLE 'slist' is never reassigned — consider removing MUTABLE (line 3)
-[Warning] Unused variable 'found' (line 4)
-[Warning] MUTABLE 'pool' is never reassigned — consider removing MUTABLE (line 3)
-[Warning] Unused variable 'found' (line 4)
-[Warning] MUTABLE 'pool' is never reassigned — consider removing MUTABLE (line 3)
-Relevant test code:
-From spec/higher_order_spec.rb:1631
-   1623:               nums: Float64[] = [1.0];
-   1624:               nums s> FIND _;
-   1625:               RETURN;
-   1626:             END
-   1627:           CLEAR
-   1628:         }.to raise_error(CompilerError, /FIND clause must evaluate to Bool/)
-   1629:       end
-   1630: 
-=> 1631:       it "emits a result variable initialized to null for FIND in Zig" do
-   1632:         out = transpile_fn(<<~CLEAR)
-   1633:           FN f() RETURNS Void ->
-   1634:             nums: Float64[] = [1.0, 2.0];
-   1635:             result = nums s> FIND _ > 1.0;
-   1636:             RETURN;
-   1637:           END
-   1638:         CLEAR
-   1639:         expect(out).to include("null")
+class GeneratedInitializeTest < Minitest::Test
+  def test_initialize_regression
+    flunk "Regression for PipelineHost.initialize: renamed variable: 'lowering' -> 'emitter'"
+  end
+end
+```
 
 A new unit test was added and is failing.
 A new failing unit test was added; use it to understand expected behavior.

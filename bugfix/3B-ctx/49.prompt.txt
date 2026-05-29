@@ -48,21 +48,7 @@ Failure 1: spec/affine_ownership_spec.rb:365
 Command: bundle exec rspec spec/affine_ownership_spec.rb
 Failure output excerpt:
 tion expected to return 'Value', but returned 'Value' (Line 3)
-     # ./src/ast/source_error.rb:119:in `error!'
-     # ./src/annotator.rb:1778:in `visit_ReturnNode'
-     # ./src/annotator.rb:229:in `visit'
-     # ./src/annotator.rb:774:in `block in visit_stmts'
-     # ./src/annotator.rb:772:in `each'
-     # ./src/annotator.rb:772:in `each_with_inde
-... truncated ...
-used variable 'copy' (line 3)
-[Warning] Unused variable 'copy' (line 5)
-[Warning] MUTABLE 'c' is never reassigned — consider removing MUTABLE (line 4)
-[Warning] Unused variable 'a' (line 3)
-[Warning] Unused variable 'b' (line 4)
-[Warning] Unused variable 'f' (line 4)
-[Warning] MUTABLE 'list' is never reassigned — consider removing MUTABLE (line 5)
-Relevant test code:
+Failing test code:
 From spec/affine_ownership_spec.rb:14
       6: require_relative "../src/backends/transpiler"
       7: require_relative "../src/ast/ast"
@@ -81,25 +67,6 @@ From spec/affine_ownership_spec.rb:14
      20:   end
      21: 
      22:   let(:ast) { run(code) }
-
-From spec/affine_ownership_spec.rb:22
-     14:     annotator.annotate!(ast)
-     15:     return ast
-     16:   end
-     17: 
-     18:   def get_last_type(source)
-     19:     run(source).statements.last.resolved_type
-     20:   end
-     21: 
-=>   22:   let(:ast) { run(code) }
-     23:   let(:result) { ast.statements.last.resolved_type }
-     24: 
-     25:   describe "Affine Ownership & Move Semantics" do
-     26:     let(:preamble) {
-     27:       <<~FLUX
-     28:         STRUCT Config { id: Float64, data: HashMap<Float64> }
-     29:       FLUX
-     30:     }
 
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.

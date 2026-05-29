@@ -49,30 +49,11 @@ Recorded stack trace:
 Failure 1: spec/ownership_graph_spec.rb:193
 Command: bundle exec rspec spec/ownership_graph_spec.rb
 Failure output excerpt:
-Run options: exclude {:integration=>true}
-.........................F...........
-
-Failures:
-
-  1) OwnershipGraph#fork_lightweight and #restore_lightweight captures and restores node states
      Failure/Error: expect(graph.live?("x")).to be true
-
        expected true
             got false
-     # ./spec/ownership_graph_spec.rb:200:in `block (3 levels)
-... truncated ...
-#fork_lightweight and #restore_lightweight captures and restores node states
-
-Coverage report generated for RSpec to /home/yahn/cleopatra/.eval/cheat/coverage.
-Line Coverage: 17.34% (3843 / 22166)
-Branch Coverage: 8.0% (915 / 11437)
-[Warning] Unused variable 'x' (line 2)
-[Warning] Unused variable 'q' (line 4)
-[Warning] Unused variable 'o' (line 3)
-Relevant test code:
+Failing test code:
 From spec/ownership_graph_spec.rb:200
-    192: 
-    193:   describe "#fork_lightweight and #restore_lightweight" do
     194:     it "captures and restores node states" do
     195:       graph.declare("x")
     196:       snapshot = graph.fork_lightweight
@@ -80,32 +61,6 @@ From spec/ownership_graph_spec.rb:200
     198:       expect(graph.moved?("x")).to be true
     199:       graph.restore_lightweight(snapshot)
 =>  200:       expect(graph.live?("x")).to be true
-    201:     end
-    202: 
-    203:     it "captures edge count for restoration" do
-    204:       graph.declare("x")
-    205:       snapshot = graph.fork_lightweight
-    206:       expect(snapshot[:edge_count]).to eq(graph.edges.size)
-    207:     end
-    208:   end
-
-From spec/ownership_graph_spec.rb:193
-    185:       graph.declare("x")
-    186:       graph.borrow("y", "x", mutable: false)
-    187:       graph.release_borrow("y")
-    188:       expect(graph.can_write?("x")).to be true
-    189:     end
-    190:   end
-    191: 
-    192: 
-=>  193:   describe "#fork_lightweight and #restore_lightweight" do
-    194:     it "captures and restores node states" do
-    195:       graph.declare("x")
-    196:       snapshot = graph.fork_lightweight
-    197:       graph.transfer("x", "y")
-    198:       expect(graph.moved?("x")).to be true
-    199:       graph.restore_lightweight(snapshot)
-    200:       expect(graph.live?("x")).to be true
     201:     end
 
 Production stack trace from a clean committed tree.

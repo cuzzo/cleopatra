@@ -60,51 +60,17 @@ Recorded stack trace:
 
 Failure 1: spec/capabilities_spec.rb:2054
 Command: bundle exec rspec spec/capabilities_spec.rb
-Failure output excerpt:
- grammar — unified with inherit semantics parses OR EXIT Kind, Type (registers the type on first use)
-rspec ./spec/capabilities_spec.rb:2451 # SemanticAnnotator OR EXIT grammar — unified with inherit semantics parses OR EXIT Kind, Type, "msg" (full override)
-rspec ./spec/capabilities_spec.rb:2457 # SemanticAnnotator OR EXIT grammar — unified with i
-... truncated ...
-er line 3). Reviewer: verify this cannot actually self-acquire at runtime (distinct instances, sorted acquire, etc.). (line 4)
-[Note] Lock rank violation: acquiring ':B' at rank 1 while ':A' (rank 2) is held. Ranks must be strictly ascending along the acquire path to prove LockCycle freedom by construction. (POSSIBLE_LOCK_CYCLE accepted.) (line 6)
-Relevant test code:
+Failing test code:
 From spec/capabilities_spec.rb:2054
+   2039:     it "leaves error_kind / error_type nil when the entry has no metadata" do
+   2040:       entry.delete(:error_kind)
+   2041:       entry.delete(:error_type)
+   2042:       src = 'writeFile("p", "c") OR 0;'
+   2043:       call = find_call(run(src), "writeFile")
+   2044:       expect(call).not_to be_nil
+   2045:       expect(call.error_kind).to be_nil
    2046:       expect(call.error_type).to be_nil
    2047:     end
-   2048:   end
-   2049: 
-   2050:   # ---------------------------------------------------------------------------
-   2051:   # RAISE grammar + auto-registration
-   2052:   # ---------------------------------------------------------------------------
-   2053:   # Verifies the unified RAISE forms and the collision / first-use rules
-=> 2054:   # in AST.register_type! as driven by the annotator's visit_Raise.
-   2055: 
-   2056:   describe "RAISE grammar + registry auto-registration" do
-   2057:     it "accepts `RAISE Kind, Type, \"msg\"` as first use and registers the mapping" do
-   2058:       src = <<~FLUX
-   2059:         FN go() RETURNS !Void -> RAISE Input, BadParse, "oops"; END
-   2060:       FLUX
-   2061:       expect { run(src) }.not_to raise_error
-   2062:       expect(AST.kind_of_type(:BadParse)).to eq(:Input)
-
-From spec/capabilities_spec.rb:2451
-   2443:     end
-   2444: 
-   2445:     it "parses OR EXIT Kind, Type (registers the type on first use)" do
-   2446:       src = outer_wrap('OR EXIT NotFound, SomeNew')
-   2447:       expect { run(src) }.not_to raise_error
-   2448:       expect(AST.kind_of_type(:SomeNew)).to eq(:NotFound)
-   2449:     end
-   2450: 
-=> 2451:     it "parses OR EXIT Kind, Type, \"msg\" (full override)" do
-   2452:       src = outer_wrap('OR EXIT System, SysIssue, "whoops"')
-   2453:       expect { run(src) }.not_to raise_error
-   2454:       expect(AST.kind_of_type(:SysIssue)).to eq(:System)
-   2455:     end
-   2456: 
-   2457:     it "parses OR EXIT Type (kind auto-resolved from the registry)" do
-   2458:       # OrigErr was registered as Input by the fail() helper in outer_wrap.
-   2459:       src = outer_wrap('OR EXIT OrigErr, "x"')
 
 A mutant/regression test is failing after local source edits.
 Active source edits exist; inspect dirty changed lines first.

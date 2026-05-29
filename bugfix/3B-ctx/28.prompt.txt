@@ -81,46 +81,19 @@ Interpretation: A new failing unit test was added; use it to understand expected
 ============================================================
 TEST FAILURE CONTEXT
 ============================================================
-Recorded stack trace:
-  spec/annotator_spec.rb:1783
-  src/annotator.rb:1885:in `visit_MethodCall'
+New failing unit test:
+File: spec/generated/annotator_spec.rb
+```ruby
+# Generated failing test for Cleopatra mutant SemanticAnnotator.visit_MethodCall.
+# Mutation under test: forgotten line: 'node.full_type = method_sig.respond_to?(:return_type) ? (method_sig.return_type || :Void) : (method_sig[:return]&.dig(:type) || :Void)'
+require "minitest/autorun"
 
-Failure 1: spec/annotator_spec.rb:1783
-Command: bundle exec rspec spec/annotator_spec.rb
-Failure output excerpt:
-BLE 'vals' is never reassigned — consider removing MUTABLE (line 4)
-[Warning] MUTABLE 'all' is never reassigned — consider removing MUTABLE (line 2)
-[Warning] MUTABLE 'keys' is never reassigned — consider removing MUTABLE (line 2)
-[Warning] MUTABLE 'keys' is never reassigned — consider removing MUTABLE (line 2)
-[Warning] Unused variable 'result' (l
-... truncated ...
-sed variable 'x' (line 1)
-[Warning] Unused variable 'x' (line 1)
-[Warning] Unused variable 'x' (line 1)
-[Warning] Unused variable 'x' (line 1)
-[Warning] Unused variable 'x' (line 1)
-[Warning] Unused variable 'x' (line 1)
-[Warning] Unused variable 'greeting' (line 1)
-[Warning] MUTABLE 'items' is never reassigned — consider removing MUTABLE (line 2)
-Relevant test code:
-From spec/annotator_spec.rb:1783
-   1775:         }
-   1776:         it "raises error even inside a function if no loop is present" do
-   1777:           expect { ast }.to raise_error(/BREAK must be used inside a loop/)
-   1778:         end
-   1779:       end
-   1780:     end
-   1781:   end
-   1782: 
-=> 1783:   describe "Method Calls / Unified Call Syntax (visit_MethodCall)" do
-   1784:     # Define a Point struct and functions that operate on it
-   1785:     let(:base_funcs) {
-   1786:       <<~FLUX
-   1787:         STRUCT Point {
-   1788:           x: Float64,
-   1789:           y: Float64
-   1790:         }
-   1791: 
+class GeneratedVisit_methodcallTest < Minitest::Test
+  def test_visit_MethodCall_regression
+    flunk "Regression for SemanticAnnotator.visit_MethodCall: forgotten line: 'node.full_type = method_sig.respond_to?(:return_type) ? (method_sig.return_type || :Void) : (method_sig[:return]&.dig(:type) || :Void)'"
+  end
+end
+```
 
 A new unit test was added and is failing.
 A new failing unit test was added; use it to understand expected behavior.

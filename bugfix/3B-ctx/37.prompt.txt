@@ -40,26 +40,12 @@ Recorded stack trace:
 Failure 1: spec/symbol_spec.rb:193
 Command: bundle exec rspec spec/symbol_spec.rb
 Failure output excerpt:
-    +            if (@typeInfo(RType) == .pointer) {
-       +                CheatLib.free(self.outer_rt, result);
-       +            }
-       +        }
-       +    };
-       +    var main_runner = MainRunner{ .outer_rt = &rt };
-       +    try sched.submitSpawn(
-       +        @intFromPtr(&Runtime.entryWrapper),
-       +        @as(CheatHeader.
-... truncated ...
-g code generation symbol used as function argument emits correct Zig
-
-Coverage report generated for RSpec to /home/yahn/cleopatra/.eval/cheat/coverage.
-Line Coverage: 19.82% (4393 / 22166)
-Branch Coverage: 10.33% (1182 / 11437)
-[Warning] Unused variable 'x' (line 2)
-[Warning] Unused variable 'status' (line 2)
-[Warning] Unused variable 'x' (line 2)
-Relevant test code:
+     Failure/Error: ZigTranspiler.new.transpile(src, test_mode: true)
+     CompilerError:
+       [Compiler Error] Type Error: Function expected to return 'String', but returned 'Byte[1]' (Line 2)
+Failing test code:
 From spec/symbol_spec.rb:273
+    264:     it "emits != between symbols as negated pointer check" do
     265:       zig = compile_symbol_src(<<~CLEAR)
     266:         FN main() RETURNS Void ->
     267:           a = :foo;
@@ -70,32 +56,6 @@ From spec/symbol_spec.rb:273
     272:       CLEAR
 =>  273:       expect(zig).to include(".ptr ==")
     274:     end
-    275: 
-    276:     it "emits ASSERT with symbol comparison" do
-    277:       expect {
-    278:         compile_symbol_src(<<~CLEAR)
-    279:           FN main() RETURNS Void ->
-    280:             ASSERT :ok == :ok, "must match";
-    281:             RETURN;
-
-From spec/symbol_spec.rb:9
-      1: require "rspec"
-      2: require_relative "../src/ast/lexer"
-      3: require_relative "../src/ast/parser"
-      4: require_relative "../src/ast/type"
-      5: require_relative "../src/backends/transpiler"
-      6: 
-      7: # Full pipeline helper: source -> Zig string
-      8: def compile_symbol_src(src)
-=>    9:   ZigTranspiler.new.transpile(src, test_mode: true)
-     10: end
-     11: 
-     12: RSpec.describe "String@symbol" do
-     13: 
-     14:   # =========================================================================
-     15:   # Lexer
-     16:   # Symbol literals are parsed at the parser level (not the lexer level)
-     17:   # because ':' is also used as a separator in struct/hash/capability syntax.
 
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.

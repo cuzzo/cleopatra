@@ -50,43 +50,19 @@ Interpretation: A new failing unit test was added; use it to understand expected
 ============================================================
 TEST FAILURE CONTEXT
 ============================================================
-Recorded stack trace:
-  spec/ownership_dataflow_spec.rb:194
-  src/ast/scope.rb:253:in `lookup_type_schema'
+New failing unit test:
+File: spec/generated/scope_spec.rb
+```ruby
+# Generated failing test for Cleopatra mutant ScopeHelper.lookup_type_schema.
+# Mutation under test: renamed variable: 'base_name' -> 'scope'
+require "minitest/autorun"
 
-Failure 1: spec/ownership_dataflow_spec.rb:194
-Command: bundle exec rspec spec/ownership_dataflow_spec.rb
-Failure output excerpt:
-Warning] MUTABLE 's' is never reassigned — consider removing MUTABLE (line 44)
-[Warning] MUTABLE 's' is never reassigned — consider removing MUTABLE (line 57)
-[Warning] MUTABLE 'nums' is never reassigned — consider removing MUTABLE (line 13)
-[Warning] Unused variable 'a' (line 4)
-[Warning] Unused variable 'b' (line 5)
-[Warning] Unused variable 'c' 
-... truncated ...
-aying for atomic ref-counting but never crossing cores. Consider @multiowned or @local. (line 36)
-[Warning] MUTABLE 'exp10' is never reassigned — consider removing MUTABLE (line 44)
-[Warning] MUTABLE 'data' is never reassigned — consider removing MUTABLE (line 48)
-[Warning] MUTABLE 'futures' is never reassigned — consider removing MUTABLE (line 7)
-Relevant test code:
-From spec/ownership_dataflow_spec.rb:194
-    186:           ast = Parser.new(tokens, code).parse
-    187:           PipelineRewriter.new.rewrite!(ast)
-    188:           ann = SemanticAnnotator.new
-    189:           ann.annotate!(ast)
-    190:           StringConcatRewriter.new.rewrite!(ast)
-    191: 
-    192:           fn_nodes = {}
-    193:           ast.statements.each { |s| fn_nodes[s.name] = s if s.is_a?(AST::FunctionDef) }
-=>  194:           schema = ->(n) { ann.lookup_type_schema(n) }
-    195: 
-    196:           fn_nodes.each do |name, fn|
-    197:             next unless fn.body
-    198:             bindings = CleanupClassifier.classify(fn, fn_nodes: fn_nodes, schema_lookup: schema)
-    199:             next if bindings.empty?
-    200: 
-    201:             df = OwnershipDataflow.analyze(fn)
-    202:             summary = df.cleanup_summary
+class GeneratedLookup_type_schemaTest < Minitest::Test
+  def test_lookup_type_schema_regression
+    flunk "Regression for ScopeHelper.lookup_type_schema: renamed variable: 'base_name' -> 'scope'"
+  end
+end
+```
 
 A new unit test was added and is failing.
 A new failing unit test was added; use it to understand expected behavior.
