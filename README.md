@@ -117,14 +117,6 @@ Eventually, we want to test how effectively Qwen2.5 can be trained with GRAM to 
 
 We fed Qwen2.5 the context we *want* it to learn to extract from our tool.
 
-### The Result
-
-Feeding ideal context to Qwen2.5-Coder-3B improved fixing bug performance from ~70% to ~96%.
-
-For context, without ideal context, a model twice the size (Qwen2.5-Coder-7B-Instruct) performs at ~78%.
-
-So context alone is well within our goals to make a model perform 2x better.  Likely between to ~10-100x better.
-
 ### Current Verified Bugfix Evaluation
 
 The current control-gated benchmark uses 50 `src/` synthetic mutant bugs from
