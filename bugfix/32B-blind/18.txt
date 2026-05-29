@@ -1,7 +1,9 @@
 ```ruby
-def build_mat_set
-  # Other code...
-  mat_set = CallableContract.new # Fixed: Changed 'MIR' to 'CallableContract'
-  # Other code...
+def declare(node, owner)
+  if node.is_a?(Register)
+    @graph[node] = owner
+  else
+    raise ArgumentError, "Expected a Register, got a #{node.class}"
+  end
 end
 ```

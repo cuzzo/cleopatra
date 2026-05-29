@@ -1,8 +1,1 @@
-```ruby
-join_token = consume(:KEYWORD, 'JOIN')
-consume(:CHAR, '(')
-right_source = parse_expression
-consume(:CHAR, ')')
-key_expr = parse_expression(1)  # pipe_expression precedence
-AST::JoinOp.new(join_token, right_source, key_expr)
-```
+[[SKIPPED: API key not set]]

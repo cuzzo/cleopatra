@@ -1,8 +1,10 @@
 ```ruby
-def finalize
-  # Assuming 'segments' is the correct variable name now
-  segments.each do |segment|
-    # Your existing code logic here
+def consume(expected_type)
+  if @current.type == expected_type
+    @current = @lexer.next_token
+    @current
+  else
+    raise "Expected #{expected_type}, but got #{@current.type}"
   end
 end
 ```

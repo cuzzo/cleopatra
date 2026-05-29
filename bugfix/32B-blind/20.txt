@@ -1,7 +1,7 @@
 ```ruby
-def register_ownership_finalization_visible_names!
-  guarded_cleanup_names.each do |name|
-    # existing logic using name
+def register_type!(kind_sym, entry)
+  unless @registry.any? { |f| f[:kind] == kind_sym }
+    @registry << entry
   end
 end
 ```

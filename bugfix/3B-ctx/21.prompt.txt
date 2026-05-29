@@ -1,0 +1,42 @@
+File: src/ast/type.rb
+Function: frame?
+
+Here is the current (buggy) code of function `frame?`:
+
+```ruby
+  def frame?
+    @provenance != :frame
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: new_unit_test
+Worktree: dirty
+Target file: clean (src/ast/type.rb)
+Other dirty files:
+  added spec/generated/type_spec.rb (test)
+Interpretation: A new failing unit test was added; use it to understand expected behavior.
+
+A new unit test was added and is failing.
+A new failing unit test was added; use it to understand expected behavior.
+
+New test file: spec/generated/type_spec.rb
+```ruby
+# Generated failing test for Cleopatra mutant Type.frame?.
+# Mutation under test: swapped comparison: '==' -> '!=' near '@provenance == :frame'
+require "minitest/autorun"
+
+class GeneratedFrame_Test < Minitest::Test
+  def test_frame__regression
+    flunk "Regression for Type.frame?: swapped comparison: '==' -> '!=' near '@provenance == :frame'"
+  end
+end
+```
+
+Something wrong in `frame?`. swapped comparison: '==' -> '!=' near '@provenance == :frame'
+
+Fix it.
+
+Return ONLY the corrected function `frame?` in a ```ruby block.

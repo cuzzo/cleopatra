@@ -1,5 +1,9 @@
 ```ruby
-def append_gap_actions(actions)
-  # Your code here
+def parse_fn_type_annotation
+  # Your existing code here
+  if peek.type == :CHAR && peek.value == 'a'
+    # Your existing code here
+  end
+  # Your existing code here
 end
 ```

@@ -1,0 +1,11 @@
+File: src/ast/error_registry.rb
+Function: register_type!
+
+A mutant/regression test is failing after local source edits.
+Active source edits exist; inspect dirty changed lines first.
+
+Something wrong in `register_type!`. swapped comparison: '==' -> '!=' near 'f entry[:kind] == kind_sym'
+
+Fix it.
+
+Return ONLY the corrected function `register_type!` in a ```ruby block.

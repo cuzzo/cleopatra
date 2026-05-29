@@ -1,11 +1,13 @@
 ```ruby
-def verify_handler_reachability!
-  begin
-    # existing code that may raise an error
-  rescue => e
-    # log the error or handle it appropriately
-    Rails.logger.error("Error verifying handler reachability: #{e.message}")
-    raise e # re-raise the error to ensure it's not swallowed
+def register_type!(type_sym, error_class)
+  unless error_class < StandardError
+    raise ArgumentError, "error_class must be a subclass of StandardError"
   end
+
+  if @registry.key?(type_sym)
+    raise ArgumentError, "Type #{type_sym} is already registered"
+  end
+
+  @registry[type_sym] = error_class
 end
 ```

@@ -1,58 +1,39 @@
-To fix the bug, we need to ensure that the `case` statement correctly handles the `TryExpr` case. The current implementation raises an `Unsupported` exception for `TryExpr`, which is not appropriate for this tranche. We should instead compile the `TryExpr` expression and handle it appropriately.
-
-Here's the corrected code:
-
 ```ruby
-case expr
-    when MIR::Lit
-      text = expr.value.to_s
-      unless text.start_with?('"') && text.end_with?('"')
-        raise Unsupported, "register emitter only supports string literals in string expressions in this tranche"
-      end
+def visit_MethodCall(node)
+    visit(node.object)
+    node.args.each { |arg| visit(arg) }
 
-      reg = fresh_sreg
-      emit(SCONST, reg, add_const(unescape_string(text[1...-1])))
-      reg
-    when MIR::Ident
-      @sreg_by_name.fetch(resolve_ctx_name(expr.name)) do
-        raise Unsupported, "register emitter does not know String local #{expr.name.inspect}"
-      end
-    when MIR::ConcatStr
-      compile_string_concat_parts(expr.parts || [])
-    when MIR::DupeSlice
-      compile_string_expr(expr.source)
-    when MIR::DeepCopy
-      compile_string_expr(expr.source)
-    when MIR::HeapCreate
-      compile_string_expr(expr.init)
-    when MIR::Deref, MIR::AddressOf
-      compile_string_expr(expr.expr)
-    when MIR::BinOp
-      unless expr.op.to_s == "+"
-        raise Unsupported, "register emitter does not support string operator #{expr.op.inspect} yet"
-      end
+    # Collection method dispatch (Pool/HashMap) via declarative registry.
+    return if resolve_collection_method(node)
 
-      left = compile_string_expr(expr.left)
-      right = compile_string_expr(expr.right)
-      dst = fresh_sreg
-      emit(SCONCAT, dst, left, right)
-      dst
-    when MIR::Cast
-      compile_string_expr(expr.expr)
-    when MIR::InlineBc
-      compile_string_inline_bc(expr)
-    when MIR::InlineZig
-      compile_string_inline_zig(expr)
-    when MIR::TryExpr
-      # Compile the TryExpr expression
-      compile_try_expr(compile_string_expr(expr.expr))
-    when MIR::TryCatch
-      compile_string_try_catch(expr)
-    when MIR::FieldGet
-      compile_string_field_get(expr)
-    when MIR::IndexGet
-      compile_string_index_get(expr)
-    when MIR::Call
-      compile_call(expr, :string)
-    when MIR::MethodCall
-      compile_bg_promise_next(expr
+    # EXTERN method dispatch: check if the object's type has EXTERN methods registered.
+    obj_type = node.object.type_info
+    if obj_type
+      resolved = obj_type.is_a?(Type) ? obj_type.resolved : obj_type.to_s.to_sym
+      # Check for generic instance: Parsed<MyDoc> → base type Parsed
+      base = obj_type.is_a?(Type) && obj_type.generic_instance? ? obj_type.generic_base : resolved
+      type_schema = lookup_type_schema(base)
+      if type_schema.is_a?(Hash) && type_schema[:methods]&.key?(node.name)
+        method_sig = type_schema[:methods][node.name]
+        node.extern_call = true
+        node.extern_effects = method_sig[:extern_effects] if method_sig[:extern_effects]
+        node.instance_variable_set(:@extern_method, true)
+        record_effect(EffectTracker::EXTERN)
+        # Track allocator usage for EFFECTS :alloc methods.
+        alloc_kind = method_sig[:extern_effects]&.dig(:alloc)
+        if alloc_kind && current_fn_ctx
+          if alloc_kind == :heap
+            current_fn_ctx.heap_count += 1
+          else
+            current_fn_ctx.frame_count += 1
+          end
+        end
+        return
+      end
+    end
+
+    # Fall through to UFCS: obj.method(args) → method(obj, args)
+    ufcs_args = [node.object] + node.args
+    resolve_call(node, ufcs_args)
+  end
+```

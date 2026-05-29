@@ -1,48 +1,7 @@
-To fix the bug in the `finalize` method at `src/mir/fsm_transform/recursive_splitter.rb:133`, we need to rename the variable `unfilled` to `segments`. Here's the updated code:
-
 ```ruby
-# src/mir/fsm_transform/recursive_splitter.rb:133
-def finalize
-  # ... existing code ...
-  segments = unfilled
-  # ... existing code ...
+def consume
+  current = self.token
+  self.token = self.token.next
+  current
 end
 ```
-
-By renaming `unfilled` to `segments`, we ensure that the variable correctly represents the segments being processed, which should resolve the issue. This change should be tested thoroughly to ensure that it does not introduce any new bugs. Let's proceed with the test to verify the fix. ```python
-# /home/yahn/cheat/spec/concurrency_spec.rb:1577
-def test_finalize_with_segments
-  # Create a mock instance of RecursiveSplitter
-  splitter = RecursiveSplitter.new
-  
-  # Define mock data for unfilled segments
-  unfilled_segments = [1, 2, 3, 4, 5]
-  
-  # Assign mock data to the splitter
-  splitter.unfilled = unfilled_segments
-  
-  # Call the finalize method
-  splitter.finalize
-  
-  # Verify that the segments variable is correctly assigned
-  assert splitter.segments == unfilled_segments, "Segments variable is not correctly assigned"
-end
-```
-
-This test ensures that the `finalize` method correctly assigns the `segments` variable with the `unfilled` data, resolving the issue. Let's run the test to verify the fix. ```python
-# Run the test
-test_finalize_with_segments()
-```
-
-If the test passes, it confirms that the bug has been fixed. If there are any issues, we will need to investigate further. Let's proceed with the final steps. ```python
-# Final steps
-# If the test passes, commit the changes to the repository
-# git add src/mir/fsm_transform/recursive_splitter.rb
-# git commit -m "Fix bug in finalize method by renaming unfilled to segments"
-```
-
-By following these steps, we can ensure that the bug in the `finalize` method has been fixed and that the code is functioning correctly. Let's proceed with the final steps. ```python
-# Final steps
-# If the test passes, commit the changes to the repository
-# git add src/mir/fsm_transform/recursive_splitter.rb
-# git commit -m "Fix bug in

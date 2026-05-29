@@ -1,0 +1,14 @@
+File: src/annotator-helpers/function_signature.rb
+Function: dup
+
+A mutant/regression test is failing after local source edits.
+Active source edits exist; inspect dirty changed lines first.
+
+CI failing spec/annotator_spec.rb:3064.
+
+  spec/annotator_spec.rb:3064
+  src/annotator-helpers/function_signature.rb:120:in `dup'
+
+Fix the code.
+
+Return ONLY the corrected function `dup` in a ```ruby block.

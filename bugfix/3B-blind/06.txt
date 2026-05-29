@@ -1,9 +1,5 @@
-To fix the bug in `BcEmitter.compile_if_bind`, we need to add the missing line that writes back the capture to the pool. Here's the corrected code:
-
 ```ruby
-pool_writebacks << [capture, pool_node, idx_node] if pool_node
+def initialize(emitter)
+  @emitter = emitter
+end
 ```
-
-This line ensures that the capture is written back to the pool when a pool node is available. The `pool_writebacks` array is used to store the writeback operations, and this line adds a new writeback operation to the array if a pool node is present.
-
-By adding this line, we ensure that the capture is correctly written back to the pool, which is necessary for the correct execution of the bytecode. This fix should resolve the issue and allow the `BcEmitter.compile_if_bind` method to work as expected.

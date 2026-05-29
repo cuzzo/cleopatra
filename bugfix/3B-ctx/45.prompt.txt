@@ -1,0 +1,76 @@
+File: src/ast/ast.rb
+Function: walk_body
+
+Here is the current (buggy) code of function `walk_body`:
+
+```ruby
+  def self.walk_body(body, &visitor)
+    return unless nodes
+    nodes = nodes.is_a?(Array) ? nodes : [nodes]
+    nodes.each do |node|
+      yield node
+      case node
+      when IfStatement
+        walk_body(node.then_branch, &visitor)
+        walk_body(node.else_branch, &visitor)
+      when MatchStatement
+        (node.cases || []).each { |c| walk_body(c[:nodes], &visitor) }
+        walk_body(node.default_case, &visitor) if node.default_case
+      when WhileLoop, WhileBindLoop
+        walk_body(node.do_branch, &visitor)
+      when ForRange, ForEach
+        walk_body(node.nodes, &visitor)
+      when BgBlock, BgStreamBlock
+        walk_body(node.nodes, &visitor)
+      when WithBlock
+        walk_body(node.nodes, &visitor)
+      when DoBlock
+        (node.branches || []).each { |b| walk_body(b[:nodes], &visitor) }
+      when FunctionDef
+        walk_body(node.nodes, &visitor)
+      when TestBlock
+        walk_body(node.setup, &visitor)
+        node.whens&.each do |w|
+          walk_body(w.setup, &visitor)
+          w.tests&.each { |t| walk_body(t.nodes, &visitor) }
+        end
+      end
+    end
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: new_unit_test
+Worktree: dirty
+Target file: clean (src/ast/ast.rb)
+Other dirty files:
+  added spec/generated/ast_spec.rb (test)
+Interpretation: A new failing unit test was added; use it to understand expected behavior.
+
+A new unit test was added and is failing.
+A new failing unit test was added; use it to understand expected behavior.
+
+New test file: spec/generated/ast_spec.rb
+```ruby
+# Generated failing test for Cleopatra mutant AST.walk_body.
+# Mutation under test: renamed variable: 'body' -> 'nodes'
+require "minitest/autorun"
+
+class GeneratedWalk_bodyTest < Minitest::Test
+  def test_walk_body_regression
+    flunk "Regression for AST.walk_body: renamed variable: 'body' -> 'nodes'"
+  end
+end
+```
+
+Bug in `AST.walk_body` at src/ast/ast.rb:11.
+Issue: renamed variable: 'body' -> 'nodes'
+
+  spec/annotator_spec.rb:2174
+  src/ast/ast.rb:11:in `walk_body'
+
+Fix it.
+
+Return ONLY the corrected function `walk_body` in a ```ruby block.

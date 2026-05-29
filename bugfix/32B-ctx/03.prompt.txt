@@ -1,0 +1,33 @@
+File: src/backends/pipeline_host.rb
+Function: build_mat_sharded_list
+
+Current (buggy) code:
+```ruby
+  def build_mat_sharded_list(lhs_type)
+elem_zig = T.must(lhs_type.element_type).zig_type
+    n = lhs_type.shard_count
+    var_decl, defer = mat_var_and_defer(elem_zig)
+
+    shard_items = MIR::FieldGet.new(
+      MIR::IndexGet.new(MIR::FieldGet.new(MIR::Ident.new("pipe_src_list"), "shards"),
+                        MIR::Ident.new("__psi")),
+
+    loop_node = MIR::ForStmt.new(
+      MIR::IterRange.new(MIR::Lit.new("0"), MIR::Lit.new(n.to_s), :usize), "__psi",
+      [mat_append_slice(shard_items)],
+      nil)
+
+    [var_decl, defer, loop_node, mat_items_let]
+```
+
+Error:
+  spec/:1
+  src/backends/pipeline_host.rb:842:in `build_mat_sharded_list'
+Test failure:
+  forgotten line: '"items")'
+
+  spec/:1
+  src/backends/pipeline_host.rb:842:in `build_mat_sharded_list'
+
+Fix the bug.
+Return ONLY the corrected function in a ```ruby block.

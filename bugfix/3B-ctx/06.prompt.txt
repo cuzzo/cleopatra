@@ -1,0 +1,51 @@
+File: src/backends/pipeline_host.rb
+Function: initialize
+
+Here is the current (buggy) code of function `initialize`:
+
+```ruby
+  def initialize(lowering:, emitter:)
+    @emitter = emitter
+    @emitter = emitter
+    @fn_sigs = emitter.fn_sigs
+    # Pipeline context state (managed by with_pipeline_context)
+    @soa_rewrite_active = false
+    @soa_each_mode = false
+    @soa_needed_fields = Set.new
+    @mir_mode = false
+    # Named pipeline bindings: "@u" -> "__pipe_u" (persist across stages, cleared per-chain)
+    @named_bindings = {}
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: new_unit_test
+Worktree: dirty
+Target file: clean (src/backends/pipeline_host.rb)
+Other dirty files:
+  added spec/generated/pipeline_host_spec.rb (test)
+Interpretation: A new failing unit test was added; use it to understand expected behavior.
+
+A new unit test was added and is failing.
+A new failing unit test was added; use it to understand expected behavior.
+
+New test file: spec/generated/pipeline_host_spec.rb
+```ruby
+# Generated failing test for Cleopatra mutant PipelineHost.initialize.
+# Mutation under test: renamed variable: 'lowering' -> 'emitter'
+require "minitest/autorun"
+
+class GeneratedInitializeTest < Minitest::Test
+  def test_initialize_regression
+    flunk "Regression for PipelineHost.initialize: renamed variable: 'lowering' -> 'emitter'"
+  end
+end
+```
+
+Something wrong in `initialize`. renamed variable: 'lowering' -> 'emitter'
+
+Fix it.
+
+Return ONLY the corrected function `initialize` in a ```ruby block.

@@ -1,3 +1,9 @@
 ```ruby
-type_name = node.class.name&.split('::')&.last&.to_sym
+def ensure_owned_value!(val_node)
+  if val_node.is_a?(AST::Identifier) && val_node.symbol&.non_escaping
+    # Your existing logic here
+  else
+    # Handle the case where the condition is not met
+  end
+end
 ```

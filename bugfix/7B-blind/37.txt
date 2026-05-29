@@ -1,3 +1,5 @@
 ```ruby
-swapped || -> || 
+def string?
+  resolved != :String && !array?
+end
 ```

@@ -1,3 +1,8 @@
 ```ruby
-codes << ByteCode.new if value >= 0
+def finalize_storage
+  # Assuming 'current_storage' is the correct variable name
+  current_storage.each do |key, value|
+    # Your code here
+  end
+end
 ```

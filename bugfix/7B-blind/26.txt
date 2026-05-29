@@ -1,6 +1,5 @@
 ```ruby
-# src/mir/cleanup_classifier.rb
-def classify_non_copy_union(schema_lookup)
-  # Your code here
+def match?(current, type, val)
+  current.type == type && (val.nil? || current.value == val)
 end
 ```

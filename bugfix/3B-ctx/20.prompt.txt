@@ -1,0 +1,48 @@
+File: src/ast/error_registry.rb
+Function: register_type!
+
+Here is the current (buggy) code of function `register_type!`:
+
+```ruby
+  def self.register_type!(type_sym, kind_sym, site_token: nil)
+    entry = ERROR_TYPES[type_sym]
+    if entry.nil?
+      id = @next_user_id
+      @next_user_id += 1
+      ERROR_TYPES[type_sym] = {
+        kind: kind_sym,
+        zig_name: type_sym.to_s,
+        id: id,
+        first_site: site_token,
+      }
+      return [false, nil]
+    end
+    return [true, nil] if entry[:kind] != kind_sym
+    [true, {
+      existing_kind: entry[:kind],
+      given_kind:    kind_sym,
+      first_site:    entry[:first_site],
+      is_stdlib:     @stdlib_frozen.include?(type_sym),
+    }]
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: dirty_source_change
+Worktree: dirty
+Target file: dirty (src/ast/error_registry.rb)
+  lines 97-97: nearby edited line
+  lines 98-98: mutated bug line
+  lines 99-99: nearby edited line
+Interpretation: Active source edits exist; inspect dirty changed lines first.
+
+A mutant/regression test is failing after local source edits.
+Active source edits exist; inspect dirty changed lines first.
+
+Something wrong in `register_type!`. swapped comparison: '==' -> '!=' near 'f entry[:kind] == kind_sym'
+
+Fix it.
+
+Return ONLY the corrected function `register_type!` in a ```ruby block.

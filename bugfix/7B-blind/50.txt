@@ -1,17 +1,5 @@
 ```ruby
-# spec/:1
-# examples/puck/v9/compiler.rb:185:in `compile_statements'
-
-# Assuming the issue is related to the `compile_statements` method, here is a possible fix:
-def compile_statements(statements)
-  # Ensure statements is an array
-  statements = [statements] unless statements.is_a?(Array)
-
-  # Process each statement
-  statements.each do |statement|
-    # Add your compilation logic here
-    # For example:
-    # compile_statement(statement)
-  end
+def lookup_type_schema(scope)
+  # Your implementation here
 end
 ```

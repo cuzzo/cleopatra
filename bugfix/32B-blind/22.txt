@@ -1,8 +1,7 @@
 ```ruby
-def parse_when_block
-  # Assuming the bug is related to range handling, adjust the end index by subtracting 1
-  start_index = token.index
-  end_index = token.end_index - 1
-  # Rest of the method implementation
+def enum_entries
+  ERROR_TYPES.each_with_index.to_h do |type, index|
+    [type, index]
+  end
 end
 ```

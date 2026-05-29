@@ -15,6 +15,7 @@
 #   - In debug mode: params with types, local methods, member vars, callee sigs
 
 require 'prism'
+require 'shellwords'
 
 REPO = File.expand_path(ARGV[0] ? Dir.pwd : '~/cheat')
 
@@ -194,6 +195,68 @@ def find_callee_sig(callee_name, file_path, source)
   fn
 end
 
+def git_output(*args)
+  cmd = ['git', *args].shelljoin
+  out = `#{cmd} 2>/dev/null`
+  return nil unless $?.success?
+
+  out
+end
+
+def repo_root
+  root = git_output('-C', REPO, 'rev-parse', '--show-toplevel')
+  root&.strip
+end
+
+def relative_to_repo(path, root)
+  full = File.expand_path(path, REPO)
+  root_with_slash = root.end_with?('/') ? root : "#{root}/"
+  full.start_with?(root_with_slash) ? full.delete_prefix(root_with_slash) : path
+end
+
+def print_worktree_state(file_path)
+  root = repo_root
+  puts ""
+  puts "=" * 60
+  puts "WORKTREE STATE"
+  puts "=" * 60
+
+  unless root
+    puts "Git: not a git worktree"
+    puts "Interpretation: unknown; cannot tell whether this is active development or an existing bug."
+    return
+  end
+
+  rel = relative_to_repo(file_path, root)
+  head = git_output('-C', root, 'rev-parse', '--short', 'HEAD')&.strip || 'unknown'
+  branch = git_output('-C', root, 'branch', '--show-current')&.strip
+  branch = '(detached)' if branch.nil? || branch.empty?
+  status = git_output('-C', root, 'status', '--porcelain=v1', '--untracked-files=all') || ''
+  file_status = git_output('-C', root, 'status', '--porcelain=v1', '--untracked-files=all', '--', rel) || ''
+  changed = status.lines.map(&:rstrip).reject(&:empty?)
+  file_changed = file_status.lines.map(&:rstrip).reject(&:empty?)
+
+  puts "Repo: #{root}"
+  puts "HEAD: #{head} #{branch}"
+  puts "Worktree: #{changed.empty? ? 'clean' : "dirty (#{changed.size} changed path#{changed.size == 1 ? '' : 's'})"}"
+  if file_changed.empty?
+    puts "Target file: clean (#{rel})"
+  else
+    puts "Target file: dirty (#{rel})"
+    file_changed.each { |line| puts "  #{line}" }
+  end
+
+  if changed.empty?
+    puts "Interpretation: clean tree; this is more likely an existing bug that slipped through tests."
+  elsif file_changed.any?
+    puts "Interpretation: active development; inspect the target file's changed lines first."
+  else
+    puts "Interpretation: active development elsewhere; changed files may still explain the failure."
+    changed.first(20).each { |line| puts "  #{line}" }
+    puts "  ... #{changed.size - 20} more changed paths" if changed.size > 20
+  end
+end
+
 # === Main ===
 
 if ARGV.empty? || ARGV[0] == '--help'
@@ -313,3 +376,5 @@ if debug_mode
     end
   end
 end
+
+print_worktree_state(file_path)

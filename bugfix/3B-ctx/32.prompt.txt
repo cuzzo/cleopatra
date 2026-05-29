@@ -1,0 +1,37 @@
+File: src/mir/control_flow.rb
+Function: collect_binding_moves
+
+Here is the current (buggy) code of function `collect_binding_moves`:
+
+```ruby
+  def collect_binding_moves(node, state)
+    return [] unless node
+    consumed = Set.new
+    consumed.to_a
+  end
+
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: dirty_source_change
+Worktree: dirty
+Target file: dirty (src/mir/control_flow.rb)
+  lines 641-641: nearby edited line
+  lines 642-642: mutated bug line
+  lines 643-643: nearby edited line
+Interpretation: Active source edits exist; inspect dirty changed lines first.
+
+A mutant/regression test is failing after local source edits.
+Active source edits exist; inspect dirty changed lines first.
+
+Test failure:
+  forgotten line: 'collect_ownership_transfers(node, state, consumed)'
+
+  spec/use_after_move_dataflow_spec.rb:278
+  src/mir/control_flow.rb:639:in `collect_binding_moves'
+
+Fix the bug.
+
+Return ONLY the corrected function `collect_binding_moves` in a ```ruby block.

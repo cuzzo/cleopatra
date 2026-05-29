@@ -1,29 +1,10 @@
-To fix the code in the `trivial?` method of the `Classifier` class in the `slopcop` gem, we need to ensure that the method correctly identifies trivial changes. The error message suggests that there might be an issue with the logic in the `trivial?` method.
-
-Here's the corrected code for the `trivial?` method:
-
 ```ruby
-def trivial?
-  # Check if the change is a trivial one
-  # For example, if the change is a single line comment or a whitespace change
-  # We can add more specific checks here
-  change_lines = change.split("\n")
-  trivial = true
-
-  change_lines.each do |line|
-    # Check for single line comments
-    if line =~ /^\s*#/
-      trivial = false
-      break
-    end
-
-    # Check for whitespace changes
-    if line =~ /^\s*$/
-      trivial = false
-      break
-    end
+def dup
+  # Ensure the object is not frozen before duplication
+  unless frozen?
+    super
+  else
+    raise "Cannot duplicate a frozen object"
   end
-
-  trivial
 end
 ```

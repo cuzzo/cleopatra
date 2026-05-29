@@ -1,15 +1,9 @@
-To fix the bug in `scoped_facts` at gems/nil-kill/lib/nil_kill/source_index.rb:871, we need to ensure that the negated condition is correctly handled. The issue is that the condition `NilKill.useful_type?(param["type"])` is negated incorrectly, which means it should be `!NilKill.useful_type?(param["type"])` to correctly check if the type is not useful.
-
-Here is the corrected code:
-
 ```ruby
-# gems/nil-kill/lib/nil_kill/source_index.rb:871
-def scoped_facts(param)
-  # Ensure the negated condition is correctly handled
-  if !NilKill.useful_type?(param["type"])
-    # Add your logic here
-  end
+def restore_lightweight(node)
+  # Check if the node is not nil before proceeding
+  return if node.nil?
+
+  # Your original logic here
+  # ...
 end
 ```
-
-By making this change, the negated condition will correctly check if the type is not useful, and the bug should be resolved. Let me know if you need further assistance!

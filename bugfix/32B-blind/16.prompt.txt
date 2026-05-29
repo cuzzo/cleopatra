@@ -1,0 +1,15 @@
+File: src/mir/mir_checker.rb
+Function: check_program!
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Suspect bug in `check_program!` at src/mir/mir_checker.rb:125.
+Issue: forgotten line: 'all_errors.concat(check_fn!(item, strict: strict))'
+
+  spec/mir_checker_spec.rb:612
+  src/mir/mir_checker.rb:125:in `check_program!'
+
+Fix it.
+
+Return ONLY the corrected function `check_program!` in a ```ruby block.

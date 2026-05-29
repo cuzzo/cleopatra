@@ -1,9 +1,5 @@
-To fix the bug in `discover_fields!` at gems/decomplex/lib/decomplex/state_mesh.rb:54, we need to rename the variable 'file' to 'data' in the code. Here is the updated code:
-
 ```ruby
-def discover_fields!(data)
-  # Your code here
+def scc_is_cyclic?(node)
+  # Your corrected code here
 end
 ```
-
-By renaming the variable 'file' to 'data', we ensure that the code is consistent with the rest of the codebase and that the variable is used correctly. This should resolve the issue and prevent any further bugs.

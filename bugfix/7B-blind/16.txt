@@ -1,11 +1,9 @@
 ```ruby
-def from_finding(finding)
-  {
-    id:       finding.id,
-    title:    finding.title,
-    description: finding.description,
-    severity: finding.severity,
-    range:    range,
-  }
+def check_program!(program, strict: false)
+  all_errors = []
+  program.each do |item|
+    all_errors.concat(check_fn!(item, strict: strict))
+  end
+  all_errors
 end
 ```

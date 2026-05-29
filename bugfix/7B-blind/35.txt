@@ -1,5 +1,13 @@
 ```ruby
-def contains_ensure?(is_a)
-  is_a.include?("ensure")
+def ensure_owned_value!(node, owner)
+  if node.is_a?(RDF::Literal)
+    node = RDF::Literal.new(node.value, datatype: node.datatype)
+  elsif node.is_a?(RDF::URI)
+    node = RDF::URI.new(node.value)
+  elsif node.is_a?(RDF::Node)
+    node = RDF::Node.new(node.value)
+  end
+  node.owner = owner
+  node
 end
 ```

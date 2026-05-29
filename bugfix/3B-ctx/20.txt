@@ -1,15 +1,23 @@
-To fix the bug, we need to ensure that the `state` variable is correctly used and that the `guarded_cleanup_names` variable is properly merged and assigned. Here's the corrected code:
-
 ```ruby
-state.guarded_cleanup_names.merge(guarded_names_in_surface(root))
-@lowered_guarded_cleanup_names = state.guarded_cleanup_names
-nil
-```
-
-This ensures that the `state` variable is used correctly and that the `guarded_cleanup_names` variable is properly merged and assigned. The `nil` at the end is a placeholder to indicate that the function returns `nil`. However, since the function is designed to modify the state, it might be more appropriate to return `state` or `@lowered_guarded_cleanup_names` if that's the intended behavior. For now, the corrected code is:
-
-```ruby
-state.guarded_cleanup_names.merge(guarded_names_in_surface(root))
-@lowered_guarded_cleanup_names = state.guarded_cleanup_names
-nil
+def self.register_type!(type_sym, kind_sym, site_token: nil)
+    entry = ERROR_TYPES[type_sym]
+    if entry.nil?
+      id = @next_user_id
+      @next_user_id += 1
+      ERROR_TYPES[type_sym] = {
+        kind: kind_sym,
+        zig_name: type_sym.to_s,
+        id: id,
+        first_site: site_token,
+      }
+      return [false, nil]
+    end
+    return [true, nil] if entry[:kind] != kind_sym
+    [true, {
+      existing_kind: entry[:kind],
+      given_kind:    kind_sym,
+      first_site:    entry[:first_site],
+      is_stdlib:     @stdlib_frozen.include?(type_sym),
+    }]
+  end
 ```

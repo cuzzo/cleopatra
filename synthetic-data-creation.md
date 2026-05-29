@@ -4,18 +4,29 @@ A practical guide to constructing the training dataset from available repositori
 
 ## Source Repositories
 
-### Primary: ~/cheat (the CLEAR compiler)
+### Primary: `archives/cheat.bundle` (the CLEAR compiler)
 
 | Property | Value |
 |---|---|
-| Location | `~/cheat` |
-| Size | 565MB (`.git/objects`) |
-| Commits | 3,161 |
+| Source bundle | `archives/cheat.bundle` |
+| Restored worktree | `.eval/cheat` |
+| Default ref for new bugs | `refs/remotes/bundle/master` |
+| Current bundled master | `cde89fbfcdad68725f6bfa2d67697186bae647ea` |
+| Commits in bundle | 3,976 |
 | Ruby files | 110 in `src/`, plus gems |
 | SIMP commits | 94 |
 | Backup branches | 9 (pre-squash, pre-rebase snapshots) |
 
 **Contribution:** All simplification (SIMP), feature, and fix commits.
+
+`~/cheat` is a development checkout and is not used directly for generation or
+evaluation. When we intentionally refresh the source corpus, we recreate
+`archives/cheat.bundle` from committed refs in `~/cheat`, then generate bugs
+from the bundle-restored worktree.
+
+The 50-bug Qwen control experiment uses only `src/` bugs and requires every
+bug to store verified failing spec files in `test_failures`. Control evaluation
+runs those individual files only.
 
 ### Secondaries: ~/clear, ~/easy-vm, ~/manual/clear
 
@@ -93,7 +104,7 @@ GRAM's task: given a prompt + Tier 2–5 versions, rank them by quality and sele
 ### Step 1: Mine repos for qualifying commits
 
 ```bash
-# From ~/cheat
+# From the restored bundle checkout, usually .eval/cheat
 git log --oneline --grep="^SIMP" --all       # 94 SIMP commits
 git log --oneline --grep="^typed:" --all     # 0 (these are in ~/easy-vm)
 git log --oneline --grep="^fix" -i --all     # 3543 fix candidates

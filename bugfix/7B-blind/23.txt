@@ -1,3 +1,7 @@
 ```ruby
-scoped_facts = param["type"].nil? || !NilKill.useful_type?(param["type"])
+def restore_lightweight(node)
+  if node
+    # Your existing code here
+  end
+end
 ```

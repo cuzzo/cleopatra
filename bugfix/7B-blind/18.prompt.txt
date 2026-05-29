@@ -1,0 +1,15 @@
+File: src/mir/ownership_graph.rb
+Function: declare
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Test failure:
+  swapped constant: 'Node' -> 'Register'
+
+  spec/propagate_caller_sync_spec.rb:124
+  src/mir/ownership_graph.rb:56:in `declare'
+
+Fix the bug.
+
+Return ONLY the corrected function `declare` in a ```ruby block.

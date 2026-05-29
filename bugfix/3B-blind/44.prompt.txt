@@ -1,0 +1,11 @@
+File: src/mir/ownership_graph.rb
+Function: borrow
+
+A mutant/regression test is failing after local source edits.
+Active source edits exist; inspect dirty changed lines first.
+
+Something wrong in `borrow`. off-by-one: added +1 to index ''
+
+Fix it.
+
+Return ONLY the corrected function `borrow` in a ```ruby block.

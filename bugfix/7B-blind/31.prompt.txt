@@ -1,0 +1,15 @@
+File: src/mir/control_flow.rb
+Function: collect_binding_moves
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Bug in `OwnershipDataflow.collect_binding_moves` at src/mir/control_flow.rb:639.
+Issue: renamed variable: 'node' -> 'consumed'
+
+  spec/use_after_move_dataflow_spec.rb:278
+  src/mir/control_flow.rb:639:in `collect_binding_moves'
+
+Fix it.
+
+Return ONLY the corrected function `collect_binding_moves` in a ```ruby block.

@@ -1,19 +1,13 @@
-To fix the bug in `PipelineHost.build_mat_set`, we need to ensure that the constant `MIR` is used correctly throughout the code. The issue arises because the constant `CallableContract` was mistakenly swapped with `MIR`. Here's the corrected code:
-
 ```ruby
-elem_zig = lhs_type.element_type.zig_type
-var_decl, defer = mat_var_and_defer(elem_zig)
-
-iter_let = MIR::Let.new("__skit",
-  MIR::MethodCall.new(MIR::Ident.new("pipe_src_list"), "keyIterator", [], false, MIR::CallableContract.no_ownership(0)),
-  true, nil, nil)
-deref = MIR::FieldGet.new(MIR::Ident.new("__skptr"), "*")
-loop_node = MIR::WhileStmt.new(
-  MIR::MethodCall.new(MIR::Ident.new("__skit"), "next", [], false, MIR::CallableContract.no_ownership(0)),
-  [mat_append(deref)],
-  "__skptr", nil)
-
-[var_decl, defer, iter_let, loop_node, mat_items_let]
+def declare(path, kind: :affine, type_info: nil, scope_depth: 0, line: 0)
+    @nodes[path] = Register.new(
+      path: path, kind: kind, state: :live,
+      type_info: type_info, scope_depth: scope_depth, line: line
+    )
+    # Register as child of parent path (e.g., "x.child" is child of "x")
+    if path.include?('.')
+      parent = path.rpartition('.').first
+      @children[parent].add(path)
+    end
+  end
 ```
-
-This ensures that the constant `MIR` is used consistently throughout the code, resolving the issue. --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---

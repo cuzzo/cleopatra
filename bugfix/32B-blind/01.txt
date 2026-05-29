@@ -1,7 +1,3 @@
 ```ruby
-def discover_fields!
-  data.each_line do |line|
-    # Process each line
-  end
-end
-```
+def scc_is_cyclic?(scc)
+  return false if scc.length <=

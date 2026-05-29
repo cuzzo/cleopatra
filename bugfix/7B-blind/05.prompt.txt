@@ -1,0 +1,15 @@
+File: src/mir/ownership_graph.rb
+Function: initialize
+
+A mutant/regression test is failing after local source edits.
+Active source edits exist; inspect dirty changed lines first.
+
+Suspect bug in `initialize` at src/mir/ownership_graph.rb:31.
+Issue: forgotten line: '@edges_by_target = Hash.new { |h, k| h[k] = [] }  # target_path => [Edge]'
+
+  spec/annotator_spec.rb:1102
+  src/mir/ownership_graph.rb:31:in `initialize'
+
+Fix it.
+
+Return ONLY the corrected function `initialize` in a ```ruby block.

@@ -1,13 +1,6 @@
-To fix the bug in `nl_after_end` at `src/tools/formatter.rb:348`, we need to swap the `&&` operator with the `||` operator in the code. Here's the corrected code:
-
 ```ruby
-# src/tools/formatter.rb:348
-def nl_after_end(node)
-  # Swap && -> ||
-  if node && node.next && node.next.next
-    # Your code here
-  end
+def stream?
+  # Corrected the swap of || and &&
+  self.type == :stream || self.type == :stream_array
 end
 ```
-
-This change ensures that the `&&` operator is used correctly, which is necessary for the logic to work as intended. The `||` operator was mistakenly used, which caused the issue. By swapping them, we maintain the correct conditional logic in the code.

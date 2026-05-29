@@ -1,7 +1,9 @@
 ```ruby
-def sigs
-  unless entry.is_a?(Array)
-    # Your existing code here
+def initialize(level, message)
+  unless LEVELS.include?(level)
+    raise ArgumentError, "Invalid level: #{level}. Valid levels are: #{LEVELS.join(', ')}"
   end
+  @level = level
+  @message = message
 end
 ```

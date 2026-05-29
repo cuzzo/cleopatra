@@ -1,3 +1,7 @@
 ```ruby
-!defined?(saved) || !saved
+def release_borrow(index)
+  if index >= 0 && index < @borrows.length
+    @borrows[index] = nil
+  end
+end
 ```

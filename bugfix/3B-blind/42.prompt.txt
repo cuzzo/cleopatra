@@ -1,0 +1,15 @@
+File: src/ast/fixable_error.rb
+Function: initialize
+
+A mutant/regression test is failing after local source edits.
+Active source edits exist; inspect dirty changed lines first.
+
+Test failure:
+  renamed variable: 'confidence' -> 'raise'
+
+  spec/annotator_spec.rb:1102
+  src/ast/fixable_error.rb:58:in `initialize'
+
+Fix the bug.
+
+Return ONLY the corrected function `initialize` in a ```ruby block.

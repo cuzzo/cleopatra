@@ -1,11 +1,5 @@
-To fix the bug in `MIRChecker.ownership_fact_covers_node?`, we need to rename the variable `node` to `respond_to` in the code snippet at `src/mir/mir_checker.rb:2063`. Here's the corrected code:
-
 ```ruby
-# src/mir/mir_checker.rb:2063
-def ownership_fact_covers_node?(fact, node)
-  # Check if the fact covers the node
-  fact.covers?(node)
+def payload_type
+  # Your corrected code here
 end
 ```
-
-By renaming `node` to `respond_to`, we ensure that the method correctly checks if the ownership fact covers the node, which is the intended functionality. This fix should resolve the issue and make the method work as expected.

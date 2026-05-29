@@ -1,0 +1,56 @@
+File: src/ast/parser.rb
+Function: stmt
+
+Here is the current (buggy) code of function `stmt`:
+
+```ruby
+  def self.stmt(type, value, node_class = nil, pattern = nil, inject: [], &block)
+    if block
+      # If block provided, create a block that runs the engine
+      @@stmt_rules[[type, value]] = lambda do
+        start_token = current
+        args = process_pattern(block)
+        args.concat(inject)
+        node_class.new(start_token, *args)
+      end
+    else
+      @@stmt_rules[[type, value]] = block
+    end
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: new_unit_test
+Worktree: dirty
+Target file: clean (src/ast/parser.rb)
+Other dirty files:
+  added spec/generated/parser_spec.rb (test)
+Interpretation: A new failing unit test was added; use it to understand expected behavior.
+
+A new unit test was added and is failing.
+A new failing unit test was added; use it to understand expected behavior.
+
+New test file: spec/generated/parser_spec.rb
+```ruby
+# Generated failing test for Cleopatra mutant Parser.stmt.
+# Mutation under test: renamed variable: 'pattern' -> 'block'
+require "minitest/autorun"
+
+class GeneratedStmtTest < Minitest::Test
+  def test_stmt_regression
+    flunk "Regression for Parser.stmt: renamed variable: 'pattern' -> 'block'"
+  end
+end
+```
+
+Test failure:
+  renamed variable: 'pattern' -> 'block'
+
+  spec/mir_comparison_spec.rb:45
+  src/ast/parser.rb:17:in `stmt'
+
+Fix the bug.
+
+Return ONLY the corrected function `stmt` in a ```ruby block.

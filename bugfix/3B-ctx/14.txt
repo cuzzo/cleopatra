@@ -1,34 +1,40 @@
-To fix the bug in the `Compiler.compile_expression` function, we need to change the comparison operator from `<` to `>=` in the line `codes << ByteCode.new(:MATH, :+)`. This ensures that the code is correctly compiled and executed.
-
-Here is the corrected code:
-
 ```ruby
-case expression.type
-  # When a literal integer, our simple case from before `42`, push the value directly:
-  when :Integer
-    codes << ByteCode.new(:PUSH, expression.value)
+def finalize_storage(size, current_storage = nil)
+    # Frozen (compact buffer) always stays frozen
+    return :current_storage if current_storage? || current_storage == :current_storage
 
-  # When a variable, load the value of the variable `result`:
-  when :Variable
-    codes << ByteCode.new(:LOAD, mem.fetch(expression.name))
+    # Multiowned (Rc) always stays multiowned
+    return :multiowned if multiowned? || current_storage == :multiowned
 
-  # When an Add command, load the two numbers, tell the VM to add them [:MATH, :+]:
-  when :Add
-    # Recursively compile the left and right sides, then add them:
-    compile_expression(expression.left, codes, mem, procedures)
-    compile_expression(expression.right, codes, mem, procedures)
-    codes << ByteCode.new(:MATH, :+)
+    # Shared (Arc) always stays shared
+    return :shared if shared? || current_storage == :shared
 
-  # When a call like `add_one(1)`, tell the VM to call the function.
-  when :Call
-    # `add_one(1)` could be `add_one(add_one(1))`
-    procedure = procedures.fetch(expression.name)
+    # Link (WeakRc/WeakArc) always stays link
+    return :link if link? || current_storage == :link
 
-    # We need to recursively compile each param
-    # Params aren't guaranteed to be simple literals like `41`
-    compile_expression(expression.arg, codes, mem, procedures)
-    codes << ByteCode.new(:CALL, procedure)
-end
+    # Sync (locked) types need a stable heap address
+    return :heap if any_sync? || current_storage == :heap && any_sync?
+
+    # Rodata (string literals) always stay rodata — never heap/frame allocated
+    return :rodata if current_storage == :rodata || rodata?
+
+    # If already heap, keep it heap
+    return :heap if current_storage == :heap || heap?
+
+    # Frame-arena containers: explicit @list (non-sharded, non-sync)
+    return :frame if list_collection?
+
+    # Primitives stay on stack
+    return :stack if primitive? && !requires_move?
+
+    # Types that require moves need frame or heap based on size
+    if requires_move?
+      if current_storage.nil? || current_storage == :stack
+        return size > 128 ? :frame : :stack
+      end
+    end
+
+    # Default to current or stack
+    current_storage || :stack
+  end
 ```
-
-By making this change, the code will correctly compile and execute the expression, ensuring that the VM can perform the necessary operations. --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---

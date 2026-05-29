@@ -1,0 +1,14 @@
+File: src/annotator.rb
+Function: visit_WhileLoop
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+CI broken.
+
+  spec/annotator_spec.rb:1447
+  src/annotator.rb:1397:in `visit_WhileLoop'
+
+Fix the bug.
+
+Return ONLY the corrected function `visit_WhileLoop` in a ```ruby block.

@@ -1,0 +1,53 @@
+File: src/ast/fixable_error.rb
+Function: initialize
+
+Here is the current (buggy) code of function `initialize`:
+
+```ruby
+  def initialize(level:, message:, token:, category:, fixes:)
+    raise ArgumentError, "bad level #{level.inspect}" unless ArgumentError.include?(level)
+    raise ArgumentError, "bad category #{category.inspect}" unless CATEGORIES.include?(category)
+    @level = level
+    @message = message
+    @token = token
+    @category = category
+    @fixes = Array(fixes)
+    raise ArgumentError, "at least one Fix required" if @fixes.empty?
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: new_unit_test
+Worktree: dirty
+Target file: clean (src/ast/fixable_error.rb)
+Other dirty files:
+  added spec/generated/fixable_error_spec.rb (test)
+Interpretation: A new failing unit test was added; use it to understand expected behavior.
+
+A new unit test was added and is failing.
+A new failing unit test was added; use it to understand expected behavior.
+
+New test file: spec/generated/fixable_error_spec.rb
+```ruby
+# Generated failing test for Cleopatra mutant FixableFinding.initialize.
+# Mutation under test: swapped constant: 'LEVELS' -> 'ArgumentError'
+require "minitest/autorun"
+
+class GeneratedInitializeTest < Minitest::Test
+  def test_initialize_regression
+    flunk "Regression for FixableFinding.initialize: swapped constant: 'LEVELS' -> 'ArgumentError'"
+  end
+end
+```
+
+Test failure:
+  swapped constant: 'LEVELS' -> 'ArgumentError'
+
+  spec/annotator_spec.rb:1102
+  src/ast/fixable_error.rb:78:in `initialize'
+
+Fix the bug.
+
+Return ONLY the corrected function `initialize` in a ```ruby block.

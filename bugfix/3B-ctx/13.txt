@@ -1,49 +1,19 @@
-The bug is in the line `out << {`. It should be `out << { pattern: mem, support: sup, missing: (mem - s.members).first, at: loc(s), spans: { loc(s) => s.span } }`. The missing line was `out << {`. The correct code is:
-
 ```ruby
-popular = groups.select { |(_k, _m), sts| sts.size >= min_support }
-                      .map { |(k, m), sts| [k, m, sts.size] }
-      out = []
-      @sites.each do |s|
-        popular.each do |k, mem, sup|
-          next unless k == s.kind
-          next unless (mem - s.members).size == 1 && (s.members - mem).empty?
-          next if s.members == mem
-
-          out << {
-            pattern: mem,
-            support: sup,
-            missing: (mem - s.members).first,
-            at: loc(s),
-            spans: { loc(s) => s.span }
-          }
-        end
-      end
-      out.uniq.sort_by { |h| -h[:support] }
+def declare(name, reg, type, is_mutable = true, is_rebindable = false, size = nil, storage = :stack, capabilities = Set.new, _borrowed_paths = [], sync: nil, resource: nil, close_zig: nil)
+    @owned_names.add(name)
+    entry = SymbolEntry.new(
+      reg: reg,
+      type: type,
+      mutable: is_mutable,
+      storage: storage,
+      sync: sync,
+      rebindable: is_rebindable,
+      size: size || 0,
+      capabilities: capabilities,
+      resource: resource,
+      close_zig: close_zig,
+    )
+    entry.scope = self
+    @locals[name] = entry
+  end
 ```
-
-The bug was in the line `out << {`. It should be `out << { pattern: mem, support: sup, missing: (mem - s.members).first, at: loc(s), spans: { loc(s) => s.span } }`. The missing line was `out << {`. The correct code is:
-
-```ruby
-popular = groups.select { |(_k, _m), sts| sts.size >= min_support }
-                      .map { |(k, m), sts| [k, m, sts.size] }
-      out = []
-      @sites.each do |s|
-        popular.each do |k, mem, sup|
-          next unless k == s.kind
-          next unless (mem - s.members).size == 1 && (s.members - mem).empty?
-          next if s.members == mem
-
-          out << {
-            pattern: mem,
-            support: sup,
-            missing: (mem - s.members).first,
-            at: loc(s),
-            spans: { loc(s) => s.span }
-          }
-        end
-      end
-      out.uniq.sort_by { |h| -h[:support] }
-``` ```ruby
-popular = groups.select { |(_k, _m), sts| sts.size >= min_support }
-                      .map { |(k, m),

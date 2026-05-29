@@ -1,0 +1,14 @@
+File: src/annotator-helpers/function_signature.rb
+Function: dup
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+CI failing spec/annotator_spec.rb:3064.
+
+  spec/annotator_spec.rb:3064
+  src/annotator-helpers/function_signature.rb:120:in `dup'
+
+Fix the code.
+
+Return ONLY the corrected function `dup` in a ```ruby block.

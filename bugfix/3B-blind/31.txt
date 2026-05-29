@@ -1,21 +1,5 @@
-To fix the bug, we need to ensure that the swapped operator is correctly applied in the `metrics` method of the `StateMesh` class. The current implementation seems to have an issue with the operator precedence or the way the operator is being swapped.
-
-Here's the corrected code:
-
 ```ruby
-class StateMesh
-  def metrics
-    # Assuming 'a' and 'b' are the operands
-    a = 10
-    b = 5
-
-    # Swap the operator '*' -> '/'
-    result = a / b
-
-    # Return the result
-    result
-  end
+def collect_binding_moves(consumed)
+  # Your corrected code here
 end
 ```
-
-In this corrected code, we have swapped the operator from '*' to '/' and performed the division operation. This should resolve the test failure and ensure that the `metrics` method works as expected. Let me know if you have any further questions or need additional assistance!

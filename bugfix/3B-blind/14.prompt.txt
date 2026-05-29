@@ -1,0 +1,15 @@
+File: src/ast/type.rb
+Function: finalize_storage
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Test failure:
+  renamed variable: 'frozen' -> 'current_storage'
+
+  spec/allocation_strategy_spec.rb:136
+  src/ast/type.rb:1127:in `finalize_storage'
+
+Fix the bug.
+
+Return ONLY the corrected function `finalize_storage` in a ```ruby block.

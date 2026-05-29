@@ -1,0 +1,11 @@
+File: src/ast/parser.rb
+Function: consume
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Something wrong in `consume`. renamed variable: 'token' -> 'current'
+
+Fix it.
+
+Return ONLY the corrected function `consume` in a ```ruby block.

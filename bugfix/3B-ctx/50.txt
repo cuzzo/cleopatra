@@ -1,41 +1,12 @@
-The code provided is already correct and should compile without any issues. The `compile_statements` function processes each node in the AST and handles different types of nodes according to their types. If the code is failing, it might be due to other factors such as incorrect input or a different version of the codebase. If you can provide more details about the error, I can help you further. Here is the code again for reference:
-
 ```ruby
-ast.each do |node|
-  if node[:type] == :Module
-    compile_statements(node.val[:declarations], scope, procedures, loop_exits, codes)
-    compile_statements(node.val[:body], scope, procedures, loop_exits, codes)
-
-  elsif node[:type] == :Block
-    # A transparent wrapper produced by parser lowering (e.g. CASE).
-    # Compile its inner statements in the current scope.
-    compile_statements(node.val, scope, procedures, loop_exits, codes)
-
-  elsif node[:type] == :Procedure
-    proc_scope = build_scope(node.val[:params], node.val[:var_params] || [], node.val[:body], procedures)
-    proc_codes = []
-    emit_local_box_init(proc_scope, proc_codes)
-    # Procedure signature was pre-registered in compile(); fill in the
-    # compiled body now.
-    procedures[node.var][:codes] = compile_statements(node.val[:body], proc_scope, procedures, [], proc_codes)
-
-  elsif node[:type] == :Assignment
-    compile_expression(node.val, codes, scope, procedures)
-    # The slot has to exist already if it's boxed (we pre-allocated at
-    # scope entry). For unboxed names, this is also the FIRST assignment
-    # site — slot_for creates the slot on demand.
-    slot = scope.slot_for(node.var)
-    codes << ByteCode.new(scope.boxed?(node.var) ? :STORE_REF : :STORE, slot)
-
-  elsif node[:type] == :CallStatement
-    emit_call(node.var, node.val, scope, procedures, codes)
-
-  elsif node[:type] == :ArraySet
-    emit_load_var(node.var, scope, codes)
-    compile_expression(node.val[:index], codes, scope, procedures)
-    compile_expression(node.val[:val], codes, scope, procedures)
-    codes << ByteCode.new(:ARRAY_SET)
-
-  elsif node[:type] == :If
-    compile_expression(node.val[:condition], codes, scope, procedures)
-    jump_to_else
+def lookup_type_schema(name)
+    # For generic instances like :"Pair<Number>", look up the base type ":Pair"
+    scope = name.to_s.sub(/<.*>$/, '').to_sym
+    # Search from Top (newest) to Bottom (global)
+    @scope_stack.reverse_each do |scope|
+      schema = scope.resolve_type_definition(scope)
+      return schema if schema
+    end
+    nil
+  end
+```

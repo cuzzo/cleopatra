@@ -1,10 +1,12 @@
 ```ruby
-# /home/yahn/cheat/gems/decomplex/test/state_mesh_test.rb:181
-# gems/decomplex/lib/decomplex/state_mesh.rb:195:in `metrics'
+def collect_binding_moves
+  # ... (other code)
 
-# Before
-# value = some_value * another_value
+  # Corrected line
+  consumed.each do |node|
+    # ... (rest of the code)
+  end
 
-# After
-value = some_value / another_value
+  # ... (other code)
+end
 ```

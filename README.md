@@ -125,9 +125,24 @@ For context, without ideal context, a model twice the size (Qwen2.5-Coder-7B-Ins
 
 So context alone is well within our goals to make a model perform 2x better.  Likely between to ~10-100x better.
 
+### Current Verified Bugfix Evaluation
+
+The current control-gated benchmark uses 50 `src/` synthetic mutant bugs from
+bundled CLEAR `master` (`cde89fb`). Each bug stores the individual spec files
+that pass before mutation and fail after mutation; evaluation applies model
+responses with Prism and runs only those recorded specs.
+
+| Model / prompt | Passed | Failed tests | Apply / parse errors | Pass rate |
+|---|---:|---:|---:|---:|
+| Control solutions | 50 | 0 | 0 | 100% |
+| Qwen2.5-Coder-3B blind | 3 | 46 | 1 | 6% |
+| Qwen2.5-Coder-3B ideal context | 18 | 30 | 2 | 36% |
+| Qwen2.5-Coder-7B blind | 1 | 47 | 2 | 2% |
+| Qwen2.5-Coder-32B blind | 4 | 42 | 4 | 8% |
+
 ### In progress
 
- - [ ] Testing against a 30B Qwen model now.
+ - [x] Test against Qwen2.5-Coder-32B blind.
  - [ ] Test against a ~300B model (less apples to apples since Qwen does not have a 300B model).
 
 ## Stage 2:

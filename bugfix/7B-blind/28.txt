@@ -1,22 +1,10 @@
 ```ruby
-# Assuming 'Ident' and 'TryExpr' are constants that need to be swapped
-# Replace 'Ident' with 'TryExpr' and vice versa in the code
-# For example:
-# Before:
-# class Ident
-#   # class definition
-# end
-#
-# class TryExpr
-#   # class definition
-# end
-#
-# After:
-# class TryExpr
-#   # class definition
-# end
-#
-# class Ident
-#   # class definition
-# end
+def visit_MethodCall(node)
+  method_sig = node.method_signature
+  node.full_type = if method_sig.respond_to?(:return_type)
+                      method_sig.return_type || :Void
+                    else
+                      method_sig[:return]&.dig(:type) || :Void
+                    end
+end
 ```

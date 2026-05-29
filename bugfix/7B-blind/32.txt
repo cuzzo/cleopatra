@@ -1,10 +1,5 @@
 ```ruby
-# /home/yahn/cheat/spec/polymorphic_flow_body_shapes_spec.rb:4
-# src/mir/mir_emitter.rb:401:in `flow_body_terminates?'
-
-# Assuming the original code was:
-# swapped && -> ||
-
-# Fixed code:
-swapped || -> ||
+def collect_binding_moves(node, state, consumed)
+  # Your corrected code here
+end
 ```

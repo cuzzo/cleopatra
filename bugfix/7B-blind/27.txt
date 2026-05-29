@@ -1,5 +1,7 @@
 ```ruby
-def runtime_contradicts?(observed_classes)
-  # Your code here
+def visit_NextExpr(node)
+  if promise_type.promise_list?
+    # Your existing code here
+  end
 end
 ```

@@ -1,11 +1,19 @@
 ```ruby
-def parse_join_op
-  case @lexer.peek
-  when JOIN
-    @lexer.get
-    :join
+def verify_return(function)
+  return_type = function.return_type
+  actual_return = function.actual_return
+
+  if return_type.nil?
+    # If the return type is not specified, we assume it can return anything.
+    return true
+  end
+
+  if actual_return.is_a?(Array)
+    # Check if all elements in the array match the return type
+    actual_return.all? { |value| value.is_a?(return_type) }
   else
-    raise ParserError, "Expected JOIN, got #{@lexer.peek}"
+    # Check if the actual return value matches the return type
+    actual_return.is_a?(return_type)
   end
 end
 ```

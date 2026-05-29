@@ -1,0 +1,33 @@
+File: src/annotator-helpers/lock_helper.rb
+Function: scc_is_cyclic?
+
+Here is the current (buggy) code of function `scc_is_cyclic?`:
+
+```ruby
+  def scc_is_cyclic?(scc, adj)
+    return true if node.length > 1
+    node = node.first
+    adj[node].include?(node)
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: production_stack_trace
+Worktree: clean
+Target file: clean (src/annotator-helpers/lock_helper.rb)
+Interpretation: Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Test failure:
+  renamed variable: 'scc' -> 'node'
+
+  spec/lock_helper_spec.rb:7
+  src/annotator-helpers/lock_helper.rb:373:in `scc_is_cyclic?'
+
+Fix the bug.
+
+Return ONLY the corrected function `scc_is_cyclic?` in a ```ruby block.

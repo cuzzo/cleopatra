@@ -1,11 +1,5 @@
 ```ruby
-def nl_after_end
-  # Assuming the original line was something like:
-  # return true if condition1 || condition2 && condition3
-
-  # The bug was swapped && -> ||, so we need to correct it back
-  return true if condition1 && condition2 || condition3
+def stream?
+  @type == :stream || @type == :io
 end
 ```
-
-Since the exact original line is not provided, I'm assuming a common structure. If the original line was indeed `condition1 || condition2 && condition3` and it should be `condition1 && condition2 || condition3`, then the above fix is correct. If the original structure was different, please provide the exact line for a precise fix.

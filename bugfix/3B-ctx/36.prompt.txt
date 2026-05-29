@@ -1,0 +1,49 @@
+File: src/ast/scope.rb
+Function: initialize
+
+Here is the current (buggy) code of function `initialize`:
+
+```ruby
+  def initialize
+    @locals = {}
+    @dependencies = {}
+    @owned_names = Set.new  # Variables declared in THIS scope (not inherited from parent)
+  end
+
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: new_unit_test
+Worktree: dirty
+Target file: clean (src/ast/scope.rb)
+Other dirty files:
+  added spec/generated/scope_spec.rb (test)
+Interpretation: A new failing unit test was added; use it to understand expected behavior.
+
+A new unit test was added and is failing.
+A new failing unit test was added; use it to understand expected behavior.
+
+New test file: spec/generated/scope_spec.rb
+```ruby
+# Generated failing test for Cleopatra mutant Scope.initialize.
+# Mutation under test: forgotten line: '@types = {}'
+require "minitest/autorun"
+
+class GeneratedInitializeTest < Minitest::Test
+  def test_initialize_regression
+    flunk "Regression for Scope.initialize: forgotten line: '@types = {}'"
+  end
+end
+```
+
+Test failure:
+  forgotten line: '@types = {}'
+
+  spec/higher_order_spec.rb:1631
+  src/ast/scope.rb:8:in `initialize'
+
+Fix the bug.
+
+Return ONLY the corrected function `initialize` in a ```ruby block.

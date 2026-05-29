@@ -1,9 +1,7 @@
 ```ruby
-def read_message
-  begin
-    # some code that might raise an error
-  rescue ParserError => e
-    # handle ParserError
+def walk_body(body)
+  body.each do |node|
+    walk(node)
   end
 end
 ```

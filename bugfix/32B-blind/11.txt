@@ -1,5 +1,5 @@
 ```ruby
-def list_handle_type?(type)
-  swapped && type == :list
+def dup
+  self.class.new(@name, @return_type, @parameters.dup, @docstring)
 end
 ```

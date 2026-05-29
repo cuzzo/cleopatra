@@ -1,9 +1,7 @@
 ```ruby
-def hash_record_constructor_from_node(node)
-  # Assuming the line with the bug is something like this:
-  # result = some_value - another_value
-  # It should be:
-  result = some_value + another_value
-  # Rest of the method...
+def initialize(node, message, confidence)
+  @node = node
+  @message = message
+  @confidence = confidence
 end
 ```

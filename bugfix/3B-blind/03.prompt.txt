@@ -1,0 +1,14 @@
+File: src/annotator-helpers/function_analysis.rb
+Function: verify_return
+
+A mutant/regression test is failing after local source edits.
+Active source edits exist; inspect dirty changed lines first.
+
+CI broken.
+
+  spec/lifetimes_spec.rb:353
+  src/annotator-helpers/function_analysis.rb:676:in `verify_return'
+
+Fix the bug.
+
+Return ONLY the corrected function `verify_return` in a ```ruby block.

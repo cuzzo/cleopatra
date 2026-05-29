@@ -1,0 +1,15 @@
+File: src/mir/ownership_graph.rb
+Function: release_borrow
+
+A mutant/regression test is failing after local source edits.
+Active source edits exist; inspect dirty changed lines first.
+
+Test failure:
+  off-by-one: added +1 to index ''
+
+  spec/ownership_graph_spec.rb:105
+  src/mir/ownership_graph.rb:110:in `release_borrow'
+
+Fix the bug.
+
+Return ONLY the corrected function `release_borrow` in a ```ruby block.

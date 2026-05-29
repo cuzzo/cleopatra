@@ -1,0 +1,15 @@
+File: src/annotator-helpers/lock_helper.rb
+Function: scc_is_cyclic?
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Test failure:
+  renamed variable: 'scc' -> 'node'
+
+  spec/lock_helper_spec.rb:7
+  src/annotator-helpers/lock_helper.rb:373:in `scc_is_cyclic?'
+
+Fix the bug.
+
+Return ONLY the corrected function `scc_is_cyclic?` in a ```ruby block.

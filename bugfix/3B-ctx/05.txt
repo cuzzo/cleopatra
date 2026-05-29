@@ -1,12 +1,9 @@
-To fix the bug, we need to rename the variable `consume` to `path` in the `handle_require_directive` function. Here's the corrected code:
-
 ```ruby
-def handle_require_directive
-  consume(:REQUIRE)
-  path = consume(:STRING).value
-  consume(:OPERATOR) # ;
-  inline_tokens_from(path)
-end
+def initialize
+    @nodes = {}           # path => Node
+    @edges = []           # Array of Edge
+    @edges_by_source = Hash.new { |h, k| h[k] = [] }  # source_path => [Edge]
+    @edges_by_target = Hash.new { |h, k| h[k] = [] }  # target_path => [Edge]
+    @children = Hash.new { |h, k| h[k] = Set.new }    # parent_path => Set of child paths
+  end
 ```
-
-This change ensures that the variable `path` correctly captures the value of the `STRING` token, which is then used in the `inline_tokens_from` method. The bug was caused by the incorrect renaming of the variable `consume` to `path`, which led to the incorrect usage of the `consume` method in the `handle_require_directive` function. By renaming `consume` to `path`, we ensure that the variable correctly captures the required value and is used as intended. --- Test failure: renamed variable: 'consume' -> 'path' spec/:1 examples/puck/v9/parser.rb:51:in `handle_require_directive' Fix the bug.

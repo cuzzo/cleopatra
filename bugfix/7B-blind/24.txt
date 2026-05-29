@@ -1,23 +1,5 @@
 ```ruby
-# classifier_test.rb
-require 'test_helper'
-
-class ClassifierTest < ActiveSupport::TestCase
-  test "should classify trivial examples" do
-    classifier = Slopcop::Classifier.new
-    assert classifier.trivial?("example")
-  end
-end
-```
-
-```ruby
-# classifier.rb
-module Slopcop
-  class Classifier
-    def trivial?(example)
-      # Add your implementation here
-      example == "example"
-    end
-  end
+def dup
+  self.class.new(self)
 end
 ```

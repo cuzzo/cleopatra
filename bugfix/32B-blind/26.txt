@@ -1,8 +1,5 @@
 ```ruby
-def classify_non_copy_union
-  # Assuming schema was renamed to schema_lookup
-  schema_lookup.each do |key, value|
-    # Your existing logic here
-  end
-end
-```
+def match?(type, val = nil)
+  current = @tokens[@index]
+  if current.type == type && (val.nil? || current.value == val)
+    @index +=

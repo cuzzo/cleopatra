@@ -1,0 +1,46 @@
+File: src/ast/parser.rb
+Function: match?
+
+Here is the current (buggy) code of function `match?`:
+
+```ruby
+  def match?(type, val=nil)
+    current.type != type && (val.nil? || current.value == val)
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: new_unit_test
+Worktree: dirty
+Target file: clean (src/ast/parser.rb)
+Other dirty files:
+  added spec/generated/parser_spec.rb (test)
+Interpretation: A new failing unit test was added; use it to understand expected behavior.
+
+A new unit test was added and is failing.
+A new failing unit test was added; use it to understand expected behavior.
+
+New test file: spec/generated/parser_spec.rb
+```ruby
+# Generated failing test for Cleopatra mutant Parser.match?.
+# Mutation under test: swapped comparison: '==' -> '!=' near 'current.type == type && (val.n'
+require "minitest/autorun"
+
+class GeneratedMatch_Test < Minitest::Test
+  def test_match__regression
+    flunk "Regression for Parser.match?: swapped comparison: '==' -> '!=' near 'current.type == type && (val.n'"
+  end
+end
+```
+
+Test failure:
+  swapped comparison: '==' -> '!=' near 'current.type == type && (val.n'
+
+  spec/transpiler_spec.rb:1397
+  src/ast/parser.rb:539:in `match?'
+
+Fix the bug.
+
+Return ONLY the corrected function `match?` in a ```ruby block.

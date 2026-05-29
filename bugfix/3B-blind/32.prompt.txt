@@ -1,0 +1,15 @@
+File: src/mir/control_flow.rb
+Function: collect_binding_moves
+
+A mutant/regression test is failing after local source edits.
+Active source edits exist; inspect dirty changed lines first.
+
+Test failure:
+  forgotten line: 'collect_ownership_transfers(node, state, consumed)'
+
+  spec/use_after_move_dataflow_spec.rb:278
+  src/mir/control_flow.rb:639:in `collect_binding_moves'
+
+Fix the bug.
+
+Return ONLY the corrected function `collect_binding_moves` in a ```ruby block.

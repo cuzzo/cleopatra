@@ -1,0 +1,33 @@
+File: src/mir/ownership_graph.rb
+Function: release_borrow
+
+Here is the current (buggy) code of function `release_borrow`:
+
+```ruby
+  def release_borrow(borrower)
+    to_remove = @edges_by_source[borrower + 1]&.select { |e| e.kind == :borrows || e.kind == :borrows_mut } || []
+    to_remove.each { |e| remove_edge(e) }
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: dirty_source_change
+Worktree: dirty
+Target file: dirty (src/mir/ownership_graph.rb)
+  lines 110-113: entire function edited
+Interpretation: Active source edits exist; inspect dirty changed lines first.
+
+A mutant/regression test is failing after local source edits.
+Active source edits exist; inspect dirty changed lines first.
+
+Test failure:
+  off-by-one: added +1 to index ''
+
+  spec/ownership_graph_spec.rb:105
+  src/mir/ownership_graph.rb:110:in `release_borrow'
+
+Fix the bug.
+
+Return ONLY the corrected function `release_borrow` in a ```ruby block.

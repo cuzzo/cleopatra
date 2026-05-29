@@ -1,0 +1,15 @@
+File: src/mir/control_flow.rb
+Function: ==
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Suspect bug in `==` at src/mir/control_flow.rb:289.
+Issue: swapped constant: 'OwnerEntry' -> 'Symbol'
+
+  spec/loop_frame_analysis_spec.rb:38
+  src/mir/control_flow.rb:289:in `=='
+
+Fix it.
+
+Return ONLY the corrected function `==` in a ```ruby block.

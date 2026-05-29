@@ -1,5 +1,9 @@
 ```ruby
-if @target != :bc
-  ms
+def dig(*keys)
+  if keys.length == 1
+    self[keys.first]
+  else
+    keys.reduce(self) { |acc, key| acc && acc[key] }
+  end
 end
 ```

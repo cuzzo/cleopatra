@@ -1,0 +1,14 @@
+File: src/mir/mir_pass.rb
+Function: transform!
+
+A mutant/regression test is failing after local source edits.
+Active source edits exist; inspect dirty changed lines first.
+
+CI failing spec/cleanup_plan_spec.rb:34.
+
+  spec/cleanup_plan_spec.rb:34
+  src/mir/mir_pass.rb:28:in `transform!'
+
+Fix the code.
+
+Return ONLY the corrected function `transform!` in a ```ruby block.

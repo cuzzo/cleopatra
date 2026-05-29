@@ -1,3 +1,5 @@
 ```ruby
-hash_record_lookup_key = Hash.new { |hash, key| hash[key] = Regexp.new(key) }
+def visit_WhileLoop(node)
+  # Your corrected code here
+end
 ```

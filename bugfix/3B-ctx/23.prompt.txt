@@ -1,0 +1,40 @@
+File: src/mir/ownership_graph.rb
+Function: restore_lightweight
+
+Here is the current (buggy) code of function `restore_lightweight`:
+
+```ruby
+  def restore_lightweight(snapshot)
+    snapshot[:node_states].each do |path, state|
+      node = @nodes[path]
+      node.state = state if !(node)
+    end
+    target_count = snapshot[:edge_count]
+    while @edges.size > target_count
+      removed = @edges.pop
+      @edges_by_target[removed.to]&.delete(removed)
+      @edges_by_source[removed.from]&.delete(removed)
+    end
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: production_stack_trace
+Worktree: clean
+Target file: clean (src/mir/ownership_graph.rb)
+Interpretation: Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Test failure:
+  negated condition: 'node'
+
+  spec/ownership_graph_spec.rb:193
+  src/mir/ownership_graph.rb:167:in `restore_lightweight'
+
+Fix the bug.
+
+Return ONLY the corrected function `restore_lightweight` in a ```ruby block.

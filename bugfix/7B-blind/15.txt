@@ -1,7 +1,11 @@
 ```ruby
-# Original line with swapped && -> ||
-# if condition && another_condition
-
-# Fixed line
-if condition || another_condition
+def [](key)
+  if FIELD_MAP.key?(key)
+    FIELD_MAP[key]
+  elsif ALIAS_MAP.key?(key)
+    ALIAS_MAP[key]
+  else
+    nil
+  end
+end
 ```

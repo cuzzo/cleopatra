@@ -1,26 +1,35 @@
-To fix the issue, we need to swap the constant 'ParserError' with 'Integer' in the rescue block. Here's the corrected code:
-
 ```ruby
-def read_message(io)
-  T.bind(self, T.untyped) rescue nil
-  headers = read_headers(io)
-  return nil if headers.nil?  # EOF before any header line
-
-  length_str = headers["content-length"]
-  raise FramingError, "missing Content-Length header" if length_str.nil?
-  length = Integer(length_str) rescue nil
-  raise FramingError, "invalid Content-Length: #{length_str.inspect}" if length.nil?
-  raise FramingError, "negative Content-Length: #{length}" if length.negative?
-
-  body = io.read(length)
-  raise FramingError, "truncated body (expected #{length} bytes)" if body.nil? || body.bytesize < length
-
-  JSON.parse(body)
-rescue JSON::ParserError => e
-  raise FramingError, "JSON parse error: #{e.message}"
-rescue Integer => e
-  raise FramingError, "Integer parse error: #{e.message}"
-end
+def self.walk_body(nodes, &visitor)
+    return unless nodes
+    nodes = nodes.is_a?(Array) ? nodes : [nodes]
+    nodes.each do |node|
+      yield node
+      case node
+      when IfStatement
+        walk_body(node.then_branch, &visitor)
+        walk_body(node.else_branch, &visitor)
+      when MatchStatement
+        (node.cases || []).each { |c| walk_body(c[:nodes], &visitor) }
+        walk_body(node.default_case, &visitor) if node.default_case
+      when WhileLoop, WhileBindLoop
+        walk_body(node.do_branch, &visitor)
+      when ForRange, ForEach
+        walk_body(node.nodes, &visitor)
+      when BgBlock, BgStreamBlock
+        walk_body(node.nodes, &visitor)
+      when WithBlock
+        walk_body(node.nodes, &visitor)
+      when DoBlock
+        (node.branches || []).each { |b| walk_body(b[:nodes], &visitor) }
+      when FunctionDef
+        walk_body(node.nodes, &visitor)
+      when TestBlock
+        walk_body(node.setup, &visitor)
+        node.whens&.each do |w|
+          walk_body(w.setup, &visitor)
+          w.tests&.each { |t| walk_body(t.nodes, &visitor) }
+        end
+      end
+    end
+  end
 ```
-
-In this corrected code, the `rescue` block for `JSON::ParserError` is swapped with `rescue Integer => e`, which should handle any other potential parsing errors. This ensures that the correct error message is raised when an integer parsing error occurs. However, it's important to note that this is a placeholder and should be replaced with the actual error handling logic if needed. The original error handling logic for `JSON::ParserError` should remain unchanged. Let me know if you need further assistance! --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---

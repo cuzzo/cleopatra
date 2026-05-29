@@ -1,3 +1,8 @@
 ```ruby
-pool_writebacks << [capture, pool_node, idx_node] if pool_node
+def initialize
+  @emitter = EventMachine::Bridge.new
+  @emitter.on_message do |message|
+    @emitter.emit(message)
+  end
+end
 ```

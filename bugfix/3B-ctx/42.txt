@@ -1,31 +1,11 @@
-The bug is caused by the incorrect use of the '-' operator in the apply_source_edits method. The '-' operator is used to subtract the start offset and end offset of the consumer node from the start offset and end offset of the node. However, the '-' operator is used in the wrong order in the apply_source_edits method. The correct order should be to subtract the start offset and end offset of the node from the start offset and end offset of the consumer node. The corrected code is:
-
-source = node.slice.to_s
-      relative_edits = []
-      Array(consumers).each do |consumer|
-        replacement = hash_record_consumer_replacement(consumer)
-        next unless replacement
-        nodes_matching_source(node, consumer["line"].to_i, consumer["code"].to_s).each do |consumer_node|
-          relative_edits << [
-            node.location.start_offset - consumer_node.location.start_offset,
-            node.location.end_offset - consumer_node.location.end_offset,
-            replacement,
-          ]
-        end
-      end
-      rewritten = if relative_edits.empty?
-        source
-      else
-        apply_source_edits(source, relative_edits)
-      end
-      hash_record_constructor(struct_name, hash_record_cast_constructor_fields(rewritten, fields))
-
----
-
-Test failure:
-  swapped operator: '-' -> '+'
-
-  spec/:1
-  gems/nil-kill/lib/nil_kill/apply.rb:449:in `hash_record_constructor_from_node'
-
-Fix the bug.
+```ruby
+def initialize(description:, confidence: :interactive, edits:)
+    unless CONFIDENCES.include?(confidence)
+      raise ArgumentError, "Fix.confidence must be one of #{CONFIDENCES}, got #{confidence.inspect}"
+    end
+    @description = description
+    @confidence = confidence
+    @edits = Array(edits)
+    raise ArgumentError, "Fix needs at least one edit" if @edits.empty?
+  end
+```

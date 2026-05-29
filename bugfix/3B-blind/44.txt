@@ -1,10 +1,15 @@
-To fix the bug in `NilKill::SourceIndex.array_element_shape_for_expression`, we need to ensure that the negated condition `return_node?(expr)` is correctly handled. The issue arises because the negation of a condition can lead to unexpected behavior. Here's the corrected code:
-
 ```ruby
-# gems/nil-kill/lib/nil_kill/source_index.rb:1245
-def array_element_shape_for_expression(expr)
-  return nil unless return_node?(expr)
+def borrow(ownership_graph, node_id)
+  # Find the node with the given node_id
+  node = ownership_graph.find { |n| n.id == node_id }
 
-  # Rest of the code
+  # If the node is not found, return nil
+  return nil if node.nil?
+
+  # Get the list of nodes that borrow from this node
+  borrowers = ownership_graph.select { |n| n.borrowers.include?(node) }
+
+  # Return the list of borrowers
+  borrowers
 end
 ```

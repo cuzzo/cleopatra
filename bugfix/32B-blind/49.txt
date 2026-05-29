@@ -1,8 +1,7 @@
 ```ruby
-def parse_term
-  # Assuming OPERATOR was incorrectly used where ExprNode should be
-  if @tokens[@index].type == :ExprNode
-    # Your logic to handle ExprNode
-  end
+def ==(other)
+  return unless other.is_a?(Type)
+  # Assuming there are attributes like `name` and `kind` that need to be compared
+  self.name == other.name && self.kind == other.kind
 end
 ```

@@ -1,8 +1,8 @@
 ```ruby
-def scoped_facts
-  params.each do |param|
-    next unless NilKill.useful_type?(param["type"])
-    # rest of the method logic
-  end
+def restore_lightweight(node)
+  return unless node
+
+  # Existing logic for restore_lightweight
+  # ...
 end
 ```

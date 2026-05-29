@@ -1,0 +1,15 @@
+File: src/annotator.rb
+Function: resolve_catch_clause!
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Test failure:
+  swapped comparison: '==' -> '!=' near 'if item[:form] == :kind'
+
+  spec/capabilities_spec.rb:2120
+  src/annotator.rb:687:in `resolve_catch_clause!'
+
+Fix the bug.
+
+Return ONLY the corrected function `resolve_catch_clause!` in a ```ruby block.

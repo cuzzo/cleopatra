@@ -7,6 +7,11 @@
 
 require 'json'
 
+MASTER_REF = ENV.fetch('CLEOPATRA_MASTER_REF', 'master')
+MASTER_BASE_REF = ENV.fetch('CLEOPATRA_MASTER_BASE_REF', 'origin/master')
+MASTER_SINCE = ENV.fetch('CLEOPATRA_MASTER_SINCE', '2026-05-26T22:28:00+0000')
+MASTER_LIMIT = ENV.fetch('CLEOPATRA_MASTER_LIMIT', '2000').to_i
+
 REPOS = {
   cheat:   { path: File.expand_path('~/cheat'),   label: 'CLEAR (primary)', priority: 1 },
   clear:   { path: File.expand_path('~/clear'),   label: 'CLEAR (fork)',    priority: 2 },
@@ -62,11 +67,12 @@ EARLY_VM_BRANCH = 'old-master'
 class CommitTriage
   Result = Struct.new(:repo, :sha, :message, :files, :insertions,
                       :deletions, :category, :scope_tier, :area,
-                      :priority_score, keyword_init: true)
+                      :priority_score, :test_files, keyword_init: true)
 
   def initialize
     @commits = []      # all processed commits
     @seen_sha = Set.new
+    @master_recent = []
   end
 
   def run
@@ -106,6 +112,9 @@ class CommitTriage
 
       # --- Bugs ---
       mine_bugs(key)
+
+      # --- Freshness audit ---
+      mine_master_recent(key) if key == :cheat
     end
   end
 
@@ -205,7 +214,56 @@ class CommitTriage
     puts "  fixes: #{lines.size} found, #{count} real bugs"
   end
 
+  def mine_master_recent(key)
+    range = if system("git rev-parse --verify #{MASTER_BASE_REF} >/dev/null 2>&1")
+              "#{MASTER_BASE_REF}..#{MASTER_REF}"
+            else
+              "#{MASTER_REF} --since='#{MASTER_SINCE}'"
+            end
+    lines = `git log #{range} --max-count=#{MASTER_LIMIT} --format='%H@@@%s'`
+      .lines.map(&:strip).reject(&:empty?)
+
+    lines.each do |line|
+      sha, msg = line.split('@@@', 2)
+      next unless sha && msg
+      @master_recent << analyze_master_commit(key, sha, msg)
+    end
+
+    puts "  recent #{MASTER_REF}: #{lines.size} commits from #{range}"
+  end
+
   # === ANALYSIS ===
+
+  def analyze_master_commit(key, sha, msg)
+    path = REPOS[key][:path]
+    stat = `cd #{path} && git diff-tree --no-commit-id -r --numstat #{sha} 2>/dev/null`.strip
+    files = []
+    insertions = 0
+    deletions = 0
+
+    stat.lines.each do |l|
+      cols = l.split("\t")
+      next unless cols.size == 3
+      files << cols[2].strip
+      insertions += cols[0].to_i
+      deletions += cols[1].to_i
+    end
+
+    total = insertions + deletions
+    tier = if total <= 50 && files.size <= 3
+             '14B'
+           elsif total <= 500 && files.size <= 15
+             '30B'
+           else
+             'large'
+           end
+
+    Result.new(repo: key, sha: sha, message: msg,
+               files: files, insertions: insertions,
+               deletions: deletions, category: :master_recent,
+               scope_tier: tier, area: :master, priority_score: 0,
+               test_files: files.select { |f| test_file?(f) })
+  end
 
   def analyze(key, sha, msg, category)
     path = REPOS[key][:path]
@@ -250,7 +308,7 @@ class CommitTriage
 
     # Don't store if the diff is only test files
     ruby_files = files.select { |f| f.end_with?('.rb') }
-    spec_files = files.select { |f| f.match?(%r{^spec/|^test/|_spec\.rb|_test\.rb}) }
+    spec_files = files.select { |f| test_file?(f) }
     return nil if category == :feature && spec_files.size == ruby_files.size && ruby_files.any?
 
     score = 0
@@ -264,7 +322,12 @@ class CommitTriage
     Result.new(repo: key, sha: sha, message: msg,
                files: files, insertions: insertions,
                deletions: deletions, category: category,
-               scope_tier: tier, area: nil, priority_score: score)
+               scope_tier: tier, area: nil, priority_score: score,
+               test_files: spec_files)
+  end
+
+  def test_file?(file)
+    file.match?(%r{^spec/|^test/|/spec/|/test/|_spec\.rb|_test\.rb})
   end
 
   def noisy_msg?(msg)
@@ -330,6 +393,27 @@ class CommitTriage
     fcount = Hash.new(0)
     @commits.each { |c| c.files.each { |f| fcount[f] += 1 } }
     fcount.sort_by { |_, v| -v }.first(25).each { |f, n| puts "  #{n.to_s.rjust(3)}  #{f}" }
+
+    with_tests = @commits.count { |c| c.test_files && !c.test_files.empty? }
+    puts "\n--- Test Association ---"
+    puts "  Commits touching tests: #{with_tests}/#{@commits.size}"
+
+    print_master_recent
+  end
+
+  def print_master_recent
+    puts "\n--- Recent #{MASTER_REF} Commits Not In #{MASTER_BASE_REF} ---"
+    if @master_recent.empty?
+      puts '  None'
+      return
+    end
+
+    @master_recent.first(40).each_with_index do |c, i|
+      files_s = c.files.first(3).map { |f| File.basename(f) }.join(', ')
+      files_s += ', ...' if c.files.size > 3
+      puts "  #{i + 1} #{c.sha[0, 9]} | #{c.message[0..90]}"
+      puts "       +#{c.insertions}/-#{c.deletions} #{c.files.size}f #{files_s}"
+    end
   end
 
   def print_section(title, commits, target)
@@ -354,10 +438,12 @@ class CommitTriage
       simplifications: (@results[:simplification] || []).first(200).map { |c| c2h(c) },
       features: (@results[:feature] || []).first(200).map { |c| c2h(c) },
       bugs: (@results[:bug] || []).first(100).map { |c| c2h(c) },
+      master_recent: @master_recent.map { |c| c2h(c) },
       stats: {
         simplifications: (@results[:simplification] || []).size,
         features: (@results[:feature] || []).size,
         bugs: (@results[:bug] || []).size,
+        master_recent: @master_recent.size,
         tier14: @commits.count { |c| c.scope_tier == '14B' },
         tier30: @commits.count { |c| c.scope_tier == '30B' },
       }
@@ -373,6 +459,7 @@ class CommitTriage
       files: c.files, insertions: c.insertions,
       deletions: c.deletions, scope_tier: c.scope_tier,
       category: c.category, area: c.area,
+      test_files: c.test_files || [],
       priority_score: c.priority_score
     }
   end

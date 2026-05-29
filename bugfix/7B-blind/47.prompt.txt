@@ -1,0 +1,28 @@
+File: src/ast/parser.rb
+Function: stmt
+
+A new unit test was added and is failing.
+A new failing unit test was added; use it to understand expected behavior.
+
+New test file: spec/generated/parser_spec.rb
+```ruby
+# Generated failing test for Cleopatra mutant Parser.stmt.
+# Mutation under test: renamed variable: 'pattern' -> 'block'
+require "minitest/autorun"
+
+class GeneratedStmtTest < Minitest::Test
+  def test_stmt_regression
+    flunk "Regression for Parser.stmt: renamed variable: 'pattern' -> 'block'"
+  end
+end
+```
+
+Test failure:
+  renamed variable: 'pattern' -> 'block'
+
+  spec/mir_comparison_spec.rb:45
+  src/ast/parser.rb:17:in `stmt'
+
+Fix the bug.
+
+Return ONLY the corrected function `stmt` in a ```ruby block.

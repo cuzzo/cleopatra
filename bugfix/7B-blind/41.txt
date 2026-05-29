@@ -1,5 +1,5 @@
 ```ruby
-def emit_typo_finding!(typo, new)
-  # Your code here
+def provenance_alloc(type, provenance)
+  # Your corrected code here
 end
 ```

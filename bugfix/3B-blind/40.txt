@@ -1,13 +1,6 @@
-To fix the bug, we need to ensure that the `type_name` variable is correctly assigned and used in the `needs_parens?` method. The current line of code has a few issues:
-
-1. The `&.` operator is used incorrectly. It should be used to chain method calls, but here it is being used to split the string.
-2. The `split('::')` method is being called on the `node.class.name` string, which is not necessary if we are only interested in the last part of the class name.
-3. The `last&.to_sym` method is being called on the result of the `split('::')` method, which is not necessary if we are only interested in the last part of the class name.
-
-Here is the corrected line of code:
-
 ```ruby
-type_name = node.class.name.split('::').last.to_sym
+def ensure_owned_value!(val_node)
+  return if val_node.is_a?(AST::Identifier) && val_node.symbol&.non_escaping
+  # Add your fix here
+end
 ```
-
-This line of code will correctly split the class name by the `::` delimiter, take the last part, and convert it to a symbol. This should fix the bug and ensure that the `needs_parens?` method works as expected.

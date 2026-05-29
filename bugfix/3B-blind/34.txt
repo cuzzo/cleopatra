@@ -1,4 +1,13 @@
-```python
-def append_gap_actions(actions, gap):
-    # ... (rest of the function remains unchanged)
+```ruby
+def parse_fn_type_annotation
+  # Original code
+  # if peek.type == :CHAR && peek.value == '('
+  #   # ... rest of the code
+  # end
+
+  # Corrected code
+  if peek.type != :CHAR || peek.value != '('
+    # ... rest of the code
+  end
+end
 ```

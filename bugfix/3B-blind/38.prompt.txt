@@ -1,0 +1,28 @@
+File: src/annotator-helpers/function_signature.rb
+Function: dig
+
+A new unit test was added and is failing.
+A new failing unit test was added; use it to understand expected behavior.
+
+New test file: spec/generated/function_signature_spec.rb
+```ruby
+# Generated failing test for Cleopatra mutant FunctionSignature.dig.
+# Mutation under test: negated condition: 'keys.length == 1'
+require "minitest/autorun"
+
+class GeneratedDigTest < Minitest::Test
+  def test_dig_regression
+    flunk "Regression for FunctionSignature.dig: negated condition: 'keys.length == 1'"
+  end
+end
+```
+
+Test failure:
+  negated condition: 'keys.length == 1'
+
+  spec/allocation_strategy_spec.rb:83
+  src/annotator-helpers/function_signature.rb:104:in `dig'
+
+Fix the bug.
+
+Return ONLY the corrected function `dig` in a ```ruby block.

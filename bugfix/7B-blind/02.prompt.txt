@@ -1,0 +1,15 @@
+File: src/ast/error_registry.rb
+Function: register_type!
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Test failure:
+  renamed variable: 'entry' -> 'type_sym'
+
+  spec/error_registry_spec.rb:50
+  src/ast/error_registry.rb:85:in `register_type!'
+
+Fix the bug.
+
+Return ONLY the corrected function `register_type!` in a ```ruby block.

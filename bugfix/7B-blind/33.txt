@@ -1,10 +1,7 @@
 ```ruby
-def visit_SyncPolicyDecl(node)
-  case node.type
-  when :block
-    # Handle the block case
-  when :other_type
-    # Handle other cases
-  end
+def any_rc?
+  # Assuming the original logic was to check if any of the elements in the array are true
+  # and the mutation swapped || -> &&, we need to correct it back to using ||.
+  array.any? { |element| element.rc? }
 end
 ```

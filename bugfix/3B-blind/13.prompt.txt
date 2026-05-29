@@ -1,0 +1,15 @@
+File: src/ast/scope.rb
+Function: declare
+
+A mutant/regression test is failing after local source edits.
+Active source edits exist; inspect dirty changed lines first.
+
+Bug in `Scope.declare` at src/ast/scope.rb:15.
+Issue: off-by-one: added +1 to index ''
+
+  spec/stream_spec.rb:108
+  src/ast/scope.rb:15:in `declare'
+
+Fix it.
+
+Return ONLY the corrected function `declare` in a ```ruby block.

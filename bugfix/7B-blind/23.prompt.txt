@@ -1,0 +1,15 @@
+File: src/mir/ownership_graph.rb
+Function: restore_lightweight
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Test failure:
+  negated condition: 'node'
+
+  spec/ownership_graph_spec.rb:193
+  src/mir/ownership_graph.rb:167:in `restore_lightweight'
+
+Fix the bug.
+
+Return ONLY the corrected function `restore_lightweight` in a ```ruby block.

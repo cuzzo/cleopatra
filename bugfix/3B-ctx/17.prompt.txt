@@ -1,0 +1,35 @@
+File: src/mir/control_flow.rb
+Function: ==
+
+Here is the current (buggy) code of function `==`:
+
+```ruby
+    def ==(other)
+      case other
+      when Symbol then state == other.state
+      when Symbol     then state == other  # backward compat with raw symbols
+      else false
+      end
+    end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: production_stack_trace
+Worktree: clean
+Target file: clean (src/mir/control_flow.rb)
+Interpretation: Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Suspect bug in `==` at src/mir/control_flow.rb:289.
+Issue: swapped constant: 'OwnerEntry' -> 'Symbol'
+
+  spec/loop_frame_analysis_spec.rb:38
+  src/mir/control_flow.rb:289:in `=='
+
+Fix it.
+
+Return ONLY the corrected function `==` in a ```ruby block.

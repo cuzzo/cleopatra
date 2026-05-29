@@ -1,5 +1,10 @@
 ```ruby
-def flow_body_terminates?
-  swapped || some_other_condition
+def collect_binding_moves(node, state, consumed)
+  # Existing code...
+
+  # Forgotten line to be added
+  collect_ownership_transfers(node, state, consumed)
+
+  # Existing code...
 end
 ```

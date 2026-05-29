@@ -1,0 +1,43 @@
+File: src/mir/ownership_graph.rb
+Function: borrow
+
+Here is the current (buggy) code of function `borrow`:
+
+```ruby
+  def borrow(borrower, source, mutable: false)
+    source_node = @nodes[source + 1]
+    return "cannot borrow '#{source}': not declared" unless source_node
+    return "cannot borrow '#{source}': already moved" if source_node.moved?
+
+    if mutable
+      # Mutable borrow: no other borrows (mutable or immutable) may exist
+      conflict = find_borrow_conflict(source)
+      return conflict if conflict
+      add_edge(Edge.new(from: borrower, to: source, kind: :borrows_mut))
+    else
+      # Immutable borrow: no mutable borrows may exist
+      mut_conflict = find_mutable_borrow(source)
+      return mut_conflict if mut_conflict
+      add_edge(Edge.new(from: borrower, to: source, kind: :borrows))
+    end
+    nil
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: dirty_source_change
+Worktree: dirty
+Target file: dirty (src/mir/ownership_graph.rb)
+  lines 91-91: mutated bug line
+Interpretation: Active source edits exist; inspect dirty changed lines first.
+
+A mutant/regression test is failing after local source edits.
+Active source edits exist; inspect dirty changed lines first.
+
+Something wrong in `borrow`. off-by-one: added +1 to index ''
+
+Fix it.
+
+Return ONLY the corrected function `borrow` in a ```ruby block.

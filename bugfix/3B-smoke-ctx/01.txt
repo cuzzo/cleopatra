@@ -1,0 +1,31 @@
+```ruby
+def compile_bg_stream_value(items)
+    raise Unsupported, "register emitter expected non-empty bounded stream" if items.empty?
+
+    payload_kinds = items.map { |it| bg_block_payload_kind(it) }.uniq
+    raise Unsupported, "register emitter does not support mixed payload kinds in bounded stream" if payload_kinds.length != 1
+
+    payload_kind = payload_kinds.first
+    list_reg = fresh_vreg
+    case payload_kind
+    when :i64    then emit(LNEW, list_reg)
+    when :f64    then emit(LFNEW, list_reg)
+    when :string then emit(LSNEW, list_reg)
+    else
+      raise Unsupported, "register emitter does not support bounded stream of #{payload_kind}"
+    end
+    items.each do |item|
+      promise = compile_bg_block_value(item)
+      reg = promise.fetch(:reg)
+      case payload_kind
+      when :i64    then emit(LAPPENDI, list_reg, reg)
+      when :f64    then emit(LFAPPEND, list_reg, reg)
+      when :string then emit(LSAPPEND, list_reg, reg)
+      end
+    end
+
+    cursor_reg = fresh_ireg
+    emit(ICONST, cursor_reg, add_const(0))
+    { kind: :bg_stream, payload_kind: payload_kind, reg: list_reg, cursor_reg: cursor_reg }
+  end
+```

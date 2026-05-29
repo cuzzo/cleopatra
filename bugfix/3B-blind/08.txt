@@ -1,13 +1,7 @@
-To fix the bug, we need to ensure that the `entry` is not an array before checking if it is a class. Here's the updated code:
-
 ```ruby
-# /home/yahn/cheat/spec/pipeline_backend_coverage_spec.rb:135
-# src/annotator/helpers/intrinsic_registry.rb:199:in `sigs'
-def sigs(entry)
-  return if entry.is_a?(Array) # Fix the bug by checking if entry is an array first
-  return if entry.is_a?(Class)
-  # Rest of the code
+class FixableFinding
+  def initialize(level)
+    @level = level
+  end
 end
 ```
-
-This change ensures that the `entry` is not an array before checking if it is a class, preventing the bug from occurring.

@@ -1,7 +1,9 @@
 ```ruby
-def metrics
-  # Assuming the original line was something like: result = a * b
-  result = a / b
-  result
+def collect_binding_moves
+  moves = @graph.each_node do |consumed|
+    next unless consumed.is_a?(MoveNode)
+    moves << consumed
+  end
+  moves
 end
 ```

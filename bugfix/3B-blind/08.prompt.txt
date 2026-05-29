@@ -1,0 +1,28 @@
+File: src/ast/fixable_error.rb
+Function: initialize
+
+A new unit test was added and is failing.
+A new failing unit test was added; use it to understand expected behavior.
+
+New test file: spec/generated/fixable_error_spec.rb
+```ruby
+# Generated failing test for Cleopatra mutant FixableFinding.initialize.
+# Mutation under test: swapped constant: 'LEVELS' -> 'ArgumentError'
+require "minitest/autorun"
+
+class GeneratedInitializeTest < Minitest::Test
+  def test_initialize_regression
+    flunk "Regression for FixableFinding.initialize: swapped constant: 'LEVELS' -> 'ArgumentError'"
+  end
+end
+```
+
+Test failure:
+  swapped constant: 'LEVELS' -> 'ArgumentError'
+
+  spec/annotator_spec.rb:1102
+  src/ast/fixable_error.rb:78:in `initialize'
+
+Fix the bug.
+
+Return ONLY the corrected function `initialize` in a ```ruby block.

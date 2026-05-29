@@ -1,9 +1,9 @@
 ```ruby
-def grouped_action_priorities
-  return {} unless actions
-
-  actions.group_by(&:priority).transform_values do |actions|
-    actions.sort_by(&:name)
+def stream_element_type
+  if @type.is_a?(StreamType)
+    @type.element_type
+  else
+    raise TypeError, "Not a stream type"
   end
 end
 ```

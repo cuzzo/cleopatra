@@ -1,0 +1,15 @@
+File: src/annotator.rb
+Function: annotate!
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Bug in `SemanticAnnotator.annotate!` at src/annotator.rb:97.
+Issue: off-by-one: added +1 to index ''
+
+  spec/mir_comparison_spec.rb:31
+  src/annotator.rb:97:in `annotate!'
+
+Fix it.
+
+Return ONLY the corrected function `annotate!` in a ```ruby block.

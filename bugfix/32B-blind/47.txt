@@ -1,7 +1,13 @@
 ```ruby
-def wrap_step_as_stmt(mir)
-  unless mir.nil?
-    # existing code
+def stmt
+  pattern = @lexer.next_token
+  case pattern.type
+  when :IDENTIFIER
+    handle_identifier(pattern)
+  when :LITERAL
+    handle_literal(pattern)
+  else
+    raise SyntaxError, "Unexpected token: #{pattern.type}"
   end
 end
 ```

@@ -1,8 +1,8 @@
 ```ruby
-def append_gap_actions(actions, gap_size)
-  gap_size.times do
-    actions << { type: :gap }
+def parse_fn_type_annotation
+  # Assuming the problematic line is around here, correcting the comparison
+  if consume?(:LPAREN) && peek.type == :CHAR && peek.value != ')'
+    # Rest of the method implementation
   end
-  actions
 end
 ```

@@ -1,3 +1,10 @@
 ```ruby
-codes << ByteCode.new(:push,) if value < 0
+def finalize_storage
+  # Assuming the variable 'frozen' was renamed to 'current_storage'
+  # and that 'current_storage' is the correct variable to use here.
+  if current_storage
+    # Perform finalization logic using current_storage
+    current_storage.finalize
+  end
+end
 ```

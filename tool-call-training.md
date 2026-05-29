@@ -95,6 +95,30 @@ tool calling is irrelevant, the GRAM layer learns to map `language != Ruby`
 
 ## 2. Bug Sources
 
+### 2.0 Bundled Source Repos
+
+Ruby bugs are generated from git bundles stored in `archives/`, not from live
+developer checkouts. The default synthetic mutant source is:
+
+```bash
+ruby mutant-bug-gen.rb \
+  --bundle archives/cheat.bundle \
+  --repo .eval/cheat \
+  --ref refs/remotes/bundle/master \
+  --out bugs.jsonl \
+  --target 1200
+```
+
+Each generated bug stores `repo.bundle`, `repo.ref`, `repo.commit`, `repo.tree`,
+`file_rel`, and `test_failures`. Evaluation must reconstruct or reset a
+worktree from that bundle and check out `repo.commit` before applying a model
+response.
+
+Every accepted synthetic mutant must have at least one verified failing test
+file. Verification means the test file passes on the clean pinned checkout,
+then fails after applying the mutation. The evaluator runs only the stored
+individual test commands.
+
 ### 2.1 Real Bugs (100 from triage)
 
 From the triaged commits across sub-projects:
@@ -119,6 +143,8 @@ Each alternate bug:
 ### 2.3 Synthetic Mutant Bugs (1,200)
 
 From the mutation catalog, applied across all 7 sub-projects.
+`mutant-bug-gen.rb` enforces the sub-project, difficulty, and prompt-style
+distributions as quotas for the generated file.
 
 | Sub-project | % target | Bug count |
 |-------------|----------|-----------|
@@ -132,6 +158,31 @@ From the mutation catalog, applied across all 7 sub-projects.
 | **Total** | **100%** | **1,200** |
 
 Each gets 5 trajectories → 6,000 trajectory examples.
+
+Current scope: these 1,200 synthetic mutants are code bugs only. Test bugs are
+planned separately because the present evaluator applies model-defined Ruby
+functions back into source files, not test files.
+
+### 2.3.1 Discovery Scenarios
+
+Every synthetic mutant also receives a discovery scenario:
+
+| Scenario | Share | What `ctx` reports |
+|---|---:|---|
+| `dirty_source_change` | 30% | Worktree dirty; target file dirty |
+| `new_unit_test` | 30% | Worktree dirty; new failing test file added |
+| `production_stack_trace` | 40% | Worktree clean; treat as existing/production bug |
+
+For `dirty_source_change`, the dirty target file scope is split:
+
+| Scope | Share within dirty-source bugs |
+|---|---:|
+| `whole_function_dirty` | 50% |
+| `multi_line_dirty` | 25% |
+| `exact_line_dirty` | 25% |
+
+The generated bug stores this under `discovery`. Prompt generation uses it to
+append the same worktree-state hint a real `ctx` tool call would expose.
 
 ### 2.4 Multilingual Negatives (200 sampled)
 
@@ -227,12 +278,19 @@ calls, to get precisely the context you need.
   "id": "synth-src-000001",
   "type": "bug_fix",
   "source": "synthetic_mutant",
+  "repo": {
+    "bundle": "archives/cheat.bundle",
+    "ref": "refs/remotes/bundle/master",
+    "commit": "...",
+    "tree": "..."
+  },
   "subproject": "src",
   "difficulty": "stack_1_2",
   "code_or_test": "code",
   "prompt_style": "stack_trace",
   "prompt": "Test failure:...",
   "file": "src/mir/escape_analysis.rb",
+  "file_rel": "src/mir/escape_analysis.rb",
   "function": "EscapeAnalysis.apply!",
   "mutated_body": "...",
   "original_body": "...",
@@ -250,6 +308,49 @@ calls, to get precisely the context you need.
   }
 }
 ```
+
+---
+
+## 6. Evaluation Protocol
+
+Evaluation is only valid when it uses the same source tree that created the bug.
+For each bug:
+
+1. Restore or reuse a local worktree from `repo.bundle`.
+2. Check out `repo.commit` in detached mode.
+3. Verify `git rev-parse HEAD^{tree}` equals `repo.tree`.
+4. Read `file_rel` from that worktree.
+5. Use Prism to locate the recorded function and rewrite that function with
+   `mutated_body`.
+6. Use Prism to parse the model response and collect all Ruby `def` nodes.
+7. For each response function, replace the matching source function by full or
+   short name; if no match exists, append it to the source file. Responses that
+   contain instructions, partial diffs, or prose like "change this line" are
+   marked `UNSUPPORTED_RESPONSE_FORMAT` for manual review.
+8. Run `ruby -c` on the changed file.
+9. Run each command stored in `test_failures`; do not fall back to a whole
+   suite or syntax-only success.
+10. Restore the worktree before the next bug, regardless of pass/fail/error.
+
+The evaluator must write a JSONL failure ledger for manual inspection. Each
+failure record should include:
+
+```json
+{
+  "bug_id": "...",
+  "category": "3B-ctx",
+  "repo_commit": "...",
+  "file_rel": "src/...",
+  "response_path": "bugfix/3B-ctx/01.txt",
+  "raw_response": "...",
+  "status": "UNSUPPORTED_RESPONSE_FORMAT",
+  "detail": "response describes a line edit instead of returning replacement code"
+}
+```
+
+This ledger is required because some LLM responses are semantically useful but
+not machine-applicable, for example "change this exact line". Those must not be
+counted as evaluator errors or silent failures; they need explicit review.
 
 ### 5.2 Held Back Format (300)
 

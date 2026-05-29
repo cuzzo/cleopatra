@@ -1,0 +1,46 @@
+File: src/ast/error_registry.rb
+Function: enum_entries
+
+Here is the current (buggy) code of function `enum_entries`:
+
+```ruby
+  def self.enum_entries
+    [[:None, ERROR_TYPES]] + ERROR_TYPES.map { |sym, meta| [sym, meta[:id]] }.sort_by(&:last)
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: new_unit_test
+Worktree: dirty
+Target file: clean (src/ast/error_registry.rb)
+Other dirty files:
+  added spec/generated/error_registry_spec.rb (test)
+Interpretation: A new failing unit test was added; use it to understand expected behavior.
+
+A new unit test was added and is failing.
+A new failing unit test was added; use it to understand expected behavior.
+
+New test file: spec/generated/error_registry_spec.rb
+```ruby
+# Generated failing test for Cleopatra mutant AST.enum_entries.
+# Mutation under test: swapped constant: 'ERROR_NAME_NONE' -> 'ERROR_TYPES'
+require "minitest/autorun"
+
+class GeneratedEnum_entriesTest < Minitest::Test
+  def test_enum_entries_regression
+    flunk "Regression for AST.enum_entries: swapped constant: 'ERROR_NAME_NONE' -> 'ERROR_TYPES'"
+  end
+end
+```
+
+Suspect bug in `enum_entries` at src/ast/error_registry.rb:121.
+Issue: swapped constant: 'ERROR_NAME_NONE' -> 'ERROR_TYPES'
+
+  spec/error_registry_spec.rb:123
+  src/ast/error_registry.rb:121:in `enum_entries'
+
+Fix it.
+
+Return ONLY the corrected function `enum_entries` in a ```ruby block.

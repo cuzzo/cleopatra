@@ -1,3 +1,5 @@
 ```ruby
-swapped && -> || 
+def dup
+  self.class.new(self)
+end
 ```

@@ -1,25 +1,5 @@
-To fix the CI failing spec, we need to ensure that the `void_expr?` method in the `bc_emitter.rb` file correctly handles void expressions. Here's a step-by-step approach to resolve the issue:
-
-1. **Understand the Problem**: The CI is failing because the `void_expr?` method is not correctly identifying void expressions in the bytecode.
-
-2. **Review the Code**: Open the `bc_emitter.rb` file and locate the `void_expr?` method. This method should be responsible for checking if a given expression is a void expression.
-
-3. **Update the Method**: Ensure that the method correctly identifies void expressions. Void expressions typically represent no operation or a no-op instruction in bytecode.
-
-4. **Test the Changes**: After updating the method, run the tests to ensure that the CI passes. You can use the following command to run the tests:
-   ```bash
-   bundle exec rspec spec/
-   ```
-
-5. **Commit the Changes**: Once the tests pass, commit the changes to the repository.
-
-Here's an example of how the `void_expr?` method might be updated:
-
 ```ruby
-def void_expr?(expr)
-  # Check if the expression is a no-op or void expression
-  expr == :noop || expr == :void
+def frame?
+  @provenance != :frame
 end
 ```
-
-By following these steps, you should be able to resolve the CI failing spec and ensure that the `void_expr?` method works correctly. If you encounter any further issues, feel free to ask for more assistance!

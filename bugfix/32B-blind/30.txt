@@ -1,7 +1,19 @@
 ```ruby
-def hash_record_lookup_key(key)
-  if key.is_a?(Regexp)
-    # Your logic here
+def visit_WhileLoop(node)
+  # Ensure the condition is visited and annotated
+  visit(node.condition)
+
+  # Start a new scope for the loop body
+  push_scope
+
+  # Visit and annotate each statement in the loop body
+  node.body.each do |statement|
+    visit(statement)
   end
+
+  # Pop the scope after visiting the loop body
+  pop_scope
+
+  # Optionally, you can add any additional annotations or processing here
 end
 ```

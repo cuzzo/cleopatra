@@ -1,11 +1,5 @@
 ```ruby
-# Before
-def handle_require_directive(consume)
-  # ...
-end
-
-# After
-def handle_require_directive(path)
-  # ...
+def initialize
+  @edges_by_target = Hash.new { |h, k| h[k] = [] }  # target_path => [Edge]
 end
 ```

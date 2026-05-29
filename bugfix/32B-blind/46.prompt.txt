@@ -1,0 +1,15 @@
+File: src/ast/type.rb
+Function: payload_type
+
+A mutant/regression test is failing after local source edits.
+Active source edits exist; inspect dirty changed lines first.
+
+Test failure:
+  swapped || -> &&
+
+  spec/concurrency_spec.rb:1520
+  src/ast/type.rb:724:in `payload_type'
+
+Fix the bug.
+
+Return ONLY the corrected function `payload_type` in a ```ruby block.

@@ -1,11 +1,5 @@
-To fix the issue in the `lower_order_by` function, we need to swap the constant 'MIR' with 'Ident'. Here's the updated code:
-
-```python
-def lower_order_by(data):
-    # Swap the constant 'MIR' with 'Ident'
-    if data == 'MIR':
-        data = 'Ident'
-    return data
+```ruby
+def annotate!
+  # Your corrected code here
+end
 ```
-
-This change ensures that the constant 'MIR' is correctly swapped with 'Ident' in the `lower_order_by` function. Let me know if you have any further questions!

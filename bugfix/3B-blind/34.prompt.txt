@@ -1,0 +1,28 @@
+File: src/ast/parser.rb
+Function: parse_fn_type_annotation
+
+A new unit test was added and is failing.
+A new failing unit test was added; use it to understand expected behavior.
+
+New test file: spec/generated/parser_spec.rb
+```ruby
+# Generated failing test for Cleopatra mutant Parser.parse_fn_type_annotation.
+# Mutation under test: swapped comparison: '==' -> '!=' near ') && peek.type == :CHAR && pee'
+require "minitest/autorun"
+
+class GeneratedParse_fn_type_annotationTest < Minitest::Test
+  def test_parse_fn_type_annotation_regression
+    flunk "Regression for Parser.parse_fn_type_annotation: swapped comparison: '==' -> '!=' near ') && peek.type == :CHAR && pee'"
+  end
+end
+```
+
+Test failure:
+  swapped comparison: '==' -> '!=' near ') && peek.type == :CHAR && pee'
+
+  spec/first_class_function_spec.rb:35
+  src/ast/parser.rb:2128:in `parse_fn_type_annotation'
+
+Fix the bug.
+
+Return ONLY the corrected function `parse_fn_type_annotation` in a ```ruby block.

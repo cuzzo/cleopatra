@@ -1,0 +1,15 @@
+File: src/ast/type.rb
+Function: stream?
+
+A mutant/regression test is failing after local source edits.
+Active source edits exist; inspect dirty changed lines first.
+
+Suspect bug in `stream?` at src/ast/type.rb:763.
+Issue: swapped || -> &&
+
+  spec/stream_spec.rb:287
+  src/ast/type.rb:763:in `stream?'
+
+Fix it.
+
+Return ONLY the corrected function `stream?` in a ```ruby block.

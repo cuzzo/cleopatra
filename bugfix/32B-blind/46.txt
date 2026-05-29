@@ -1,6 +1,10 @@
 ```ruby
-def ownership_fact_covers_node?(fact, node)
-  # Assuming 'respond_to' was mistakenly used where 'node' should be
-  fact.node == node
+def payload_type
+  # Assuming the original line was something like:
+  # return some_condition || another_condition
+  # And it needs to be changed to:
+  return some_condition && another_condition
 end
 ```
+
+Since the specific conditions (`some_condition` and `another_condition`) are not provided, I've generalized the fix based on the description that `||` was swapped to `&&`. Adjust the conditions as necessary to fit the actual logic of your `payload_type` method.

@@ -1,8 +1,12 @@
 ```ruby
-# src/mir/fsm_transform/recursive_splitter.rb:133
-def finalize
-  segments.each do |segment|
-    # Your code here
+def consume
+  if @current_token.type == :eof
+    raise SyntaxError, "Unexpected end of file"
   end
+
+  token = @current_token
+  @current_token = @lexer.get_token
+
+  return token
 end
 ```

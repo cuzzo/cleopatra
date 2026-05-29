@@ -1,5 +1,5 @@
 ```ruby
-def generic_type_params
-  (0...type_params.length).map { |i| type_params[i] }
+def symbol?
+  @sync == :symbol
 end
 ```

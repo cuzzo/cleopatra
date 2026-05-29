@@ -1,11 +1,17 @@
 ```ruby
-def from_finding(finding)
-  {
-    id:       finding.id,
-    name:     finding.name,
-    range:    range,
-    severity: finding.severity,
-    message:  finding.message
-  }
+def check_program!(program, strict: false)
+  all_errors = program.each do |item|
+    case item
+    when FunctionDefinition
+      all_errors.concat(check_fn!(item, strict: strict))
+    when ClassDefinition
+      all_errors.concat(check_class!(item, strict: strict))
+    when ModuleDefinition
+      all_errors.concat(check_module!(item, strict: strict))
+    else
+      all_errors << "Unknown item type: #{item.class}"
+    end
+  end
+  all_errors
 end
 ```

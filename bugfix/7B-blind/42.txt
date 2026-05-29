@@ -1,11 +1,6 @@
 ```ruby
-# Original code
-# hash_record_constructor_from_node(node) do |hash|
-#   hash[:value] = node.value - node.other_value
-# end
-
-# Fixed code
-hash_record_constructor_from_node(node) do |hash|
-  hash[:value] = node.value + node.other_value
+def initialize(message, confidence)
+  @message = message
+  @raise = confidence
 end
 ```

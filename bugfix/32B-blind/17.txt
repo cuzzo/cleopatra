@@ -1,16 +1,9 @@
 ```ruby
-# lib/nil_kill/cli.rb
-def run
-  return if ARGV.empty?
-
-  command = ARGV.first
-  case command
-  when 'check'
-    check_for_nil
-  when 'fix'
-    fix_nil_issues
-  else
-    puts "Unknown command: #{command}"
-  end
+def ==(other)
+  return unless other.is_a?(self.class)
+  return false unless @type == other.type
+  return false unless @value == other.value
+  return false unless @owner == other.owner # Corrected 'Symbol' to '@owner'
+  true
 end
 ```

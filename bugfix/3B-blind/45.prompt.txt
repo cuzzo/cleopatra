@@ -1,0 +1,28 @@
+File: src/ast/ast.rb
+Function: walk_body
+
+A new unit test was added and is failing.
+A new failing unit test was added; use it to understand expected behavior.
+
+New test file: spec/generated/ast_spec.rb
+```ruby
+# Generated failing test for Cleopatra mutant AST.walk_body.
+# Mutation under test: renamed variable: 'body' -> 'nodes'
+require "minitest/autorun"
+
+class GeneratedWalk_bodyTest < Minitest::Test
+  def test_walk_body_regression
+    flunk "Regression for AST.walk_body: renamed variable: 'body' -> 'nodes'"
+  end
+end
+```
+
+Bug in `AST.walk_body` at src/ast/ast.rb:11.
+Issue: renamed variable: 'body' -> 'nodes'
+
+  spec/annotator_spec.rb:2174
+  src/ast/ast.rb:11:in `walk_body'
+
+Fix it.
+
+Return ONLY the corrected function `walk_body` in a ```ruby block.

@@ -1,0 +1,24 @@
+File: src/backends/pipeline_host.rb
+Function: initialize
+
+A new unit test was added and is failing.
+A new failing unit test was added; use it to understand expected behavior.
+
+New test file: spec/generated/pipeline_host_spec.rb
+```ruby
+# Generated failing test for Cleopatra mutant PipelineHost.initialize.
+# Mutation under test: renamed variable: 'lowering' -> 'emitter'
+require "minitest/autorun"
+
+class GeneratedInitializeTest < Minitest::Test
+  def test_initialize_regression
+    flunk "Regression for PipelineHost.initialize: renamed variable: 'lowering' -> 'emitter'"
+  end
+end
+```
+
+Something wrong in `initialize`. renamed variable: 'lowering' -> 'emitter'
+
+Fix it.
+
+Return ONLY the corrected function `initialize` in a ```ruby block.

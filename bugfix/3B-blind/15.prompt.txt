@@ -1,0 +1,28 @@
+File: src/annotator-helpers/function_signature.rb
+Function: []
+
+A new unit test was added and is failing.
+A new failing unit test was added; use it to understand expected behavior.
+
+New test file: spec/generated/function_signature_spec.rb
+```ruby
+# Generated failing test for Cleopatra mutant FunctionSignature.[].
+# Mutation under test: forgotten line: 'elsif FIELD_MAP.key?(key)'
+require "minitest/autorun"
+
+class Generated_Test < Minitest::Test
+  def test___regression
+    flunk "Regression for FunctionSignature.[]: forgotten line: 'elsif FIELD_MAP.key?(key)'"
+  end
+end
+```
+
+Test failure:
+  forgotten line: 'elsif FIELD_MAP.key?(key)'
+
+  spec/generics_spec.rb:268
+  src/annotator-helpers/function_signature.rb:74:in `[]'
+
+Fix the bug.
+
+Return ONLY the corrected function `[]` in a ```ruby block.

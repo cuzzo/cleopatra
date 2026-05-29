@@ -1,0 +1,53 @@
+File: src/ast/scope.rb
+Function: lookup_type_schema
+
+Here is the current (buggy) code of function `lookup_type_schema`:
+
+```ruby
+  def lookup_type_schema(name)
+    # For generic instances like :"Pair<Number>", look up the base type ":Pair"
+    scope = name.to_s.sub(/<.*>$/, '').to_sym
+    # Search from Top (newest) to Bottom (global)
+    @scope_stack.reverse_each do |scope|
+      schema = scope.resolve_type_definition(scope)
+      return schema if schema
+    end
+    nil
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: new_unit_test
+Worktree: dirty
+Target file: clean (src/ast/scope.rb)
+Other dirty files:
+  added spec/generated/scope_spec.rb (test)
+Interpretation: A new failing unit test was added; use it to understand expected behavior.
+
+A new unit test was added and is failing.
+A new failing unit test was added; use it to understand expected behavior.
+
+New test file: spec/generated/scope_spec.rb
+```ruby
+# Generated failing test for Cleopatra mutant ScopeHelper.lookup_type_schema.
+# Mutation under test: renamed variable: 'base_name' -> 'scope'
+require "minitest/autorun"
+
+class GeneratedLookup_type_schemaTest < Minitest::Test
+  def test_lookup_type_schema_regression
+    flunk "Regression for ScopeHelper.lookup_type_schema: renamed variable: 'base_name' -> 'scope'"
+  end
+end
+```
+
+Bug in `ScopeHelper.lookup_type_schema` at src/ast/scope.rb:253.
+Issue: renamed variable: 'base_name' -> 'scope'
+
+  spec/ownership_dataflow_spec.rb:194
+  src/ast/scope.rb:253:in `lookup_type_schema'
+
+Fix it.
+
+Return ONLY the corrected function `lookup_type_schema` in a ```ruby block.

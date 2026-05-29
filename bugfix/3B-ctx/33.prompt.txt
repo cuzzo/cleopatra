@@ -1,0 +1,47 @@
+File: src/ast/type.rb
+Function: any_rc?
+
+Here is the current (buggy) code of function `any_rc?`:
+
+```ruby
+  def any_rc?
+    # SharedPromise uses its own ref-counting internally — it is NOT an Rc/Arc wrapper.
+    return false if shared_promise? && split_open_stream?
+    multiowned? || shared?
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: new_unit_test
+Worktree: dirty
+Target file: clean (src/ast/type.rb)
+Other dirty files:
+  added spec/generated/type_spec.rb (test)
+Interpretation: A new failing unit test was added; use it to understand expected behavior.
+
+A new unit test was added and is failing.
+A new failing unit test was added; use it to understand expected behavior.
+
+New test file: spec/generated/type_spec.rb
+```ruby
+# Generated failing test for Cleopatra mutant Type.any_rc?.
+# Mutation under test: swapped || -> &&
+require "minitest/autorun"
+
+class GeneratedAny_rc_Test < Minitest::Test
+  def test_any_rc__regression
+    flunk "Regression for Type.any_rc?: swapped || -> &&"
+  end
+end
+```
+
+CI failing spec/stream_spec.rb:67.
+
+  spec/stream_spec.rb:67
+  src/ast/type.rb:492:in `any_rc?'
+
+Fix the code.
+
+Return ONLY the corrected function `any_rc?` in a ```ruby block.

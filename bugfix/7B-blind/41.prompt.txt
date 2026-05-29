@@ -1,0 +1,14 @@
+File: src/ast/type.rb
+Function: provenance_alloc
+
+A mutant/regression test is failing after local source edits.
+Active source edits exist; inspect dirty changed lines first.
+
+CI broken.
+
+  spec/type_provenance_spec.rb:22
+  src/ast/type.rb:406:in `provenance_alloc'
+
+Fix the bug.
+
+Return ONLY the corrected function `provenance_alloc` in a ```ruby block.

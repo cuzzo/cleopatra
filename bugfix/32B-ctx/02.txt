@@ -1,7 +1,1 @@
-```ruby
-T.bind(self, SemanticAnnotator) rescue nil
-node    = site[:node]
-clause  = node.lock_error_clause
-return unless clause
-
-# MVCC L5 + True-Sync-Polymorphism (#3
+[[SKIPPED: API key not set]]

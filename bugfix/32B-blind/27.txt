@@ -1,5 +1,8 @@
 ```ruby
-def runtime_contradicts?(expected_classes, observed_classes)
-  (expected_classes - observed_classes).any?
+def visit_NextExpr(node)
+  promise_type = type_system.type_of(node.promise)
+  unless promise_type.promise_list?
+    # Your existing code logic here
+  end
 end
 ```

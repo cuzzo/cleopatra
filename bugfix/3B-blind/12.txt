@@ -1,13 +1,5 @@
-To fix the issue in the `record_case` method, you need to ensure that the line `'pats << slice(p)'` is included. This line is responsible for adding the sliced part of the string `p` to the `pats` array. Here's the corrected version of the method:
-
 ```ruby
-def record_case(s)
-  pats = []
-  s.each_char do |p|
-    pats << slice(p)
-  end
-  pats
+def dynamic?
+  @dynamic ||= @type.is_a?(Type::Dynamic)
 end
 ```
-
-This ensures that each character in the string `s` is sliced and added to the `pats` array, which is then returned. If you have any other questions or need further assistance, feel free to ask!

@@ -1,9 +1,8 @@
 ```ruby
-# src/tools/formatter.rb:348
-def nl_after_end
+def stream?
   # Assuming the original code was something like:
-  # return true && some_condition
-  # It should be:
-  return true || some_condition
+  # return true if condition1 || condition2
+  # It should be fixed to:
+  return true if condition1 && condition2
 end
 ```

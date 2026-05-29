@@ -1,0 +1,37 @@
+File: src/ast/type.rb
+Function: provenance_alloc
+
+Here is the current (buggy) code of function `provenance_alloc`:
+
+```ruby
+  def provenance_alloc
+    case @provenance
+    when :heap  then :heap
+    else nil
+    end
+  end
+
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: dirty_source_change
+Worktree: dirty
+Target file: dirty (src/ast/type.rb)
+  lines 409-409: mutated bug line
+  lines 410-410: mutated bug line
+  lines 411-411: mutated bug line
+Interpretation: Active source edits exist; inspect dirty changed lines first.
+
+A mutant/regression test is failing after local source edits.
+Active source edits exist; inspect dirty changed lines first.
+
+CI broken.
+
+  spec/type_provenance_spec.rb:22
+  src/ast/type.rb:406:in `provenance_alloc'
+
+Fix the bug.
+
+Return ONLY the corrected function `provenance_alloc` in a ```ruby block.

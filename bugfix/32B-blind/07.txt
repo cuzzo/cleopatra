@@ -1,13 +1,7 @@
 ```ruby
-def reject_bare_atomic_ptr_mutation!(field_node)
-  return unless field_node.is_a?(AST::Node) && field_node.type == :send
-
-  if bare_atomic_ptr?(field_node.receiver) && mutation_method?(field_node.method_name)
-    raise MutationOnBareAtomicPointerError, "Mutation on bare atomic pointer detected: #{field_node.source}"
-  end
-
-  field_node.children.each do |child|
-    reject_bare_atomic_ptr_mutation!(child)
+def resolve_catch_clause!(item)
+  if item[:form] != :kind
+    # Existing logic for when item[:form] is not :kind
   end
 end
 ```

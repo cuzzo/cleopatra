@@ -1,0 +1,30 @@
+File: src/ast/type.rb
+Function: symbol?
+
+Here is the current (buggy) code of function `symbol?`:
+
+```ruby
+  def symbol?
+    @sync == :symbol
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: dirty_source_change
+Worktree: dirty
+Target file: dirty (src/ast/type.rb)
+  lines 455-455: nearby edited line
+  lines 456-456: mutated bug line
+  lines 457-457: nearby edited line
+Interpretation: Active source edits exist; inspect dirty changed lines first.
+
+A mutant/regression test is failing after local source edits.
+Active source edits exist; inspect dirty changed lines first.
+
+Something wrong in `symbol?`. swapped comparison: '==' -> '!=' near '@sync == :symbol'
+
+Fix it.
+
+Return ONLY the corrected function `symbol?` in a ```ruby block.

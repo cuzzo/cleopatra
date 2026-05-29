@@ -1,17 +1,5 @@
-To fix the bug, we need to ensure that the error is not swallowed and is properly handled. Here's the updated code:
-
 ```ruby
-# src/annotator/helpers/lock_helper.rb:381
-def verify_handler_reachability!(handler)
-  begin
-    # Existing code
-    # ...
-  rescue => e
-    # Handle the error properly
-    Rails.logger.error("Error verifying handler reachability: #{e.message}")
-    raise e
-  end
+def register_type!(type_sym)
+  # Your corrected code here
 end
 ```
-
-In this updated code, we added a `begin-rescue` block to handle any errors that may occur during the execution of the `verify_handler_reachability!` method. If an error is caught, we log the error message and then re-raise the error to ensure that the failure is not swallowed. This will help in debugging and tracking the issue.

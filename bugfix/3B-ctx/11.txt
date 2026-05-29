@@ -1,12 +1,19 @@
-To fix the bug, we need to ensure that the `list_handle_type?` function correctly identifies the types of list handles. The current code is missing the `borrowed_int_list_handle` and `borrowed_string_list_handle` types. We need to add these types to the comparison.
-
-Here's the corrected code:
-
 ```ruby
-def list_handle_type?(type)
-  type == :int_list_handle || type == :string_list_handle ||
-      type == :borrowed_int_list_handle || type == :borrowed_string_list_handle
-end
+def dup
+    FunctionSignature.new(
+      return_type: @return_type, return_lifetime: @return_lifetime,
+      visibility: @visibility, type_params: @type_params, reentrant: @reentrant,
+      extern: @extern, module_alias: @module_alias, extern_effects: @extern_effects,
+      fn_type_params: @fn_type_params, owner_type: @owner_type,
+      owner_type_params: @owner_type_params, intrinsic: @intrinsic,
+      zig_pattern: @zig_pattern
+    ).tap do |s|
+      s.needs_rt = @needs_rt
+      s.can_fail = @can_fail
+      s.return_provenance = @return_provenance
+      s.effects = @effects
+      s.return_strategy = @return_strategy
+      s.stack_tier = @stack_tier
+    end
+  end
 ```
-
-This ensures that the function correctly identifies all the list handle types, including the borrowed ones. The test failure should now be resolved. --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---

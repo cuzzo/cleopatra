@@ -1,1 +1,5 @@
-Certainly! To fix the bug, I'll need to see the relevant part of the `bc_emitter.rb` file around line 6
+```ruby
+def frame?
+  @provenance == :frame
+end
+```

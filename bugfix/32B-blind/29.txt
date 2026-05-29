@@ -1,7 +1,5 @@
 ```ruby
-def alias_snapshot_for_catch_body
-  # Other code...
-  STORE_SLOT # Corrected from LOAD_NAME
-  # Other code...
+def [](index)
+  @nodes[index] # Removed +1 from the index
 end
 ```

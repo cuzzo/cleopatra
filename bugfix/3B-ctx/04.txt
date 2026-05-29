@@ -1,13 +1,21 @@
-To fix the issue, we need to rename the variable `unfilled` to `segments` in the `finalize` method. Here's the corrected code:
-
 ```ruby
-T.bind(self, T.untyped) rescue nil
-  segments = @segments.each_with_index.select { |s, _| s == :placeholder }
-  if segments.any?
-    raise "RecursiveSplitter: unfilled segments at indices " \
-          "#{segments.map(&:last).inspect}"
-  end
-  segments
-```
+def consume(type, value=nil)
+    # 1. Capture the current token BEFORE moving the pointer
+    token = current
 
-This change ensures that the variable `segments` correctly represents the unfilled placeholders in the `@segments` array. The rest of the code remains unchanged. --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
+    # 2. Validate it matches what we expect
+    if (token.type == type) || (value && token.value == value)
+      if value && token.value != value
+         emit_consume_error_with_fix(token, type, value)
+      end
+
+      # 3. Advance the pointer
+      @pos += 1
+
+      # 4. RETURN THE CAPTURED TOKEN (Not 'current', which is now the next one!)
+      token
+    else
+      emit_consume_error_with_fix(token, type, value)
+    end
+  end
+```

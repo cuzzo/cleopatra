@@ -1,6 +1,8 @@
 .venv/
+.eval/
 archives/
 data/
+bug_generation_failures.jsonl
 bugs.jsonl
 training_data/
 held_back/

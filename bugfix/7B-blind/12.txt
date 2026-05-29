@@ -1,5 +1,7 @@
 ```ruby
-record_case = lambda do |p, slice|
-  pats << slice(p)
+def dynamic?
+  # Assuming the original code had a logical error where it used && instead of ||
+  # Corrected the logical operator from && to ||
+  # Add your corrected code here
 end
 ```

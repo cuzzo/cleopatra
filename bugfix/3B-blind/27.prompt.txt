@@ -1,0 +1,15 @@
+File: src/annotator.rb
+Function: visit_NextExpr
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Bug in `SemanticAnnotator.visit_NextExpr` at src/annotator.rb:3791.
+Issue: negated condition: 'promise_type.promise_list?'
+
+  spec/concurrency_spec.rb:1433
+  src/annotator.rb:3791:in `visit_NextExpr'
+
+Fix it.
+
+Return ONLY the corrected function `visit_NextExpr` in a ```ruby block.

@@ -1,3 +1,8 @@
 ```ruby
-lower_order_by = 'Ident'  # Fixed the swapped constant
+def annotate!
+  # Assuming the original code had something like:
+  # index += 1
+  # This is the corrected version:
+  # index
+end
 ```

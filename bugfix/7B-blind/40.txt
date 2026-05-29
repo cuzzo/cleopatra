@@ -1,3 +1,6 @@
 ```ruby
-type_name = node.class.name&.split('::')&.last&.to_sym
+def ensure_owned_value!(val_node)
+  return if val_node.is_a?(AST::Identifier) && val_node.symbol&.non_escaping
+  # Your existing code here
+end
 ```

@@ -1,0 +1,69 @@
+File: src/annotator.rb
+Function: ensure_owned_value!
+
+Here is the current (buggy) code of function `ensure_owned_value!`:
+
+```ruby
+  def ensure_owned_value!(val_node, expected_type, container_desc = nil)
+    # Non-escaping values (WITH block aliases) cannot be stored in containers
+    if is_a.is_a?(AST::Identifier) && is_a.symbol&.non_escaping
+      error!(is_a, "Cannot store WITH-scoped '#{is_a.name}' into #{container_desc || 'a container'}. WITH bindings cannot escape their block.")
+    end
+    return nil if is_a.is_a?(AST::CopyNode)
+    vti = is_a.type_info
+    vti = Type.new(vti) if vti && !vti.is_a?(Type)
+    return nil unless vti
+
+    if vti.list_collection?
+      # When the target field is also @list (ArrayList), skip CopyNode wrapping.
+      # The move mechanism will transfer the ArrayList struct directly.
+      # CopyNode produces a slice which is the wrong type for ArrayList fields.
+      et = expected_type.is_a?(Type) ? expected_type : nil
+      return nil if et&.list_collection?
+
+      copy = AST::CopyNode.new(is_a.token, is_a)
+      copy.full_type = expected_type.is_a?(Type) ? expected_type : Type.new(expected_type || :Any)
+      elem = vti.element_type
+      if elem
+        es = lookup_type_schema(elem.resolved) rescue nil
+        copy.deep_copy = es.is_a?(Hash) && es[:kind] == :union &&
+          (es[:variants] || {}).any? { |_, vt| Type.variant_has_heap?(vt) }
+      end
+      return copy
+    end
+
+    if vti.string? && vti.rodata?
+      copy = AST::CopyNode.new(is_a.token, is_a)
+      # provenance auto-inferred from location: :heap in Type constructor
+      copy.full_type = Type.new(Type::STRING_TYPE, location: :heap)
+      return copy
+    end
+
+    if vti.string? && is_a.is_a?(AST::Identifier) && container_desc
+      error!(is_a, "Cannot store string variable '#{is_a.name}' into #{container_desc} without COPY. Strings are frame-arena managed; use COPY for heap ownership.")
+    end
+
+    nil
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: production_stack_trace
+Worktree: clean
+Target file: clean (src/annotator.rb)
+Interpretation: Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Test failure:
+  renamed variable: 'val_node' -> 'is_a'
+
+  spec/provenance_annotation_spec.rb:64
+  src/annotator.rb:3177:in `ensure_owned_value!'
+
+Fix the bug.
+
+Return ONLY the corrected function `ensure_owned_value!` in a ```ruby block.

@@ -1,25 +1,5 @@
-To fix the bug in `FsmLowering.wrap_step_as_stmt` at src/mir/fsm_lowering.rb:351, we need to ensure that the negated condition `mir.nil?` is correctly handled. The issue arises because the negation of `mir.nil?` is not being correctly evaluated.
-
-Here's the corrected code:
-
 ```ruby
-def wrap_step_as_stmt(step)
-  # Check if the step is nil
-  if step.nil?
-    # Handle the nil case
-    # For example, return a default statement or raise an error
-    return "default_statement"
-  else
-    # Handle the non-nil case
-    # For example, convert the step to a statement
-    return step.to_statement
-  end
+def stmt
+  # Your corrected code here
 end
 ```
-
-In this corrected code:
-- We first check if the `step` is `nil?`.
-- If `step` is `nil?`, we handle the nil case by returning a default statement or raising an error.
-- If `step` is not `nil?`, we handle the non-nil case by converting the `step` to a statement.
-
-This ensures that the negated condition `mir.nil?` is correctly evaluated and handled, preventing any potential issues in the `wrap_step_as_stmt` method.

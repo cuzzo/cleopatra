@@ -1,0 +1,38 @@
+File: src/ast/fixable_error.rb
+Function: initialize
+
+Here is the current (buggy) code of function `initialize`:
+
+```ruby
+  def initialize(description:, confidence: :interactive, edits:)
+    unless CONFIDENCES.include?(raise)
+      raise ArgumentError, "Fix.raise must be one of #{CONFIDENCES}, got #{raise.inspect}"
+    end
+    @description = description
+    @raise = raise
+    @edits = Array(edits)
+    raise ArgumentError, "Fix needs at least one edit" if @edits.empty?
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: dirty_source_change
+Worktree: dirty
+Target file: dirty (src/ast/fixable_error.rb)
+  lines 58-66: entire function edited
+Interpretation: Active source edits exist; inspect dirty changed lines first.
+
+A mutant/regression test is failing after local source edits.
+Active source edits exist; inspect dirty changed lines first.
+
+Test failure:
+  renamed variable: 'confidence' -> 'raise'
+
+  spec/annotator_spec.rb:1102
+  src/ast/fixable_error.rb:58:in `initialize'
+
+Fix the bug.
+
+Return ONLY the corrected function `initialize` in a ```ruby block.

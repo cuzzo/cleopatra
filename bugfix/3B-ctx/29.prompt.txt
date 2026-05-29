@@ -1,0 +1,31 @@
+File: src/mir/ownership_graph.rb
+Function: []
+
+Here is the current (buggy) code of function `[]`:
+
+```ruby
+  def [](path)
+    @nodes[path]
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: production_stack_trace
+Worktree: clean
+Target file: clean (src/mir/ownership_graph.rb)
+Interpretation: Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Bug in `OwnershipGraph.[]` at src/mir/ownership_graph.rb:217.
+Issue: off-by-one: added +1 to index ''
+
+  spec/collections_spec.rb:37
+  src/mir/ownership_graph.rb:217:in `[]'
+
+Fix it.
+
+Return ONLY the corrected function `[]` in a ```ruby block.

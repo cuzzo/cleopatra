@@ -1,7 +1,11 @@
 ```ruby
-def contains_ensure?(node, value)
-  return false if node.nil?
-  return true if node.value == value
-  contains_ensure?(node.left, value) || contains_ensure?(node.right, value)
+def ensure_owned_value!(node)
+  val_node = node.children.find { |child| child.type == :send && child.method_name == :value }
+  return unless val_node
+
+  is_a = val_node.children.find { |child| child.type == :send && child.method_name == :is_a? }
+  return unless is_a
+
+  # Rest of the method logic
 end
 ```

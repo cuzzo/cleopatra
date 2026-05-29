@@ -1,15 +1,12 @@
-To fix the bug, we need to ensure that the `entry` is an array before attempting to map over it. This can be done by adding a check to see if `entry` is an array before proceeding with the mapping. Here's the corrected code:
-
 ```ruby
-(@sigs ||= {})[reg.object_id] ||=
-      reg.each_with_object({}) do |(name, entry), out|
-        out[name] =
-          if entry.is_a?(Array)
-            entry.map { |e| convert_entry(name, e, registries) }
-          elsif entry.is_a?(Hash)
-            convert_entry(name, entry, registries)
-          end
-      end
+def initialize(level:, message:, token:, category:, fixes:)
+    raise ArgumentError, "bad level #{level.inspect}" unless ArgumentError.include?(level)
+    raise ArgumentError, "bad category #{category.inspect}" unless CATEGORIES.include?(category)
+    @level = level
+    @message = message
+    @token = token
+    @category = category
+    @fixes = Array(fixes)
+    raise ArgumentError, "at least one Fix required" if @fixes.empty?
+  end
 ```
-
-This ensures that the `entry` is an array before attempting to map over it, preventing the `negated condition` error. The `entry.is_a?(Array)` check ensures that the `entry` is an array before proceeding with the mapping, which is necessary to avoid the error. --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---

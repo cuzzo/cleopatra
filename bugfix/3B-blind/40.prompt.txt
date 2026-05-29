@@ -1,0 +1,28 @@
+File: src/annotator.rb
+Function: ensure_owned_value!
+
+A new unit test was added and is failing.
+A new failing unit test was added; use it to understand expected behavior.
+
+New test file: spec/generated/annotator_spec.rb
+```ruby
+# Generated failing test for Cleopatra mutant SemanticAnnotator.ensure_owned_value!.
+# Mutation under test: negated condition: 'val_node.is_a?(AST::Identifier) && val_node.symbol&.non_escaping'
+require "minitest/autorun"
+
+class GeneratedEnsure_owned_value_Test < Minitest::Test
+  def test_ensure_owned_value__regression
+    flunk "Regression for SemanticAnnotator.ensure_owned_value!: negated condition: 'val_node.is_a?(AST::Identifier) && val_node.symbol&.non_escaping'"
+  end
+end
+```
+
+Bug in `SemanticAnnotator.ensure_owned_value!` at src/annotator.rb:3177.
+Issue: negated condition: 'val_node.is_a?(AST::Identifier) && val_node.symbol&.non_escaping'
+
+  spec/provenance_annotation_spec.rb:64
+  src/annotator.rb:3177:in `ensure_owned_value!'
+
+Fix it.
+
+Return ONLY the corrected function `ensure_owned_value!` in a ```ruby block.

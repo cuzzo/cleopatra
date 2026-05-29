@@ -1,7 +1,7 @@
 ```ruby
-# src/annotator/helpers/auto_inference.rb:963
-def auto?
-  # Fix: swapped && -> ||
-  condition1 || condition2
+def enum_entries
+  ERROR_TYPES.each do |error_type|
+    yield error_type
+  end
 end
 ```

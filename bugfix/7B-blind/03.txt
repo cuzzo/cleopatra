@@ -1,11 +1,15 @@
 ```ruby
-# src/ast/parser.rb:2705
-def parse_join_op
-  # Ensure the correct constant is used
-  if lookahead_token.type == CHAR
-    # Your existing code here
-  elsif lookahead_token.type == JOIN
-    # Your existing code here
+def verify_return(node)
+  return_type = node.type
+  if return_type == :return
+    return_value = node.child_nodes.first
+    if return_value.type == :lit
+      return_value.value
+    else
+      nil
+    end
+  else
+    nil
   end
 end
 ```

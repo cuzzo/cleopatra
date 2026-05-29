@@ -1,62 +1,9 @@
 ```ruby
-proc = procedures[name]
-    return unless proc && proc[:var_params]
-    proc[:var_params].each do |vp_name|
-      idx = proc[:params].index(vp_name)
-      arg = args[idx]
-      next unless arg.respond_to?(:type) && arg.type == :Variable
-      names << arg.name
+def [](key)
+    if key == :return
+      { type: @return_type, lifetime: @return_lifetime }
+    elsif FIELD_MAP.key?(key)
+      send(FIELD_MAP[key])
     end
-``` ``` ```ruby
-proc = procedures[name]
-    return unless proc && proc[:var_params]
-    proc[:var_params].each do |vp_name|
-      idx = proc[:params].index(vp_name)
-      arg = args[idx]
-      next unless arg.respond_to?(:type) && arg.type == :Variable
-      names << arg.name
-    end
-``` ``` ```ruby
-proc = procedures[name]
-    return unless proc && proc[:var_params]
-    proc[:var_params].each do |vp_name|
-      idx = proc[:params].index(vp_name)
-      arg = args[idx]
-      next unless arg.respond_to?(:type) && arg.type == :Variable
-      names << arg.name
-    end
-``` ``` ```ruby
-proc = procedures[name]
-    return unless proc && proc[:var_params]
-    proc[:var_params].each do |vp_name|
-      idx = proc[:params].index(vp_name)
-      arg = args[idx]
-      next unless arg.respond_to?(:type) && arg.type == :Variable
-      names << arg.name
-    end
-``` ``` ```ruby
-proc = procedures[name]
-    return unless proc && proc[:var_params]
-    proc[:var_params].each do |vp_name|
-      idx = proc[:params].index(vp_name)
-      arg = args[idx]
-      next unless arg.respond_to?(:type) && arg.type == :Variable
-      names << arg.name
-    end
-``` ``` ```ruby
-proc = procedures[name]
-    return unless proc && proc[:var_params]
-    proc[:var_params].each do |vp_name|
-      idx = proc[:params].index(vp_name)
-      arg = args[idx]
-      next unless arg.respond_to?(:type) && arg.type == :Variable
-      names << arg.name
-    end
-``` ``` ```ruby
-proc = procedures[name]
-    return unless proc && proc[:var_params]
-    proc[:var_params].each do |vp_name|
-      idx = proc[:params].index(vp_name)
-      arg = args[idx]
-      next unless arg.respond_to?(:type) && arg.type == :Variable
-      names << arg.name
+  end
+```

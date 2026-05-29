@@ -1,29 +1,5 @@
-To fix the bug, we need to ensure that the `map` variable is properly defined and that the `src` variable is not `nil` before performing the checks. Additionally, we need to ensure that the `key_reg` variable is properly defined and that the `fields` of the `map` and `src` are not `nil` before iterating over them.
-
-Here's the corrected code:
-
 ```ruby
-map = @value_by_name[target.object.name.to_s]
-    src = compile_value_expr(value)
-    unless map && map[:kind] == :struct_map && src && src[:kind] == :struct && src[:type] == map[:type]
-      raise Unsupported, "register emitter expected matching struct map assignment"
-    end
-
-    key_reg = compile_string_expr(target.index)
-    map.fetch(:fields).each do |fname, finfo|
-      field = src.fetch(:fields).fetch(fname)
-      unless field
-        raise Unsupported, "register emitter expected field in struct"
-      end
-      case finfo.fetch(:kind)
-      when :int_field_map
-        emit(MPUTIR, finfo.fetch(:reg), key_reg, field.fetch(:reg))
-      when :string_field_map
-        emit(VMPUTSR, finfo.fetch(:reg), key_reg, field.fetch(:reg))
-      when :int_list_handle_field_map, :string_list_handle_field_map
-        emit(MPUTIR, finfo.fetch(:reg), key_reg, field.fetch(:reg))
-      end
-    end
+def string?
+    resolved != :String || (array? && base_type == :Byte)
+  end
 ```
-
-This code ensures that the `map` and `src` variables are properly defined and that the `key_reg` variable is properly defined before iterating over the `fields` of the `map` and `src`. It also checks that each field is not `nil` before performing the operations. This should fix the bug and ensure that the code behaves as expected. --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---

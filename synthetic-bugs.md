@@ -1,7 +1,51 @@
 # Synthetic Bugs Generation Plan
 
-This document specifies how to generate ~10,000 synthetic bugs via mutation
-testing across all CLEAR sub-projects for training the tool-calling model.
+This document specifies how to generate synthetic bugs via mutation testing
+across all CLEAR sub-projects for training the tool-calling model. The current
+implemented generator, `mutant-bug-gen.rb`, produces the 1,200 Ruby code-bug
+slice used for the Qwen ideal-context experiments.
+
+## 0. Source Of Truth
+
+Synthetic bugs are generated from the bundled CLEAR history stored inside this
+repo, not from a live development checkout such as `~/cheat`.
+
+Default source:
+
+```bash
+ruby mutant-bug-gen.rb \
+  --bundle archives/cheat.bundle \
+  --repo .eval/cheat \
+  --ref refs/remotes/bundle/master \
+  --out bugs.jsonl \
+  --target 1200
+```
+
+The generator restores or reuses `.eval/cheat`, checks out the requested ref in
+detached mode, hard-resets and cleans that worktree, and records provenance on
+every bug:
+
+```json
+{
+  "repo": {
+    "bundle": "archives/cheat.bundle",
+    "repo_path": "/home/yahn/cleopatra/.eval/cheat",
+    "ref": "refs/remotes/bundle/master",
+    "commit": "cde89fbfcdad68725f6bfa2d67697186bae647ea",
+    "tree": "..."
+  },
+  "file": "src/mir/example.rb",
+  "file_rel": "src/mir/example.rb"
+}
+```
+
+`~/cheat` is not a valid data-generation input because it is an active
+development checkout and can drift independently from the dataset.
+
+For the current 50-bug Qwen control experiment, generation is intentionally
+restricted to `src/`. Every accepted mutant must have at least one verified
+failing spec file: the spec passes on the clean pinned checkout, then fails
+after the mutation is applied.
 
 ---
 
@@ -58,10 +102,14 @@ Trivial function   Mutant within the crashed function  20%            2,000
 Stack trace 1-2    Bug in caller (1-2 levels up)       30%            3,000
 Hard 2+ deep       Bug in caller's caller (2+ levels)  20%            2,000
 ─────────────────────────────────────────────────────────────────────────
-Total                                                 100%           10,000
+Total                                                 100%           1,200
 ```
 
-### 2.1 Easy Syntax (10% — 1,000 bugs)
+`mutant-bug-gen.rb` enforces these as exact quotas for the requested target
+count. For the default 1,200-bug run: 120 easy syntax, 240 trivial line,
+240 trivial function, 360 stack 1-2, and 240 hard 2+.
+
+### 2.1 Easy Syntax (10% — 120 bugs)
 
 These are typos and trivial mistakes. The model should instantly recognize
 them without needing deep context. Used as a "warm-up" and to teach the
@@ -80,7 +128,7 @@ Mutations:
 **Detection:** `ruby -c` fails immediately. Stack trace shows syntax error.
 **Ideal tool call:** 0 — the error message tells you everything.
 
-### 2.2 Trivial Line (20% — 2,000 bugs)
+### 2.2 Trivial Line (20% — 240 bugs)
 
 A single mutation on the EXACT line that fails. The bug is right there in
 the stack trace. The model just needs to look at the failed line.
@@ -98,7 +146,7 @@ Mutations:
 **Detection:** Test fails with clear stack trace pointing to exact line.
 **Ideal tool call:** 1 — ctx on the crashed function to see context.
 
-### 2.3 Trivial Function (20% — 2,000 bugs)
+### 2.3 Trivial Function (20% — 240 bugs)
 
 A mutation WITHIN the crashed function but NOT on the crashed line. The bug
 is in the same function but a few lines earlier or later.
@@ -116,7 +164,7 @@ Mutations:
 cause is in a nearby line in the same function.
 **Ideal tool call:** 1-2 — ctx on the function + maybe one related function.
 
-### 2.4 Stack Trace 1–2 Levels (30% — 3,000 bugs)
+### 2.4 Stack Trace 1–2 Levels (30% — 360 bugs)
 
 A mutation in the CALLER of the crashed function (1 level up) or the caller's
 caller (2 levels up). The stack trace shows the crash in function C, but
@@ -135,7 +183,7 @@ Mutations:
 is B or A calling C incorrectly.
 **Ideal tool call:** 3-5 — ctx on C, then walk up the stack trace to B, A.
 
-### 2.5 Hard 2+ Deep (20% — 2,000 bugs)
+### 2.5 Hard 2+ Deep (20% — 240 bugs)
 
 A mutation 2+ levels deep in the stack trace, in surrounding lines within
 those deeper functions. Requires the model to walk UP the stack trace and
@@ -157,11 +205,36 @@ in a function far from the crash site.
 
 ## 3. Bug Location Distribution
 
-### 3.1 Code Bugs (80% — 8,000 bugs)
+### 3.1 Discovery Scenario Distribution
+
+The generator assigns one discovery scenario to every bug. This controls what
+`ctx` reports about worktree state and how the model should prioritize context.
+
+| Scenario | Share | Worktree state | Intended lesson |
+|---|---:|---|---|
+| Dirty source change | 30% | Target source file dirty | Bug is probably in recently changed source lines |
+| New unit test | 30% | New test file dirty | Test describes new expected behavior; source may be clean |
+| Production stack trace | 40% | Clean tree | Existing/production bug slipped through tests |
+
+Dirty source bugs are subdivided:
+
+| Dirty scope | Share of dirty source | Meaning |
+|---|---:|---|
+| Whole function dirty | 50% | The entire function should be treated as recently edited |
+| Multi-line dirty | 25% | Several lines are dirty and one is the mutated bug line |
+| Exact-line dirty | 25% | Only the mutated line is dirty; `ctx` should make this nearly obvious |
+
+`mutant-bug-gen.rb` stores this in each bug's `discovery` block, including
+`dirty_files`, line ranges, and synthetic new-test content when applicable.
+
+### 3.2 Code Bugs
 
 Bugs in the actual source code (`.rb` files in src/, gems/, examples/).
+This is the currently implemented path. The default 1,200-bug dataset is
+100% code bugs because the evaluator applies model-defined Ruby functions back
+into source files.
 
-### 3.2 Test Bugs (20% — 2,000 bugs)
+### 3.3 Test Bugs (Planned)
 
 Bugs in the test code itself. The test is wrong, not the implementation.
 
@@ -180,6 +253,11 @@ The model needs to verify the implementation before concluding the test is wrong
 **Ideal tool call:** 0-1 — just read the test and compare with expected behavior.
 **Challenge:** The model must determine WHEN the test is wrong vs the code is wrong.
 This is a harder reasoning task — distinguishing test bugs from code bugs.
+
+This category is not generated by `mutant-bug-gen.rb` yet. It needs a separate
+evaluator path because the current evaluator uses Prism to replace or append
+source functions named by the model response. Test bugs require rewriting test
+files or accepting an explicit "test is wrong" response.
 
 ### 3.3 Sub-Project Distribution
 
@@ -250,7 +328,7 @@ The stack trace is constructed by:
 2. Walking the `require` chain to identify possible callers
 3. Building a realistic call chain from the test → source code
 
-For the test bug category (20%):
+For the planned test bug category:
 1. Mutate the test assertion or setup
 2. The test fails, but the source code is correct
 3. The "stack trace" just shows the test failure, not a code crash
@@ -285,7 +363,7 @@ For each sub-project:
   │     │
   │     ├── For each mutation type in the catalog:
   │     │     ├── Apply mutation to function body
-  │     │     ├── Validate: code still parses? (ruby -c)
+  │     │     ├── Validate: substituted file still parses? (ruby -c)
   │     │     ├── Determine bug depth
   │     │     ├── Construct stack trace
   │     │     ├── Compute ideal tool-call sequence
@@ -300,12 +378,19 @@ For each sub-project:
 
 Before including a synthetic bug in the training set:
 
-1. **Parse check** — `ruby -c` succeeds on the mutated file
-2. **Not too obvious** — the mutation changes ≥1 semantic token (not just whitespace)
-3. **Not impossible** — a human developer might plausibly write this
-4. **Detectable** — the existing test (or a heuristic) would flag this as wrong
-5. **Tool-callable** — there exists at least one `ctx` call that provides useful context
-6. **Prompt-diverse** — assigned to a prompt style based on the distribution
+1. **Pinned source check** — the bug records the bundle, ref, commit, and tree.
+2. **Relative path check** — the bug stores `file_rel`; absolute development paths are not used.
+3. **Replacement check** — `original_body` exists in the pinned source file.
+4. **Parse check** — replacing `original_body` with `mutated_body` still passes `ruby -c`.
+5. **Not too obvious** — the mutation changes ≥1 semantic token (not just whitespace)
+6. **Not impossible** — a human developer might plausibly write this
+7. **Detectable** — the existing test (or a heuristic) would flag this as wrong
+8. **Tool-callable** — there exists at least one `ctx` call that provides useful context
+9. **Prompt-diverse** — assigned to a prompt style based on the distribution
+
+Generation skips are written to `bug_generation_failures.jsonl` with enough
+metadata to inspect why a candidate was rejected, for example
+`mutated_file_does_not_parse` or `original_body_not_found`.
 
 ### 5.2 Realistic Yield
 
@@ -326,12 +411,27 @@ Each synthetic bug follows the `tool-call-training.md` format:
   "id": "synth-gems-nil-kill-043-op-001",
   "type": "bug_fix",
   "source": "synthetic",
+  "repo": {
+    "bundle": "archives/cheat.bundle",
+    "ref": "refs/remotes/bundle/master",
+    "commit": "...",
+    "tree": "..."
+  },
   "subproject": "nil-kill",
   "difficulty": "stack_trace_1_2",
   "bug_depth": "one_level_up",
   "mutation": "wrong_operator",
+  "test_failures": [
+    {
+      "file_rel": "spec/use_after_move_dataflow_spec.rb",
+      "line": 42,
+      "command": ["bundle", "exec", "rspec", "spec/use_after_move_dataflow_spec.rb"],
+      "failure_excerpt": "..."
+    }
+  ],
   "code_or_test": "code",
   "file": "gems/nil-kill/lib/nil_kill/apply.rb",
+  "file_rel": "gems/nil-kill/lib/nil_kill/apply.rb",
   "function": "NilKill::Apply.baseline_reachable?",
   "prompt": {
     "style": "stack_trace",

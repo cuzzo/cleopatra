@@ -1,0 +1,75 @@
+File: src/ast/parser.rb
+Function: parse_fn_type_annotation
+
+Here is the current (buggy) code of function `parse_fn_type_annotation`:
+
+```ruby
+  def parse_fn_type_annotation
+    consume(:KEYWORD, 'FN')
+    consume(:CHAR, '(')
+    param_types = []
+    until match?(:CHAR, ')')
+      # Allow optional name annotation: `name: Type` or just `Type`
+      if match?(:VAR_ID) && peek.type != :CHAR && peek.value == ':'
+        consume(:VAR_ID)   # name is for documentation only
+        consume(:CHAR, ':')
+      end
+      param_types << parse_type_annotation
+      break unless match!(:CHAR, ',')
+    end
+    consume(:CHAR, ')')
+    consume(:ARROW, '->')
+    return_type = parse_type_annotation
+    # Parse optional @reentrant capability on fn-type annotations.
+    # FN(Int64) -> Bool @reentrant means the parameter accepts @reentrant functions.
+    allows_reentrant = false
+    if match?(:VAR_ID) && current.value == '@reentrant'
+      consume(:VAR_ID)
+      allows_reentrant = true
+    end
+    Type.new({
+      params: param_types.each_with_index.map { |t, i|
+        { name: "arg#{i}", type: t, required: true, mutable: false, takes: false }
+      },
+      return: { type: return_type },
+      fn_type: true,
+      reentrant: allows_reentrant
+    })
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: new_unit_test
+Worktree: dirty
+Target file: clean (src/ast/parser.rb)
+Other dirty files:
+  added spec/generated/parser_spec.rb (test)
+Interpretation: A new failing unit test was added; use it to understand expected behavior.
+
+A new unit test was added and is failing.
+A new failing unit test was added; use it to understand expected behavior.
+
+New test file: spec/generated/parser_spec.rb
+```ruby
+# Generated failing test for Cleopatra mutant Parser.parse_fn_type_annotation.
+# Mutation under test: swapped comparison: '==' -> '!=' near ') && peek.type == :CHAR && pee'
+require "minitest/autorun"
+
+class GeneratedParse_fn_type_annotationTest < Minitest::Test
+  def test_parse_fn_type_annotation_regression
+    flunk "Regression for Parser.parse_fn_type_annotation: swapped comparison: '==' -> '!=' near ') && peek.type == :CHAR && pee'"
+  end
+end
+```
+
+Test failure:
+  swapped comparison: '==' -> '!=' near ') && peek.type == :CHAR && pee'
+
+  spec/first_class_function_spec.rb:35
+  src/ast/parser.rb:2128:in `parse_fn_type_annotation'
+
+Fix the bug.
+
+Return ONLY the corrected function `parse_fn_type_annotation` in a ```ruby block.

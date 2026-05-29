@@ -1,10 +1,12 @@
 ```ruby
-def compile_string_expr(expr)
-  case expr.type
-  when :TryExpr
-    # Your existing code for handling TryExpr
-  else
-    # Other cases
-  end
+def visit_MethodCall(node)
+  # Existing code before the forgotten line
+  method_sig = find_method_signature(node)
+
+  # Forgotten line to be added
+  node.full_type = method_sig.respond_to?(:return_type) ? (method_sig.return_type || :Void) : (method_sig[:return]&.dig(:type) || :Void)
+
+  # Existing code after the forgotten line
+  super
 end
 ```

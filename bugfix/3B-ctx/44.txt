@@ -1,28 +1,20 @@
-To fix the bug in `NilKill::SourceIndex.array_element_shape_for_expression`, we need to ensure that the negated condition `return_node?(expr)` is correctly handled. The issue arises because the negation of `return_node?(expr)` is not correctly applied in the code.
-
-Here's the corrected code:
-
 ```ruby
-case expr
-  when :bare_return
-    nil
-  when Prism::StatementsNode, Prism::BeginNode, Prism::ElseNode, Prism::ParenthesesNode
-    array_element_shape_for_expression(implicit_return_expression(expr))
-  else
-    if !return_node?(expr)
-      args = expr.respond_to?(:arguments) ? expr.arguments : nil
-      values = args&.arguments || []
-      return array_element_shape_for_expression(values.first || :bare_return)
-    end
-    case expr
-    when Prism::IfNode
-      left = array_element_shape_for_expression(implicit_return_expression(expr.statements))
-      right = expr.subsequent ? array_element_shape_for_expression(implicit_return_expression(expr.subsequent)) : nil
-      return nil unless left && right
-      merge_hash_record_shapes(left, right)
+def borrow(borrower, source, mutable: false)
+    source_node = @nodes[source]
+    return "cannot borrow '#{source}': not declared" unless source_node
+    return "cannot borrow '#{source}': already moved" if source_node.moved?
+
+    if mutable
+      # Mutable borrow: no other borrows (mutable or immutable) may exist
+      conflict = find_borrow_conflict(source)
+      return conflict if conflict
+      add_edge(Edge.new(from: borrower, to: source, kind: :borrows_mut))
     else
-      array_element_shape_for_value(expr)
+      # Immutable borrow: no mutable borrows may exist
+      mut_conflict = find_mutable_borrow(source)
+      return mut_conflict if mut_conflict
+      add_edge(Edge.new(from: borrower, to: source, kind: :borrows))
     end
+    nil
   end
-end
 ```

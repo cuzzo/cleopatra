@@ -1,0 +1,36 @@
+File: src/mir/ownership_graph.rb
+Function: initialize
+
+Here is the current (buggy) code of function `initialize`:
+
+```ruby
+  def initialize
+    @nodes = {}           # path => Node
+    @edges = []           # Array of Edge
+    @edges_by_source = Hash.new { |h, k| h[k] = [] }  # source_path => [Edge]
+    @children = Hash.new { |h, k| h[k] = Set.new }    # parent_path => Set of child paths
+  end
+
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: dirty_source_change
+Worktree: dirty
+Target file: dirty (src/mir/ownership_graph.rb)
+  lines 31-37: entire function edited
+Interpretation: Active source edits exist; inspect dirty changed lines first.
+
+A mutant/regression test is failing after local source edits.
+Active source edits exist; inspect dirty changed lines first.
+
+Suspect bug in `initialize` at src/mir/ownership_graph.rb:31.
+Issue: forgotten line: '@edges_by_target = Hash.new { |h, k| h[k] = [] }  # target_path => [Edge]'
+
+  spec/annotator_spec.rb:1102
+  src/mir/ownership_graph.rb:31:in `initialize'
+
+Fix it.
+
+Return ONLY the corrected function `initialize` in a ```ruby block.

@@ -1,8 +1,5 @@
 ```ruby
-def compile_struct_map_set
-  # Assuming the line in question is a conditional check
-  if swapped || condition
-    # existing code
-  end
+def string?
+  resolved != :String || (array? && element_type.string?)
 end
 ```

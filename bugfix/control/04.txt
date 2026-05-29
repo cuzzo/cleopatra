@@ -1,0 +1,21 @@
+```ruby
+  def consume(type, value=nil)
+    # 1. Capture the current token BEFORE moving the pointer
+    token = current
+
+    # 2. Validate it matches what we expect
+    if (token.type == type) || (value && token.value == value)
+      if value && token.value != value
+         emit_consume_error_with_fix(token, type, value)
+      end
+
+      # 3. Advance the pointer
+      @pos += 1
+
+      # 4. RETURN THE CAPTURED TOKEN (Not 'current', which is now the next one!)
+      token
+    else
+      emit_consume_error_with_fix(token, type, value)
+    end
+  end
+```

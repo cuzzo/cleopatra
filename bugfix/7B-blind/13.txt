@@ -1,3 +1,5 @@
 ```ruby
-out << { :key => 'value' }
+def declare(name)
+  @variables[name] = nil
+end
 ```

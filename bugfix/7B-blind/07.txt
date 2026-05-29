@@ -1,5 +1,7 @@
 ```ruby
-def reject_bare_atomic_ptr_mutation!(field_node)
-  # Your code here
+def resolve_catch_clause!(item)
+  if item[:form] != :kind
+    # existing code
+  end
 end
 ```

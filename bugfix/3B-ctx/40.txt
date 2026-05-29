@@ -1,12 +1,43 @@
-To fix the bug, we need to ensure that the `type_name` variable is properly assigned before it is used in the `if` statement. The current code is missing the assignment of `type_name` to a variable. Here's the corrected code:
-
 ```ruby
-stripped = text.strip
-    return false if stripped.start_with?('(') && stripped.end_with?(')')
-    return false unless node
-    type_name = node.class.name&.split('::')&.last&.to_sym
-    return false if TIGHT_AST_TYPES.include?(type_name)
-    true
-```
+def ensure_owned_value!(val_node, expected_type, container_desc = nil)
+    # Non-escaping values (WITH block aliases) cannot be stored in containers
+    if !(val_node.is_a?(AST::Identifier) && val_node.symbol&.non_escaping)
+      error!(val_node, "Cannot store WITH-scoped '#{val_node.name}' into #{container_desc || 'a container'}. WITH bindings cannot escape their block.")
+    end
+    return nil if val_node.is_a?(AST::CopyNode)
+    vti = val_node.type_info
+    vti = Type.new(vti) if vti && !vti.is_a?(Type)
+    return nil unless vti
 
-This ensures that `type_name` is assigned a value before it is used in the `if` statement, preventing any potential errors. The test failure should now be resolved. --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
+    if vti.list_collection?
+      # When the target field is also @list (ArrayList), skip CopyNode wrapping.
+      # The move mechanism will transfer the ArrayList struct directly.
+      # CopyNode produces a slice which is the wrong type for ArrayList fields.
+      et = expected_type.is_a?(Type) ? expected_type : nil
+      return nil if et&.list_collection?
+
+      copy = AST::CopyNode.new(val_node.token, val_node)
+      copy.full_type = expected_type.is_a?(Type) ? expected_type : Type.new(expected_type || :Any)
+      elem = vti.element_type
+      if elem
+        es = lookup_type_schema(elem.resolved) rescue nil
+        copy.deep_copy = es.is_a?(Hash) && es[:kind] == :union &&
+          (es[:variants] || {}).any? { |_, vt| Type.variant_has_heap?(vt) }
+      end
+      return copy
+    end
+
+    if vti.string? && vti.rodata?
+      copy = AST::CopyNode.new(val_node.token, val_node)
+      # provenance auto-inferred from location: :heap in Type constructor
+      copy.full_type = Type.new(Type::STRING_TYPE, location: :heap)
+      return copy
+    end
+
+    if vti.string? && val_node.is_a?(AST::Identifier) && container_desc
+      error!(val_node, "Cannot store string variable '#{val_node.name}' into #{container_desc} without COPY. Strings are frame-arena managed; use COPY for heap ownership.")
+    end
+
+    nil
+  end
+```

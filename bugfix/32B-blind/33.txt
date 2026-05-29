@@ -1,10 +1,5 @@
 ```ruby
-def visit_SyncPolicyDecl(node)
-  case node.type
-  when :block
-    # Add your logic for handling :block here
-  when :other_type
-    # Existing logic for other types
-  end
+def any_rc?
+  @types.any? { |type| type.rc? || type.any_rc? }
 end
 ```

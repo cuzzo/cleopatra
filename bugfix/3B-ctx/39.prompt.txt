@@ -1,0 +1,32 @@
+File: src/ast/type.rb
+Function: stream?
+
+Here is the current (buggy) code of function `stream?`:
+
+```ruby
+  def stream?
+    dynamic_stream? && bounded_stream? || open_stream? || inf_stream? || split_open_stream?
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: dirty_source_change
+Worktree: dirty
+Target file: dirty (src/ast/type.rb)
+  lines 763-765: entire function edited
+Interpretation: Active source edits exist; inspect dirty changed lines first.
+
+A mutant/regression test is failing after local source edits.
+Active source edits exist; inspect dirty changed lines first.
+
+Suspect bug in `stream?` at src/ast/type.rb:763.
+Issue: swapped || -> &&
+
+  spec/stream_spec.rb:287
+  src/ast/type.rb:763:in `stream?'
+
+Fix it.
+
+Return ONLY the corrected function `stream?` in a ```ruby block.

@@ -1,15 +1,16 @@
-To fix the issue in `hash_record_lookup_key`, we need to swap the constant 'Regexp' with 'Za'. Here's the corrected code:
-
 ```ruby
-def hash_record_lookup_key(key)
-  # Swap 'Regexp' with 'Za'
-  if key == 'Regexp'
-    key = 'Za'
+def visit_WhileLoop(node)
+  # Ensure the condition is evaluated before the loop body
+  condition = node.condition.accept(self)
+  loop_body = node.loop_body.accept(self)
+
+  # Ensure the loop body is executed only if the condition is true
+  if condition
+    loop_body
+  else
+    # Optionally, handle the case where the condition is false
+    # For example, return an empty string or a specific value
+    ""
   end
-  # Rest of the code
 end
 ```
-
-This change ensures that the constant 'Regexp' is correctly swapped with 'Za' in the `hash_record_lookup_key` method. Let me know if you have any further questions! 😊
-
----

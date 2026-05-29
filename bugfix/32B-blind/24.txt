@@ -1,7 +1,5 @@
 ```ruby
-# classifier.rb:109
-def trivial?
-  return false if @data.nil? || @data.empty?
-  @data.all? { |item| item == @data.first }
+def dup
+  self.class.new(@name, @return_type, @parameters.dup, @docstring)
 end
 ```

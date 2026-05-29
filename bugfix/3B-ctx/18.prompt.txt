@@ -1,0 +1,39 @@
+File: src/mir/ownership_graph.rb
+Function: declare
+
+Here is the current (buggy) code of function `declare`:
+
+```ruby
+  def declare(path, kind: :affine, type_info: nil, scope_depth: 0, line: 0)
+    @nodes[path] = Register.new(
+      path: path, kind: kind, state: :live,
+      type_info: type_info, scope_depth: scope_depth, line: line
+    )
+    # Register as child of parent path (e.g., "x.child" is child of "x")
+    if path.include?('.')
+      parent = path.rpartition('.').first
+      @children[parent].add(path)
+    end
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: production_stack_trace
+Worktree: clean
+Target file: clean (src/mir/ownership_graph.rb)
+Interpretation: Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Test failure:
+  swapped constant: 'Node' -> 'Register'
+
+  spec/propagate_caller_sync_spec.rb:124
+  src/mir/ownership_graph.rb:56:in `declare'
+
+Fix the bug.
+
+Return ONLY the corrected function `declare` in a ```ruby block.

@@ -1,0 +1,46 @@
+File: src/ast/scope.rb
+Function: declare
+
+Here is the current (buggy) code of function `declare`:
+
+```ruby
+  def declare(name, reg, type, is_mutable = true, is_rebindable = false, size = nil, storage = :stack, capabilities = Set.new, _borrowed_paths = [], sync: nil, resource: nil, close_zig: nil)
+    @owned_names.add(name)
+    entry = SymbolEntry.new(
+      reg: reg,
+      type: type,
+      mutable: is_mutable,
+      storage: storage,
+      sync: sync,
+      rebindable: is_rebindable,
+      size: size || 0,
+      capabilities: capabilities,
+      resource: resource,
+      close_zig: close_zig,
+    )
+    entry.scope = self
+    @locals[name + 1] = entry
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: dirty_source_change
+Worktree: dirty
+Target file: dirty (src/ast/scope.rb)
+  lines 15-31: entire function edited
+Interpretation: Active source edits exist; inspect dirty changed lines first.
+
+A mutant/regression test is failing after local source edits.
+Active source edits exist; inspect dirty changed lines first.
+
+Bug in `Scope.declare` at src/ast/scope.rb:15.
+Issue: off-by-one: added +1 to index ''
+
+  spec/stream_spec.rb:108
+  src/ast/scope.rb:15:in `declare'
+
+Fix it.
+
+Return ONLY the corrected function `declare` in a ```ruby block.

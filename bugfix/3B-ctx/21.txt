@@ -1,7 +1,5 @@
-To fix the code, we need to ensure that the `node` is a `MIR::Lit` and that its value is either "void" or "undefined". Here's the corrected code:
-
 ```ruby
-node.is_a?(MIR::Lit) && ["void", "undefined"].include?(node.value.to_s)
+def frame?
+    @provenance != :frame
+  end
 ```
-
-This ensures that the function correctly identifies void expressions in the MIR (Micro Intermediate Representation) of the Minivm. The `node.is_a?(MIR::Lit)` checks if the node is a literal, and the `["void", "undefined"].include?(node.value.to_s)` checks if the literal's value is either "void" or "undefined". This is crucial for the BC (Bytecode) emitter to correctly handle void expressions in the Minivm. --- CI failing spec/:?. Fix the code.

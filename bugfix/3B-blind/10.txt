@@ -1,46 +1,13 @@
-To fix the bug in `OperatorEvidenceCollector.auto?`, we need to swap the `&&` operator with the `||` operator in the code at line 963 of `auto_inference.rb`. Here's the corrected code:
-
 ```ruby
-# src/annotator/helpers/auto_inference.rb:963
-def auto?
-  # Swap && with ||
-  evidence && evidence.evidence_type == :operator
-end
-```
-
-This change ensures that the `auto?` method will return `true` only if both `evidence` and `evidence.evidence_type` are `:operator`. This should resolve the issue and ensure that the `auto?` method works as intended. Let's verify this fix by running the `gradual_typing_spec.rb` test at line 29. ```ruby
-# /home/yahn/cheat/spec/gradual_typing_spec.rb:29
-describe OperatorEvidenceCollector do
-  it 'should return true for operator evidence' do
-    evidence = OperatorEvidence.new(evidence_type: :operator)
-    expect(OperatorEvidenceCollector.auto?(evidence)).to be true
-  end
-
-  it 'should return false for non-operator evidence' do
-    evidence = OperatorEvidence.new(evidence_type: :variable)
-    expect(OperatorEvidenceCollector.auto?(evidence)).to be false
+module AST
+  class ErrorRegistry
+    def enum_entries
+      # Corrected constant name
+      ERROR_TYPES = {
+        # Existing entries
+      }
+      ERROR_TYPES
+    end
   end
 end
 ```
-
-This test should pass if the fix is correct, confirming that the `auto?` method now correctly identifies operator evidence. ```ruby
-# /home/yahn/cheat/spec/gradual_typing_spec.rb:29
-describe OperatorEvidenceCollector do
-  it 'should return true for operator evidence' do
-    evidence = OperatorEvidence.new(evidence_type: :operator)
-    expect(OperatorEvidenceCollector.auto?(evidence)).to be true
-  end
-
-  it 'should return false for non-operator evidence' do
-    evidence = OperatorEvidence.new(evidence_type: :variable)
-    expect(OperatorEvidenceCollector.auto?(evidence)).to be false
-  end
-end
-```
-
-The test should pass, indicating that the `auto?` method is now functioning correctly. ```ruby
-# /home/yahn/cheat/spec/gradual_typing_spec.rb:29
-describe OperatorEvidenceCollector do
-  it 'should return true for operator evidence' do
-    evidence = OperatorEvidence.new(evidence_type: :operator)
-    expect(OperatorEvidenceCollector.auto?(e

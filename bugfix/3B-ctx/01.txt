@@ -1,65 +1,6 @@
 ```ruby
-@src_map.each do |file, data|
-        walk_writes(data[:root], data[:lines], [], file)
-      end
-``` ```ruby
-@src_map.each do |data, file|
-        walk_writes(data[:root], data[:lines], [], file)
-      end
-``` ```ruby
-@src_map.each do |data, file|
-        walk_writes(data[:root], data[:lines], [], file)
-      end
-``` ```ruby
-@src_map.each do |data, file|
-        walk_writes(data[:root], data[:lines], [], file)
-      end
-``` ```ruby
-@src_map.each do |data, file|
-        walk_writes(data[:root], data[:lines], [], file)
-      end
-``` ```ruby
-@src_map.each do |data, file|
-        walk_writes(data[:root], data[:lines], [], file)
-      end
-``` ```ruby
-@src_map.each do |data, file|
-        walk_writes(data[:root], data[:lines], [], file)
-      end
-``` ```ruby
-@src_map.each do |data, file|
-        walk_writes(data[:root], data[:lines], [], file)
-      end
-``` ```ruby
-@src_map.each do |data, file|
-        walk_writes(data[:root], data[:lines], [], file)
-      end
-``` ```ruby
-@src_map.each do |data, file|
-        walk_writes(data[:root], data[:lines], [], file)
-      end
-``` ```ruby
-@src_map.each do |data, file|
-        walk_writes(data[:root], data[:lines], [], file)
-      end
-``` ```ruby
-@src_map.each do |data, file|
-        walk_writes(data[:root], data[:lines], [], file)
-      end
-``` ```ruby
-@src_map.each do |data, file|
-        walk_writes(data[:root], data[:lines], [], file)
-      end
-``` ```ruby
-@src_map.each do |data, file|
-        walk_writes(data[:root], data[:lines], [], file)
-      end
-``` ```ruby
-@src_map.each do |data, file|
-        walk_writes(data[:root], data[:lines], [], file)
-      end
-``` ```ruby
-@src_map.each do |data, file|
-        walk_writes(data[:root], data[:lines], [], file)
-      end
+def scc_is_cyclic?(node, adj)
+    return true if node.length > 1
+    return adj[node].include?(node)
+  end
 ```

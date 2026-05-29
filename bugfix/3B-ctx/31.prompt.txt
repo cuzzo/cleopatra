@@ -1,0 +1,34 @@
+File: src/mir/control_flow.rb
+Function: collect_binding_moves
+
+Here is the current (buggy) code of function `collect_binding_moves`:
+
+```ruby
+  def collect_binding_moves(node, state)
+    return [] unless consumed
+    consumed = Set.new
+    collect_ownership_transfers(consumed, state, consumed)
+    consumed.to_a
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: production_stack_trace
+Worktree: clean
+Target file: clean (src/mir/control_flow.rb)
+Interpretation: Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Bug in `OwnershipDataflow.collect_binding_moves` at src/mir/control_flow.rb:639.
+Issue: renamed variable: 'node' -> 'consumed'
+
+  spec/use_after_move_dataflow_spec.rb:278
+  src/mir/control_flow.rb:639:in `collect_binding_moves'
+
+Fix it.
+
+Return ONLY the corrected function `collect_binding_moves` in a ```ruby block.

@@ -1,0 +1,31 @@
+File: src/ast/error_registry.rb
+Function: enum_entries
+
+Here is the current (buggy) code of function `enum_entries`:
+
+```ruby
+  def self.enum_entries
+    [[:ERROR_TYPES, ERROR_NAME_NONE]] + ERROR_TYPES.map { |sym, meta| [sym, meta[:id]] }.sort_by(&:last)
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: production_stack_trace
+Worktree: clean
+Target file: clean (src/ast/error_registry.rb)
+Interpretation: Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Bug in `AST.enum_entries` at src/ast/error_registry.rb:121.
+Issue: swapped constant: 'None' -> 'ERROR_TYPES'
+
+  spec/error_registry_spec.rb:123
+  src/ast/error_registry.rb:121:in `enum_entries'
+
+Fix it.
+
+Return ONLY the corrected function `enum_entries` in a ```ruby block.

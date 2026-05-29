@@ -1,12 +1,7 @@
 ```ruby
-class MessageReader
-  def read_message(message)
-    begin
-      parsed_message = Integer(message)
-    rescue ArgumentError => e
-      raise ParserError, "Invalid message: #{e.message}"
-    end
-    parsed_message
+def walk_body(nodes)
+  nodes.each do |node|
+    # Your existing code here
   end
 end
 ```

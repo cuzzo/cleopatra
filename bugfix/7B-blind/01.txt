@@ -1,7 +1,17 @@
 ```ruby
-def discover_fields!
-  data.each do |file|
-    # Your code here
+def scc_is_cyclic?(node, visited, stack)
+  visited[node] = true
+  stack[node] = true
+
+  graph[node].each do |neighbor|
+    if !visited[neighbor] && scc_is_cyclic?(neighbor, visited, stack)
+      return true
+    elsif stack[neighbor]
+      return true
+    end
   end
+
+  stack[node] = false
+  false
 end
 ```

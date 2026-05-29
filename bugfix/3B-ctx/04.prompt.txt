@@ -1,0 +1,43 @@
+File: src/ast/parser.rb
+Function: consume
+
+Here is the current (buggy) code of function `consume`:
+
+```ruby
+  def consume(type, value=nil)
+    # 1. Capture the current token BEFORE moving the pointer
+    current = current
+
+    # 2. Validate it matches what we expect
+    if (current.type == type) || (value && current.value == value)
+      if value && current.value != value
+         emit_consume_error_with_fix(current, type, value)
+      end
+
+      # 3. Advance the pointer
+      @pos += 1
+
+      # 4. RETURN THE CAPTURED TOKEN (Not 'current', which is now the next one!)
+      current
+    else
+      emit_consume_error_with_fix(current, type, value)
+    end
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: production_stack_trace
+Worktree: clean
+Target file: clean (src/ast/parser.rb)
+Interpretation: Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Something wrong in `consume`. renamed variable: 'token' -> 'current'
+
+Fix it.
+
+Return ONLY the corrected function `consume` in a ```ruby block.

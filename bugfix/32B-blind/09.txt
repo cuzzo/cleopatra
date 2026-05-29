@@ -1,3 +1,10 @@
 ```ruby
-!defined?(saved) || !saved
+def release_borrow(index)
+  # Assuming the issue is an off-by-one error, we need to adjust the index usage
+  if index >= && index < @borrows.length
+    @borrows[index] = nil
+  else
+    raise IndexError, "Index #{index} is out of bounds for the borrows array"
+  end
+end
 ```
