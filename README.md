@@ -87,7 +87,7 @@ Let's *assume* that GRAM can make a model 2000x better at local reasoning.
 
 The problem is that most feature requests are non-local.  A larger model has a massively unfair advantage against a smarter model on a huge context (most code).
 
-GRAM / JEPA *theoretically* can help here.  Our model can explore many different paths of what it should include in it's context.
+GRAM / JEPA *theoretically* can help here.  Our model can explore many different paths of what it should include in its context.
 
 If it can be 2000x smarter at selectively including data in its context, it may be able to perform tasks a model of its size cannot currently be expected to peform.
 
