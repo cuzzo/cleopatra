@@ -32,6 +32,8 @@ CHARS_PER_TOKEN_BUDGET = 3
 MAX_CTX_FUNCTIONS = 3
 OPENROUTER_RETRIES = 8
 OPENROUTER_32B_PROVIDERS = %w[DeepInfra Nebius Alibaba].freeze
+CTX_COMPACT = :compact
+CTX_LARGE = :large
 
 opts = { count: 50, cats: '', dry_run_prompts: false, responses_only: false }
 OptionParser.new do |o|
@@ -145,6 +147,12 @@ def prompt_context_chars_for_category(cat)
   else
     local_context_chars
   end
+end
+
+def ctx_mode_for_category(cat)
+  return CTX_LARGE if cat.start_with?('32B') || cat.start_with?('405B')
+
+  CTX_COMPACT
 end
 
 def centered_buggy_source_for_prompt(bug, max_chars)
@@ -356,6 +364,17 @@ def constructor_names(slice)
   slice.to_s.scan(/\b([A-Z]\w*(?:::[A-Z]\w*)*)\.new\b/).flatten.map { |name| name.split('::').last }.uniq
 end
 
+def constructor_context_needed?(bug)
+  mutation = bug['mutation'].to_s
+  evidence = [
+    bug['prompt'],
+    bug['stack_trace'],
+    (bug['test_failures'] || []).map { |failure| failure['failure_excerpt'] }
+  ].flatten.compact.join("\n")
+  mutation.match?(/renamed variable|off-by-one|argument|keyword|arity/i) ||
+    evidence.match?(/wrong number of arguments|unknown keyword|missing keyword|ArgumentError/i)
+end
+
 def constructor_index_for_repo(repo)
   @constructor_index_for_repo ||= {}
   @constructor_index_for_repo[repo] ||= begin
@@ -398,6 +417,7 @@ end
 
 def constructor_context_entries(primary, defs, classes, bug, file_rel)
   return [] unless primary
+  return [] unless constructor_context_needed?(bug)
 
   names = constructor_names(primary.slice)
   return [] if names.empty?
@@ -411,25 +431,55 @@ def constructor_context_entries(primary, defs, classes, bug, file_rel)
     entries.compact.uniq { |entry| [entry[:file_rel], entry[:klass].name, entry[:init].start_line] }.first(2)
   end.map do |entry|
     init = entry[:init]
-    "CONSTRUCTOR SIGNATURE: #{entry[:file_rel]}:#{entry[:klass].name} (lines #{init.start_line}-#{init.end_line})\n```ruby\n#{init.slice.rstrip}\n```"
+    signature = init.slice.lines.first.to_s.strip
+    "CONSTRUCTOR SIGNATURE: #{entry[:file_rel]}:#{entry[:klass].name} (lines #{init.start_line}-#{init.end_line})\n```ruby\n#{signature}\n```"
   end
+end
+
+def constant_context_needed?(bug)
+  evidence = [
+    bug['prompt'],
+    bug['stack_trace'],
+    (bug['test_failures'] || []).map { |failure| failure['failure_excerpt'] }
+  ].flatten.compact.join("\n")
+  bug['mutation'].to_s.include?('constant') ||
+    evidence.match?(/uninitialized constant|NameError.*constant/i)
+end
+
+def mutation_constant_names(bug)
+  bug['mutation'].to_s.scan(/'([A-Z]\w*)'/).flatten.uniq
+end
+
+def constant_signature_slice(const)
+  lines = const.slice.lines(chomp: true)
+  return const.slice.rstrip if lines.length <= 8
+
+  (lines.first(8) + ['  # ...']).join("\n")
 end
 
 def constant_context_entries(primary, constants, klass, bug)
   return [] unless primary && klass
+  return [] unless constant_context_needed?(bug)
 
-  refs = referenced_constant_names(primary.slice)
   class_constants = constants_for_class(constants, klass)
   return [] if class_constants.empty?
 
+  refs = referenced_constant_names(primary.slice)
+  wanted_names = (refs + mutation_constant_names(bug)).uniq
   if bug['mutation'].to_s.include?('constant')
-    wanted = class_constants
+    wanted = class_constants.select { |const| wanted_names.include?(const.name) }
   else
     wanted = class_constants.select { |const| refs.include?(const.name) }
   end
 
+  dependent_names = wanted.flat_map { |const| referenced_constant_names(const.slice) }.uniq - wanted.map(&:name)
+  if dependent_names.any?
+    wanted.concat(class_constants.select { |const| dependent_names.include?(const.name) })
+    wanted.uniq!(&:name)
+  end
+
   wanted.first(12).map do |const|
-    "CLASS CONSTANT: #{klass.name}::#{const.name} (lines #{const.start_line}-#{const.end_line})\n```ruby\n#{const.slice.rstrip}\n```"
+    "CLASS CONSTANT SIGNATURE: #{klass.name}::#{const.name} (lines #{const.start_line}-#{const.end_line})\n```ruby\n#{constant_signature_slice(const)}\n```"
   end
 end
 
@@ -489,7 +539,7 @@ def debug_context_for_function(bug, primary, chosen, defs, classes)
   lines.join("\n")
 end
 
-def build_functions_with_context(bug, max_chars: local_context_chars)
+def build_functions_with_context(bug, max_chars: local_context_chars, mode: CTX_COMPACT)
   target_file = file_rel_for(bug)
   source = build_buggy_source_file(bug)
   defs = parse_function_defs(source)
@@ -531,8 +581,12 @@ def build_functions_with_context(bug, max_chars: local_context_chars)
   primary = primary_entry[:fn]
   primary_class = enclosing_class_for(primary, primary_entry[:classes])
   dependency_chunks =
-    constructor_context_entries(primary, primary_entry[:defs], primary_entry[:classes], bug, primary_entry[:file_rel]) +
-    constant_context_entries(primary, primary_entry[:constants], primary_class, bug)
+    if mode == CTX_LARGE
+      constructor_context_entries(primary, primary_entry[:defs], primary_entry[:classes], bug, primary_entry[:file_rel]) +
+        constant_context_entries(primary, primary_entry[:constants], primary_class, bug)
+    else
+      []
+    end
   chunks = [debug_context_for_function(bug, primary, chosen.map { |entry| entry[:fn] }, primary_entry[:defs], primary_entry[:classes])]
   omitted = []
   used_chars = chunks.join("\n\n").length
@@ -680,7 +734,7 @@ def sanitized_bug_prompt(bug)
   text.strip
 end
 
-def test_diagnostics_context(bug)
+def test_diagnostics_context(bug, mode: CTX_COMPACT)
   if bug.dig('discovery', 'scenario') == 'new_unit_test'
     context = new_unit_test_context(bug)
     return context if context
@@ -712,7 +766,8 @@ def test_diagnostics_context(bug)
       end
     end
 
-    windows = failure_lines_for(failure).first(3).filter_map { |line| test_source_block(bug, failure, line) }
+    max_test_blocks = mode == CTX_LARGE ? 3 : 1
+    windows = failure_lines_for(failure).first(max_test_blocks).filter_map { |line| test_source_block(bug, failure, line) }
     next if windows.empty?
 
     lines << 'Failing test code:'
@@ -722,7 +777,7 @@ def test_diagnostics_context(bug)
   lines.join("\n")
 end
 
-def prompt_with_context(bug)
+def prompt_with_context(bug, mode: CTX_COMPACT)
   file_rel = file_rel_for(bug)
   func = bug['function'].split('.').last
   <<~PROMPT
@@ -732,11 +787,11 @@ def prompt_with_context(bug)
     Here is the ideal current code context. It includes debug-style metadata,
     the bug target function, and related functions when available:
 
-    #{build_functions_with_context(bug)}
+    #{build_functions_with_context(bug, mode: mode)}
 
     #{simulated_worktree_state(bug)}
 
-    #{test_diagnostics_context(bug)}
+    #{test_diagnostics_context(bug, mode: mode)}
 
     #{sanitized_bug_prompt(bug)}
 
@@ -1017,12 +1072,16 @@ if cats.any? { |cat| cat.start_with?('32B') || cat.start_with?('405B') } &&
    !ENV['OPENROUTER_API_KEY']
   abort 'OPENROUTER_API_KEY is required for OpenRouter-backed categories; refusing to overwrite responses with skipped markers.'
 end
-ctxs = sample.map { |bug| prompt_with_context(bug) }
-
 cats.each do |cat|
   dir = File.join(OUT, cat)
   FileUtils.mkdir_p(dir)
-  prompts = cat.include?('ctx') ? ctxs : sample.map { |bug| prompt_blind(bug, max_chars: prompt_context_chars_for_category(cat)) }
+  prompts =
+    if cat.include?('ctx')
+      mode = ctx_mode_for_category(cat)
+      sample.map { |bug| prompt_with_context(bug, mode: mode) }
+    else
+      sample.map { |bug| prompt_blind(bug, max_chars: prompt_context_chars_for_category(cat)) }
+    end
 
   sample.each_with_index do |_bug, index|
     fpath = File.join(dir, format('%02d.txt', index + 1))

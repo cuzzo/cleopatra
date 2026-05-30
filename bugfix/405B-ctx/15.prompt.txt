@@ -32,31 +32,6 @@ def [](key)
   end
 ```
 
-CLASS CONSTANT: FunctionSignature::FIELD_MAP (lines 52-72)
-```ruby
-  FIELD_MAP = {
-    params: :params,
-    return: nil,  # special: returns { type:, lifetime: } hash
-    visibility: :visibility,
-    type_params: :type_params,
-    reentrant: :reentrant,
-    extern: :extern,
-    module_alias: :module_alias,
-    extern_effects: :extern_effects,
-    fn_type_params: :fn_type_params,
-    owner_type: :owner_type,
-    owner_type_params: :owner_type_params,
-    intrinsic: :intrinsic,
-    zig: :zig_pattern,
-    return_strategy: :return_strategy,
-    needs_rt: :needs_rt,
-    can_fail: :can_fail,
-    return_provenance: :return_provenance,
-    effects: :effects,
-    stack_tier: :stack_tier,
-  }.freeze
-```
-
 ============================================================
 WORKTREE STATE
 ============================================================

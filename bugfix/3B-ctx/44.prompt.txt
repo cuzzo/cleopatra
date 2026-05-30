@@ -55,11 +55,6 @@ def borrow(borrower, source, mutable: false)
   end
 ```
 
-CLASS CONSTANT: OwnershipGraph::Edge (lines 24-24)
-```ruby
-  Edge = Struct.new(:from, :to, :kind, keyword_init: true)
-```
-
 ============================================================
 WORKTREE STATE
 ============================================================
@@ -98,22 +93,6 @@ From spec/ownership_graph_spec.rb:117
     119:       err = graph.borrow("z", "x", mutable: true)
     120:       expect(err).to be_nil
     121:     end
-
-From spec/ownership_graph_spec.rb:143
-    140:     it "removes borrow edges involving dropped paths" do
-    141:       graph.declare("x")
-    142:       graph.declare("y")
-=>  143:       graph.borrow("y", "x", mutable: false)
-    144:       graph.drop("x")
-    145:       expect(graph.edges).to be_empty
-    146:     end
-
-From spec/ownership_graph_spec.rb:167
-    165:     it "returns false with immutable borrow" do
-    166:       graph.declare("x")
-=>  167:       graph.borrow("y", "x", mutable: false)
-    168:       expect(graph.can_write?("x")).to be false
-    169:     end
 
 A mutant/regression test is failing after local source edits.
 Active source edits exist; inspect dirty changed lines first.

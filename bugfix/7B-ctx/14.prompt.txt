@@ -93,44 +93,6 @@ From spec/allocation_strategy_spec.rb:136
     126:       expect(find_decl_in(fn, "i").storage).to eq(:stack)
     127:     end
 
-From spec/allocation_strategy_spec.rb:234
-=>  234:     it "local String built by concat → no heap allocation (not over-promoted)" do
-    235:       ast = run_mir(<<~CLEAR)
-    236:         FN main() RETURNS Void ->
-    237:           MUTABLE resp = "";
-    238:           resp = resp + "hello";
-    239:           RETURN;
-    240:         END
-    241:       CLEAR
-    242:       fn = main_fn(ast)
-    243:       d = find_decl_in(fn, "resp")
-    244:       # resp is reassigned with frame-allocated concat. The declaration (rodata "")
-    245:       # must not be over-promoted to :heap.
-    246:       expect([:frame, :stack, :rodata]).to include(d.storage)
-    247:       expect(cleanup_entry(fn, "resp")&.dig(:alloc)).not_to eq(:heap)
-    248:     end
-
-From spec/allocation_strategy_spec.rb:251
-=>  251:     it "local @list in FOR loop → storage :frame, cleanup :frame [CURRENTLY FAILS storage]" do
-    252:       ast = run_mir(<<~CLEAR)
-    253:         FN main() RETURNS Void ->
-    254:           FOR i IN (0_i64 ..< 5) DO
-    255:             MUTABLE parts: String[]@list = [];
-    256:             parts.append("x");
-    257:           END
-    258:           RETURN;
-    259:         END
-    260:       CLEAR
-    261:       fn = main_fn(ast)
-    262:       loop = fn.body.find { |s| s.is_a?(AST::ForRange) }
-    263:       decl = loop.body.find { |s| s.is_a?(AST::VarDecl) && s.name == "parts" }
-    264:       entry = cleanup_entry(fn, "parts")
-    265:       expect(entry&.dig(:needs_cleanup)).to be true
-    266:       expect(entry&.dig(:alloc)).to eq(:frame)
-    267:       # storage is WRONG: :stack instead of :frame
-    268:       expect(decl.storage).to eq(:frame)
-    269:     end
-
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.
 

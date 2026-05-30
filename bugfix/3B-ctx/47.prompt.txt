@@ -129,49 +129,6 @@ From spec/mir_comparison_spec.rb:594
     621:   end
     622: end
 
-From spec/mir_comparison_spec.rb:609
-    600:     it "matches old transpiler structure for simple programs" do
-    601:       src = <<~CLEAR
-    602:         STRUCT Point { x: Number }
-    603:         FN main() RETURNS Void ->
-    604:           p = Point { x: 42 };
-    605:           ASSERT p.x == 42, "fail";
-    606:           RETURN;
-    607:         END
-    608:       CLEAR
-=>  609:       old_zig = ZigTranspiler.new.transpile(src)
-    610:       new_zig = ZigTranspiler.new.transpile_mir(src)
-    611: 
-    612:       # Both should have the same structural elements
-    613:       expect(new_zig).to include("Point")
-    614:       expect(new_zig).to include("clearMain")
-    615:       expect(new_zig).to include("pub fn main()")
-    616: 
-    617:       # Both should have runtime imports
-    618:       expect(old_zig).to include("CheatHeader")
-    619:       expect(new_zig).to include("CheatHeader")
-    620:     end
-    621:   end
-
-From spec/mir_comparison_spec.rb:45
-     37:     schema_lookup = ->(name) { annotator.lookup_type_schema(name) }
-     38:     mir = MIRPass.new(fn_nodes: fn_nodes, schema_lookup: schema_lookup)
-     39:     mir.transform!(ast)
-     40: 
-     41:     # Collect schemas from annotator for MIRLowering
-     42:     struct_schemas = {}
-     43:     enum_schemas = {}
-     44:     union_schemas = {}
-=>   45:     ast.statements.each do |stmt|
-     46:       case stmt
-     47:       when AST::StructDef then struct_schemas[stmt.name.to_sym] = stmt.fields
-     48:       when AST::EnumDef then enum_schemas[stmt.name.to_sym] = stmt.variants
-     49:       when AST::UnionDef then union_schemas[stmt.name.to_sym] = stmt.variants
-     50:       end
-     51:     end
-     52: 
-     53:     fn_sigs = {}
-
 A new unit test was added and is failing.
 A new failing unit test was added; use it to understand expected behavior.
 

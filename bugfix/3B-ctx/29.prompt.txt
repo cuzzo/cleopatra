@@ -59,35 +59,6 @@ From spec/collections_spec.rb:14
      21: 
      22:   let(:ast) { run(code) }
 
-From spec/collections_spec.rb:607
-    606:       it "returns ?T for @set[item] lookup" do
-=>  607:         ast = run(<<~CLEAR)
-    608:           FN f() RETURNS Void ->
-    609:             MUTABLE s: Int64[]@set = [];
-    610:             s.insert(1);
-    611:             val = s[1];
-    612:             RETURN;
-    613:           END
-    614:         CLEAR
-    615:         fn = ast.statements.first
-    616:         val_bind = fn.body.find { |s| s.respond_to?(:name) && s.name == "val" }
-    617:         expect(val_bind.full_type.optional?).to be true
-    618:       end
-    619:     end
-
-From spec/collections_spec.rb:37
-=>   37:       it "accepts User[]@list as a valid type annotation" do
-     38:         expect {
-     39:           run(<<~CLEAR)
-     40:             STRUCT User { name: String }
-     41:             FN f() RETURNS Void ->
-     42:               MUTABLE items: User[]@list = [];
-     43:               RETURN;
-     44:             END
-     45:           CLEAR
-     46:         }.not_to raise_error
-     47:       end
-
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.
 

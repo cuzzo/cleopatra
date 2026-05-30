@@ -166,39 +166,6 @@ From spec/transpiler_spec.rb:835
     909:         END
     910:       CLEAR
 
-From spec/transpiler_spec.rb:1539
-=> 1539:     it "uses heapAlloc for dupe when function has heap return_provenance" do
-   1540:       # Use a named binding so makeStr!'s result is properly cleaned up
-   1541:       # (inline `transform!(makeStr!())` would leak the temp string -- ERRDEFER_LEAK).
-   1542:       src = <<~CLEAR
-   1543:         FN makeStr!() RETURNS String -> RETURN COPY "hi"; END
-   1544:         FN transform!(s: String) RETURNS String -> RETURN COPY s; END
-   1545:         FN caller!() RETURNS String ->
-   1546:             s = makeStr!();
-   1547:             RETURN transform!(s);
-   1548:         END
-   1549:         FN main() RETURNS Void -> result = caller!(); RETURN; END
-   1550:       CLEAR
-   1551:       zig = transpile(src)
-   1552:       expect(zig).to match(/heapAlloc\(\)\.dupe\(u8, /)
-   1553:     end
-   1554:   end
-
-From spec/transpiler_spec.rb:1557
-=> 1557:     it "emits std.mem.concat for string addition" do
-   1558:       src = <<~CLEAR
-   1559:         FN main() RETURNS Void ->
-   1560:             a = "hello";
-   1561:             b = " world";
-   1562:             c = a + b;
-   1563:             RETURN;
-   1564:         END
-   1565:       CLEAR
-   1566:       zig = transpile(src)
-   1567:       expect(zig).to include("std.mem.concat")
-   1568:     end
-   1569:   end
-
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.
 

@@ -55,11 +55,6 @@ def borrow(borrower, source, mutable: false)
   end
 ```
 
-CLASS CONSTANT: OwnershipGraph::Edge (lines 24-24)
-```ruby
-  Edge = Struct.new(:from, :to, :kind, keyword_init: true)
-```
-
 ============================================================
 WORKTREE STATE
 ============================================================

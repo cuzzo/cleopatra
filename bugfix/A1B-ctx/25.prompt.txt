@@ -56,36 +56,6 @@ From spec/symbol_spec.rb:273
 =>  273:       expect(zig).to include(".ptr ==")
     274:     end
 
-From spec/symbol_spec.rb:111
-    100:     it "parses @symbol as a type capability annotation on a parameter" do
-    101:       ast = parse(<<~CLEAR)
-    102:         FN label(tag: String@symbol) RETURNS String ->
-    103:           RETURN "x";
-    104:         END
-    105:       CLEAR
-    106:       fn = ast.statements.find { |s| s.is_a?(AST::FunctionDef) && s.name == "label" }
-    107:       expect(fn).not_to be_nil
-    108:       # params are { name:, type: <Type object>, ... } — sync lives on the Type
-    109:       param_type = fn.params.first[:type]
-    110:       expect(param_type).to be_a(Type)
-=>  111:       expect(param_type.symbol?).to be true
-    112:     end
-
-From spec/symbol_spec.rb:100
-=>  100:     it "parses @symbol as a type capability annotation on a parameter" do
-    101:       ast = parse(<<~CLEAR)
-    102:         FN label(tag: String@symbol) RETURNS String ->
-    103:           RETURN "x";
-    104:         END
-    105:       CLEAR
-    106:       fn = ast.statements.find { |s| s.is_a?(AST::FunctionDef) && s.name == "label" }
-    107:       expect(fn).not_to be_nil
-    108:       # params are { name:, type: <Type object>, ... } — sync lives on the Type
-    109:       param_type = fn.params.first[:type]
-    110:       expect(param_type).to be_a(Type)
-    111:       expect(param_type.symbol?).to be true
-    112:     end
-
 A mutant/regression test is failing after local source edits.
 Active source edits exist; inspect dirty changed lines first.
 

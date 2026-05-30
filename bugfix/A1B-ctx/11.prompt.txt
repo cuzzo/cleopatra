@@ -36,30 +36,6 @@ def dup
   end
 ```
 
-CONSTRUCTOR SIGNATURE: src/annotator-helpers/function_signature.rb:FunctionSignature (lines 27-46)
-```ruby
-def initialize(params:, return_type:, return_lifetime: nil, visibility: nil,
-                 type_params: nil, reentrant: false, extern: false,
-                 module_alias: nil, extern_effects: nil,
-                 fn_type_params: nil, owner_type: nil, owner_type_params: nil,
-                 intrinsic: false, zig_pattern: nil)
-    @params = params
-    @return_type = return_type
-    @return_lifetime = return_lifetime
-    @visibility = visibility
-    @type_params = type_params
-    @reentrant = reentrant
-    @extern = extern
-    @module_alias = module_alias
-    @extern_effects = extern_effects
-    @fn_type_params = fn_type_params
-    @owner_type = owner_type
-    @owner_type_params = owner_type_params
-    @intrinsic = intrinsic
-    @zig_pattern = zig_pattern
-  end
-```
-
 ============================================================
 WORKTREE STATE
 ============================================================

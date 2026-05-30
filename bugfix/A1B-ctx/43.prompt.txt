@@ -122,44 +122,6 @@ From spec/mir_comparison_spec.rb:169
     155:       expect(old).to include("Ok: f64")
     156:     end
 
-From spec/mir_comparison_spec.rb:314
-    304:     it "translates MIR::SuppressCleanup from MIRPass" do
-    305:       # GIVE or TAKES consumption generates SuppressCleanup
-    306:       src = <<~CLEAR
-    307:         FN consume(TAKES s: String) RETURNS Void -> RETURN; END
-    308:         FN main() RETURNS Void ->
-    309:           x = "hello";
-    310:           consume(GIVE x);
-    311:           RETURN;
-    312:         END
-    313:       CLEAR
-=>  314:       results = compare_fn_body(src)
-    315:       suppress = results.find { |r| r[:ast_class] == "MIR::SuppressCleanup" }
-    316:       if suppress
-    317:         expect(suppress[:error]).to be_nil
-    318:         expect(suppress[:new_zig]).to include("_moved = true")
-    319:       end
-    320:     end
-
-From spec/mir_comparison_spec.rb:31
-     23:   # Returns array of { old: String, new: String } per top-level statement.
-     24:   def compare_statements(src)
-     25:     t = ZigTranspiler.new
-     26: 
-     27:     # Run through annotation + MIRPass (same as transpile)
-     28:     tokens = Lexer.new(src).tokenize
-     29:     ast = Parser.new(tokens, src).parse
-     30:     annotator = SemanticAnnotator.new(importer: nil, source_dir: ".", strict_test: false)
-=>   31:     annotator.annotate!(ast)
-     32:     PipelineRewriter.new(annotator).rewrite!(ast)
-     33:     StringConcatRewriter.new.rewrite!(ast)
-     34: 
-     35:     fn_nodes = {}
-     36:     ast.statements.each { |s| fn_nodes[s.name] = s if s.is_a?(AST::FunctionDef) }
-     37:     schema_lookup = ->(name) { annotator.lookup_type_schema(name) }
-     38:     mir = MIRPass.new(fn_nodes: fn_nodes, schema_lookup: schema_lookup)
-     39:     mir.transform!(ast)
-
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.
 

@@ -40,15 +40,6 @@ def self.register_type!(type_sym, kind_sym, site_token: nil)
   end
 ```
 
-CLASS CONSTANT: AST::ERROR_TYPES (lines 41-45)
-```ruby
-  ERROR_TYPES = {
-    LockTimeout: { kind: :Transient, zig_name: "LockTimeout", id: ERROR_NAME_LOCK_TIMEOUT, first_site: nil },
-    LockCycle:   { kind: :Transient, zig_name: "LockCycle",   id: ERROR_NAME_LOCK_CYCLE,   first_site: nil },
-    Deadlock:    { kind: :System,    zig_name: "Deadlock",    id: ERROR_NAME_DEADLOCK,     first_site: nil },
-  }
-```
-
 ============================================================
 WORKTREE STATE
 ============================================================
@@ -88,19 +79,6 @@ From spec/error_registry_spec.rb:61
 =>   61:       expect(AST.kind_of_type(:ParseError)).to eq(:Input)
      62:       expect(AST.id_of_type(:ParseError)).to eq(AST::ERROR_NAME_USER_FIRST)
      63:     end
-
-From spec/error_registry_spec.rb:53
-     45:     it "user types start at id 4" do
-     46:       expect(AST::ERROR_NAME_USER_FIRST).to eq(4)
-     47:     end
-
-From spec/error_registry_spec.rb:68
-     65:     it "returns existed=true with no conflict on a matching second registration" do
-     66:       AST.register_type!(:ParseError, :Input)
-     67:       existed, conflict = AST.register_type!(:ParseError, :Input)
-=>   68:       expect(existed).to be true
-     69:       expect(conflict).to be_nil
-     70:     end
 
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.

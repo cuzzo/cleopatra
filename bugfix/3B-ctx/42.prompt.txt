@@ -28,11 +28,6 @@ def initialize(description:, confidence: :interactive, edits:)
   end
 ```
 
-CLASS CONSTANT: Fix::CONFIDENCES (lines 54-54)
-```ruby
-  CONFIDENCES = [:auto, :interactive].freeze
-```
-
 ============================================================
 WORKTREE STATE
 ============================================================
@@ -56,37 +51,6 @@ From spec/annotator_spec.rb:1102
    1101:         it "raises a Fixed Array Size Mismatch error" do
 => 1102:           expect { ast }.to raise_error(/Cannot initialize array of size/i)
    1103:         end
-
-From spec/annotator_spec.rb:1685
-=> 1685:       it "sets return_provenance when returning union with implicit-copied @list field" do
-   1686:         src = <<~CLEAR
-   1687:           UNION Value { Nil, List: Value[] }
-   1688:           FN makeList() RETURNS Value ->
-   1689:               MUTABLE items: Value[]@list = List[];
-   1690:               items.append(Value.Nil);
-   1691:               RETURN Value{ List: items };
-   1692:           END
-   1693:           FN main() RETURNS Void -> v = makeList(); RETURN; END
-   1694:         CLEAR
-   1695:         annotated = run(src)
-   1696:         fn = annotated.statements.find { |s| s.is_a?(AST::FunctionDef) && s.name == "makeList" }
-   1697:         expect(fn.return_provenance).to eq(:heap)
-   1698:       end
-
-From spec/annotator_spec.rb:1702
-=> 1702:       it "allows assigning Id<T> to a variable (Id is Copy)" do
-   1703:         src = <<~CLEAR
-   1704:           STRUCT Node { value: Int64 }
-   1705:           FN main() RETURNS Void ->
-   1706:               MUTABLE pool: Node[100]@pool = [];
-   1707:               id1: Id<Node> = pool.insert(Node{ value: 1 });
-   1708:               id2: Id<Node> = pool.insert(Node{ value: 2 });
-   1709:               copy_of_id = id1;
-   1710:               RETURN;
-   1711:           END
-   1712:         CLEAR
-   1713:         expect { run(src) }.not_to raise_error
-   1714:       end
 
 A mutant/regression test is failing after local source edits.
 Active source edits exist; inspect dirty changed lines first.

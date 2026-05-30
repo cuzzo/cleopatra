@@ -108,20 +108,6 @@ From spec/capabilities_spec.rb:2120
    2108:       expect { run(src) }.not_to raise_error
    2109:     end
 
-From spec/capabilities_spec.rb:2445
-=> 2445:     it "parses OR EXIT Kind, Type (registers the type on first use)" do
-   2446:       src = outer_wrap('OR EXIT NotFound, SomeNew')
-   2447:       expect { run(src) }.not_to raise_error
-   2448:       expect(AST.kind_of_type(:SomeNew)).to eq(:NotFound)
-   2449:     end
-
-From spec/capabilities_spec.rb:2451
-=> 2451:     it "parses OR EXIT Kind, Type, \"msg\" (full override)" do
-   2452:       src = outer_wrap('OR EXIT System, SysIssue, "whoops"')
-   2453:       expect { run(src) }.not_to raise_error
-   2454:       expect(AST.kind_of_type(:SysIssue)).to eq(:System)
-   2455:     end
-
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.
 

@@ -187,21 +187,6 @@ From spec/cleanup_plan_spec.rb:34
      41:       fn_nodes: fn_nodes,
      42:       schema_lookup: schema_lookup,
 
-From spec/cleanup_plan_spec.rb:336
-=>  336:       it "marks for heap cleanup" do
-    337:         entry = plan["list1"]
-    338:         expect(entry[:alloc]).to eq(:heap)
-    339:         expect(entry[:has_moved_guard]).to eq(true)
-    340:       end
-    341:     end
-
-From spec/cleanup_plan_spec.rb:361
-=>  361:       it "marks for heap cleanup (transitively promoted)" do
-    362:         entry = plan["result"]
-    363:         expect(entry[:alloc]).to eq(:heap)
-    364:       end
-    365:     end
-
 A mutant/regression test is failing after local source edits.
 Active source edits exist; inspect dirty changed lines first.
 

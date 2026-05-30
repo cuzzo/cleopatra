@@ -55,18 +55,6 @@ From spec/lock_helper_spec.rb:124
 =>  124:       expect(host.scc_is_cyclic?([:A, :B], adj)).to be true
     125:     end
 
-From spec/lock_helper_spec.rb:129
-    127:     it "flags a single-node SCC with a self-loop as cyclic" do
-    128:       _, adj = adj_from([[:A, :A]])
-=>  129:       expect(host.scc_is_cyclic?([:A], adj)).to be true
-    130:     end
-
-From spec/lock_helper_spec.rb:134
-    132:     it "does not flag a single-node SCC without a self-loop as cyclic" do
-    133:       _, adj = adj_from([[:A, :B]])
-=>  134:       expect(host.scc_is_cyclic?([:A], adj)).to be false
-    135:     end
-
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.
 

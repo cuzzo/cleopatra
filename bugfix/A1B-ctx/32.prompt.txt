@@ -124,37 +124,6 @@ From spec/use_after_move_dataflow_spec.rb:279
 =>  279:       expect(df.exit_states["items"]).to eq(:moved)
     280:     end
 
-From spec/use_after_move_dataflow_spec.rb:306
-    296:     it "return preserves allocator info on moved OwnerEntry" do
-    297:       df = analyze_state(<<~CLEAR, "makeList")
-    298:         FN makeList() RETURNS Int64[] ->
-    299:           MUTABLE items: Int64[]@list = List[];
-    300:           items.append(1_i64);
-    301:           RETURN items;
-    302:         END
-    303:       CLEAR
-    304:       entry = df.exit_states["items"]
-    305:       if entry.is_a?(OwnershipDataflow::OwnerEntry)
-=>  306:         expect(entry.state).to eq(:moved)
-    307:         expect(entry.allocator).not_to be_nil
-    308:       end
-    309:     end
-
-From spec/use_after_move_dataflow_spec.rb:338
-    328:     it "non-Copy assignment marks source as moved" do
-    329:       df = analyze_state(<<~CLEAR)
-    330:         STRUCT User { id: Int64 }
-    331:         FN main() RETURNS Void ->
-    332:           a: %User = User{ id: 1 };
-    333:           b = a;
-    334:           RETURN;
-    335:         END
-    336:       CLEAR
-    337:       # Direct assignment of non-Copy heap struct IS a move
-=>  338:       expect(df.exit_states["a"]).to eq(:moved)
-    339:       expect(df.exit_states["b"]).to eq(:owned)
-    340:     end
-
 A mutant/regression test is failing after local source edits.
 Active source edits exist; inspect dirty changed lines first.
 

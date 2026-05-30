@@ -52,66 +52,6 @@ def self.walk_body(body, &visitor)
   end
 ```
 
-CLASS CONSTANT: AST::FunctionDef (lines 422-422)
-```ruby
-  FunctionDef  = Struct.new(:token, :name, :params, :captures, :return_type, :return_lifetime, :body, :catch_clauses, :default_catch, :visibility, :deferred_drops, :uses_frame) do
-```
-
-CLASS CONSTANT: AST::IfStatement (lines 508-508)
-```ruby
-  IfStatement  = Struct.new(:token, :condition, :then_branch, :else_branch, :then_drops, :else_drops) do
-```
-
-CLASS CONSTANT: AST::WhileLoop (lines 521-521)
-```ruby
-  WhileLoop    = Struct.new(:token, :condition, :do_branch, :deferred_drops) do
-```
-
-CLASS CONSTANT: AST::WhileBindLoop (lines 526-526)
-```ruby
-  WhileBindLoop = Struct.new(:token, :condition, :binding_name, :binding_token, :do_branch, :deferred_drops) do
-```
-
-CLASS CONSTANT: AST::WithBlock (lines 588-588)
-```ruby
-  WithBlock    = Struct.new(:token, :capabilities, :body, :deferred_drops) do
-```
-
-CLASS CONSTANT: AST::DoBlock (lines 776-776)
-```ruby
-  DoBlock           = Struct.new(:token, :branches) { include Locatable }
-```
-
-CLASS CONSTANT: AST::BgBlock (lines 782-782)
-```ruby
-  BgBlock           = Struct.new(:token, :body, :deferred_drops, :stack_size, :pinned, :parallel, :arena_mode, :can_smash) do
-```
-
-CLASS CONSTANT: AST::BgStreamBlock (lines 801-801)
-```ruby
-  BgStreamBlock     = Struct.new(:token, :body, :deferred_drops, :stack_size) do
-```
-
-CLASS CONSTANT: AST::MatchStatement (lines 827-827)
-```ruby
-  MatchStatement    = Struct.new(:token, :expr, :cases, :default_case, :case_drops, :default_drops, :exhaustive, :takes) do
-```
-
-CLASS CONSTANT: AST::ForRange (lines 837-837)
-```ruby
-  ForRange          = Struct.new(:token, :var_name, :start_expr, :end_expr, :inclusive, :body, :deferred_drops, :mark_per_iter) do
-```
-
-CLASS CONSTANT: AST::ForEach (lines 843-843)
-```ruby
-  ForEach           = Struct.new(:token, :var_name, :collection, :body, :deferred_drops, :is_mutable) do
-```
-
-CLASS CONSTANT: AST::TestBlock (lines 852-852)
-```ruby
-  TestBlock = Struct.new(:token, :name, :setup, :whens) { include Locatable }
-```
-
 ============================================================
 WORKTREE STATE
 ============================================================
@@ -150,17 +90,6 @@ From spec/annotator_spec.rb:2174
    2145:         expect(out).not_to include("CheatLib.charAt(data")
    2146:       end
    2147:     end
-
-From spec/annotator_spec.rb:4173
-=> 4173:       it "accepts return within range" do
-   4174:         expect { transpile("FN f() RETURNS Byte -> RETURN 255; END") }.not_to raise_error
-   4175:       end
-
-From spec/annotator_spec.rb:4177
-=> 4177:       it "rejects return out of range" do
-   4178:         expect { transpile("FN f() RETURNS Byte -> RETURN 256; END") }
-   4179:           .to raise_error(/overflow/i)
-   4180:       end
 
 A new unit test was added and is failing.
 A new failing unit test was added; use it to understand expected behavior.

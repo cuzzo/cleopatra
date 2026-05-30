@@ -32,31 +32,6 @@ def [](key)
   end
 ```
 
-CLASS CONSTANT: FunctionSignature::FIELD_MAP (lines 52-72)
-```ruby
-  FIELD_MAP = {
-    params: :params,
-    return: nil,  # special: returns { type:, lifetime: } hash
-    visibility: :visibility,
-    type_params: :type_params,
-    reentrant: :reentrant,
-    extern: :extern,
-    module_alias: :module_alias,
-    extern_effects: :extern_effects,
-    fn_type_params: :fn_type_params,
-    owner_type: :owner_type,
-    owner_type_params: :owner_type_params,
-    intrinsic: :intrinsic,
-    zig: :zig_pattern,
-    return_strategy: :return_strategy,
-    needs_rt: :needs_rt,
-    can_fail: :can_fail,
-    return_provenance: :return_provenance,
-    effects: :effects,
-    stack_tier: :stack_tier,
-  }.freeze
-```
-
 ============================================================
 WORKTREE STATE
 ============================================================
@@ -168,23 +143,6 @@ From spec/generics_spec.rb:268
     355:         out = ZigTranspiler.new.transpile("STRUCT Triple<A, B, C> { a: A, b: B, c: C }\nFN main() RETURNS Void -> PASS END")
     356:         expect(out).to include("fn Triple(comptime A: type, comptime B: type, comptime C: type) type")
     357:       end
-
-From spec/generics_spec.rb:569
-=>  569:       it "parses and annotates Pair<Float64>{ first: 1.0, second: 2.0 } without error" do
-    570:         expect {
-    571:           run(generic_lit_src("p = Pair<Float64>{ first: 1.0, second: 2.0 };"))
-    572:         }.not_to raise_error
-    573:       end
-
-From spec/generics_spec.rb:575
-=>  575:       it "sets full_type to :\"Pair<Float64>\" on the StructLit node" do
-    576:         ast = run(generic_lit_src("p = Pair<Float64>{ first: 1.0, second: 2.0 };"))
-    577:         fn = ast.statements.last
-    578:         bind = fn.body.first
-    579:         lit = bind.value
-    580:         expect(lit).to be_a(AST::StructLit)
-    581:         expect(lit.resolved_type).to eq(:"Pair<Float64>")
-    582:       end
 
 A new unit test was added and is failing.
 A new failing unit test was added; use it to understand expected behavior.

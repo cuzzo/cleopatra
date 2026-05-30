@@ -1,13 +1,14 @@
 # Context Size vs Quality vs Parameter Size
 
-This note tracks the first before/after measurement for richer `-ctx` prompts.
+This note tracks the first before/after measurement for richer `-ctx` prompts
+and the follow-up split into compact and large context modes.
 
 ## Change Tested
 
 The original `-ctx` prompt mostly included the target function, selected related
 functions, worktree state, and focused failing-test context.
 
-The richer `-ctx` prompt adds general dependency context:
+The richer `-ctx` prompt added general dependency context:
 
 - constructor signatures for `SomeClass.new` calls, including cross-file
   constructors found under `src/**/*.rb`
@@ -18,6 +19,22 @@ The richer `-ctx` prompt adds general dependency context:
 - up to three focused failing test blocks instead of one
 
 This is intentionally general. It is not keyed to individual bug IDs.
+
+After the first measurement, this was split into two modes:
+
+- compact mode is the default for `ctx` and for `A1B-ctx`, `3B-ctx`, and
+  `7B-ctx`. It keeps the target function, selected related functions, worktree
+  state, stack trace/failing test context, and debug metadata, but omits
+  constructor/class-level metadata.
+- large mode is used for `32B-ctx` and `405B-ctx`, and is available in the CLI
+  with `ctx --large` or `ctx --full`. It adds only signature-style dependency
+  metadata when mutation/test evidence makes that metadata likely useful:
+  constructor signatures for argument/keyword/renamed-variable/off-by-one
+  cases, and class constant signatures for constant/NameError cases.
+
+Large mode intentionally does not include full constructor bodies or full class
+bodies. Every function shown in the prompt is still shown with its full body;
+class-level metadata is signature-only.
 
 ## Results
 
@@ -50,6 +67,24 @@ For larger models, the added context fixed likely context-tooling misses such as
 For A1B, the better strategy is probably a smaller dependency budget or a
 separate compact ctx mode that includes only the single most relevant added
 artifact.
+
+## Current Prompt Profiles
+
+After splitting modes, prompt regeneration with `--dry-run-prompts` produced:
+
+| Category | Mode | Avg prompt bytes | Added constructor/constant signature blocks |
+|---|---|---:|---:|
+| `A1B-ctx` | compact | 4,189 | 0 |
+| `3B-ctx` | compact | 4,189 | 0 |
+| `7B-ctx` | compact | 4,189 | 0 |
+| `32B-ctx` | large | 5,185 | 19 |
+| `405B-ctx` | large | 5,185 | 19 |
+
+The 19 large-mode blocks appear on 10/50 bugs. They correspond to stored
+mutation evidence for constant swaps, renamed variables in constructor calls,
+or off-by-one constructor arguments. The previous richer prompts had 33 blocks
+per large-model category and included several constructor signatures for
+condition/boolean bugs where the constructor was incidental.
 
 ## Evaluation Logs
 

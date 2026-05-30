@@ -136,17 +136,6 @@ From spec/higher_order_spec.rb:1631
    1719:         expect(out).to include("__res")
    1720:       end
 
-From spec/higher_order_spec.rb:2433
-=> 2433:       it "succeeds without errors" do
-   2434:         expect { ast }.not_to raise_error
-   2435:       end
-
-From spec/higher_order_spec.rb:2437
-=> 2437:       it "resolves to an optional type" do
-   2438:         # ?Item — the resolved raw includes Item
-   2439:         expect(result.to_s).to match(/Item/)
-   2440:       end
-
 A new unit test was added and is failing.
 A new failing unit test was added; use it to understand expected behavior.
 

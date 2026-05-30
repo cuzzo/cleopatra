@@ -126,35 +126,6 @@ From spec/mir_checker_spec.rb:629
     631:       expect(errors.first).to include("HPT_LEAK")
     632:     end
 
-From spec/mir_checker_spec.rb:612
-    602:     it "does not flag existing non-strict checks for non-allocating expressions" do
-    603:       # Ensure strict mode doesn't accidentally break the normal HPT_LEAK check
-    604:       call = MIR::Call.new("makeList", [MIR::Ident.new("rt")], false, true)
-    605:       body = [MIR::ExprStmt.new(call, true)]
-    606:       errors = checker.check_fn!(fn_def("hpt_still_works", body), strict: true)
-    607:       expect(errors.any? { |e| e.include?("HPT_LEAK") }).to be true
-    608:     end
-    609:   end
-
-From spec/mir_checker_spec.rb:616
-=>  616:     it "collects errors across multiple functions" do
-    617:       call1 = MIR::Call.new("makeList", [MIR::Ident.new("rt")], false, true)
-    618:       fn1 = fn_def("good", [
-    619:         MIR::Let.new("x", call1, false, nil, nil),
-    620:       ])
-    621: 
-    622:       call2 = MIR::Call.new("makeList", [MIR::Ident.new("rt")], false, true)
-    623:       fn2 = fn_def("bad", [
-    624:         MIR::ExprStmt.new(call2, true),
-    625:       ])
-    626: 
-    627:       program = MIR::Program.new([fn1, fn2])
-    628:       errors = checker.check_program!(program)
-    629:       expect(errors.length).to eq(1)
-    630:       expect(errors.first).to include("bad")
-    631:       expect(errors.first).to include("HPT_LEAK")
-    632:     end
-
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.
 

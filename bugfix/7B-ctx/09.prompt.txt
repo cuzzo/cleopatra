@@ -68,23 +68,6 @@ From spec/ownership_graph_spec.rb:111
     112:       expect(graph.edges.select { |e| e.to == "x" && (e.kind == :borrows || e.kind == :borrows_mut) }).to be_empty
     113:     end
 
-From spec/ownership_graph_spec.rb:118
-    115:     it "allows new mutable borrow after release" do
-    116:       graph.declare("x")
-    117:       graph.borrow("y", "x", mutable: false)
-=>  118:       graph.release_borrow("y")
-    119:       err = graph.borrow("z", "x", mutable: true)
-    120:       expect(err).to be_nil
-    121:     end
-
-From spec/ownership_graph_spec.rb:187
-    184:     it "returns true after borrow release" do
-    185:       graph.declare("x")
-    186:       graph.borrow("y", "x", mutable: false)
-=>  187:       graph.release_borrow("y")
-    188:       expect(graph.can_write?("x")).to be true
-    189:     end
-
 A mutant/regression test is failing after local source edits.
 Active source edits exist; inspect dirty changed lines first.
 

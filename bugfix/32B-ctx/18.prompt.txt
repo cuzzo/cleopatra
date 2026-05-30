@@ -30,16 +30,11 @@ def declare(path, kind: :affine, type_info: nil, scope_depth: 0, line: 0)
   end
 ```
 
-CLASS CONSTANT: OwnershipGraph::Node (lines 16-18)
+CLASS CONSTANT SIGNATURE: OwnershipGraph::Node (lines 16-18)
 ```ruby
   Node = Struct.new(:path, :kind, :state, :type_info, :scope_depth, :line,
                     :move_line, :move_col,
                     keyword_init: true) do
-```
-
-CLASS CONSTANT: OwnershipGraph::Edge (lines 24-24)
-```ruby
-  Edge = Struct.new(:from, :to, :kind, keyword_init: true)
 ```
 
 ============================================================

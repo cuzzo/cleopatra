@@ -30,18 +30,6 @@ def declare(path, kind: :affine, type_info: nil, scope_depth: 0, line: 0)
   end
 ```
 
-CLASS CONSTANT: OwnershipGraph::Node (lines 16-18)
-```ruby
-  Node = Struct.new(:path, :kind, :state, :type_info, :scope_depth, :line,
-                    :move_line, :move_col,
-                    keyword_init: true) do
-```
-
-CLASS CONSTANT: OwnershipGraph::Edge (lines 24-24)
-```ruby
-  Edge = Struct.new(:from, :to, :kind, keyword_init: true)
-```
-
 ============================================================
 WORKTREE STATE
 ============================================================
@@ -83,64 +71,6 @@ From spec/propagate_caller_sync_spec.rb:21
      27:     ast.statements.each { |s| fn_nodes[s.name] = s if s.is_a?(AST::FunctionDef) }
      28:     fn_nodes
      29:   end
-
-From spec/propagate_caller_sync_spec.rb:153
-    133:   it "propagates transitively through a two-hop call chain" do
-    134:     # main → outer → inner. A @shared:locked binding in main should reach
-    135:     # inner's param via two propagation rounds.
-    136:     src = <<~CHT
-    137:       STRUCT Counter { value: Int64 }
-    138: 
-    139:       FN inner(c: Counter) ->
-    140:         x = c.value;
-    141:       END
-    142: 
-    143:       FN outer(c: Counter) ->
-    144:         inner(c);
-    145:       END
-    146: 
-    147:       FN main() ->
-    148:         c = Counter{ value: 0 } @shared:locked;
-    149:         outer(c);
-    150:       END
-    151:     CHT
-    152: 
-=>  153:     ast, _ = annotate(src)
-    154:     fn_nodes = fn_nodes_from(ast)
-    155:     EscapeAnalysis.propagate_caller_sync!(fn_nodes)
-    156: 
-    157:     expect(fn_nodes["outer"].params.first[:symbol].sync).to eq(:locked)
-    158:     expect(fn_nodes["inner"].params.first[:symbol].sync).to eq(:locked)
-    159:   end
-
-From spec/propagate_caller_sync_spec.rb:167
-    133:   it "propagates transitively through a two-hop call chain" do
-    134:     # main → outer → inner. A @shared:locked binding in main should reach
-    135:     # inner's param via two propagation rounds.
-    136:     src = <<~CHT
-    137:       STRUCT Counter { value: Int64 }
-    138: 
-    139:       FN inner(c: Counter) ->
-    140:         x = c.value;
-    141:       END
-    142: 
-    143:       FN outer(c: Counter) ->
-    144:         inner(c);
-    145:       END
-    146: 
-    147:       FN main() ->
-    148:         c = Counter{ value: 0 } @shared:locked;
-    149:         outer(c);
-    150:       END
-    151:     CHT
-    152: 
-    153:     ast, _ = annotate(src)
-    154:     fn_nodes = fn_nodes_from(ast)
-    155:     EscapeAnalysis.propagate_caller_sync!(fn_nodes)
-    156: 
-    157:     expect(fn_nodes["outer"].params.first[:symbol].sync).to eq(:locked)
-    158:     expect(fn_nodes["inner"].params.first[:symbol].sync).to eq(:locked)
-    159:   end
 
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.

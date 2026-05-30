@@ -102,62 +102,6 @@ def visit_NextExpr(node)
   end
 ```
 
-CONSTRUCTOR SIGNATURE: src/ast/type.rb:Type (lines 152-203)
-```ruby
-def initialize(raw_input, ownership: nil, sync: nil, location: nil, collection: nil, shard_count: nil, stripe_count: nil) # stripe_count kept for backwards compat (ignored)
-    if raw_input.is_a?(Type)
-      # Copy constructor: preserve all parsed state from the source type
-      other = raw_input
-      @raw                = other.instance_variable_get(:@raw)
-      @ownership          = other.ownership
-      @sync               = other.sync
-      @collection         = other.instance_variable_get(:@collection)
-      @shard_count        = other.instance_variable_get(:@shard_count)
-      @soa                = other.instance_variable_get(:@soa)
-      @is_error_union     = other.instance_variable_get(:@is_error_union)
-      @payload_type_raw   = other.instance_variable_get(:@payload_type_raw)
-      @is_optional        = other.instance_variable_get(:@is_optional)
-      @wrapped_type_raw   = other.instance_variable_get(:@wrapped_type_raw)
-      @is_array              = other.instance_variable_get(:@is_array)
-      @element_type_raw      = other.instance_variable_get(:@element_type_raw)
-      @is_map                = other.instance_variable_get(:@is_map)
-      @key_type_raw          = other.instance_variable_get(:@key_type_raw)
-      @value_type_raw        = other.instance_variable_get(:@value_type_raw)
-      @capacity              = other.capacity
-      @resolved_cache        = other.instance_variable_get(:@resolved_cache)
-      @is_generic_instance   = other.instance_variable_get(:@is_generic_instance)
-      @generic_base_raw      = other.instance_variable_get(:@generic_base_raw)
-      @generic_args_raw      = other.instance_variable_get(:@generic_args_raw)
-      @is_tense              = other.instance_variable_get(:@is_tense)
-      @tense_type_raw        = other.instance_variable_get(:@tense_type_raw)
-      @elem_ownership        = other.elem_ownership
-      @elem_sync             = other.elem_sync
-      @link_source           = other.link_source
-      @provenance            = other.provenance
-    else
-      @raw = raw_input
-      parse_raw_input
-    end
-
-    # Capability fields — set after parse/copy so they can override.
-    @provenance = location if location && location != :stack
-    @ownership = ownership if ownership
-    @sync      = sync      if sync
-    # Sync types need a stable heap address.
-    # :raw and :symbol are data-access modes, not locks — they don't force heap provenance.
-    @provenance = :heap if @sync && @sync != :raw && @sync != :symbol && @ownership == :affine
-    # Symbol strings live in static read-only memory — always rodata, never heap/frame.
-    @provenance = :rodata if @sync == :symbol
-    # Pool collection always lives on the heap (owns internal slot array).
-    if collection
-      @collection = collection
-      @zig_type_cache = nil
-      @provenance = :heap if collection == :pool
-    end
-    @shard_count = shard_count if shard_count
-  end
-```
-
 ============================================================
 WORKTREE STATE
 ============================================================
@@ -183,29 +127,6 @@ From spec/concurrency_spec.rb:1433
    1428:         annotator.send(:visit_BgBlock, bg)
    1429:         expect(bg.full_type).to eq(:"~Float64")
    1430:       end
-
-From spec/concurrency_spec.rb:1704
-=> 1704:       it "BgBlock captures outer variable by value (no pointer)" do
-   1705:         src = "FN f() RETURNS Void -> x: Float64 = 7.0; q: ~Float64 = BG { x + 1.0; }; r: Float64 = NEXT q; RETURN; END"
-   1706:         out = transpile_fn(src)
-   1707:         # Field type uses @TypeOf so Zig deduces the actual local type --
-   1708:         # this handles Arc-wrapped captures and already-pointer collection
-   1709:         # params correctly without per-case Ruby logic.
-   1710:         expect(out).to include("x: @TypeOf(x)")
-   1711:         # Initialized as .x = x  (never .x = &x: doubling pointers breaks
-   1712:         # collection params and Arc captures.)
-   1713:         expect(out).to include(".x = x")
-   1714:         # Accessed without deref: ctx.x (not ctx.x.*)
-   1715:         expect(out).to include("__ctx_0.x")
-   1716:         expect(out).not_to include("__ctx_0.x.*")
-   1717:       end
-
-From spec/concurrency_spec.rb:1719
-=> 1719:       it "NextExpr emits .next() on the promise" do
-   1720:         src = "FN f() RETURNS Void -> p: ~Float64 = BG { 99.0; }; r: Float64 = NEXT p; RETURN; END"
-   1721:         out = transpile_fn(src)
-   1722:         expect(out).to include("p.next()")
-   1723:       end
 
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.

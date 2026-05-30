@@ -60,62 +60,6 @@ def ensure_owned_value!(val_node, expected_type, container_desc = nil)
   end
 ```
 
-CONSTRUCTOR SIGNATURE: src/ast/type.rb:Type (lines 152-203)
-```ruby
-def initialize(raw_input, ownership: nil, sync: nil, location: nil, collection: nil, shard_count: nil, stripe_count: nil) # stripe_count kept for backwards compat (ignored)
-    if raw_input.is_a?(Type)
-      # Copy constructor: preserve all parsed state from the source type
-      other = raw_input
-      @raw                = other.instance_variable_get(:@raw)
-      @ownership          = other.ownership
-      @sync               = other.sync
-      @collection         = other.instance_variable_get(:@collection)
-      @shard_count        = other.instance_variable_get(:@shard_count)
-      @soa                = other.instance_variable_get(:@soa)
-      @is_error_union     = other.instance_variable_get(:@is_error_union)
-      @payload_type_raw   = other.instance_variable_get(:@payload_type_raw)
-      @is_optional        = other.instance_variable_get(:@is_optional)
-      @wrapped_type_raw   = other.instance_variable_get(:@wrapped_type_raw)
-      @is_array              = other.instance_variable_get(:@is_array)
-      @element_type_raw      = other.instance_variable_get(:@element_type_raw)
-      @is_map                = other.instance_variable_get(:@is_map)
-      @key_type_raw          = other.instance_variable_get(:@key_type_raw)
-      @value_type_raw        = other.instance_variable_get(:@value_type_raw)
-      @capacity              = other.capacity
-      @resolved_cache        = other.instance_variable_get(:@resolved_cache)
-      @is_generic_instance   = other.instance_variable_get(:@is_generic_instance)
-      @generic_base_raw      = other.instance_variable_get(:@generic_base_raw)
-      @generic_args_raw      = other.instance_variable_get(:@generic_args_raw)
-      @is_tense              = other.instance_variable_get(:@is_tense)
-      @tense_type_raw        = other.instance_variable_get(:@tense_type_raw)
-      @elem_ownership        = other.elem_ownership
-      @elem_sync             = other.elem_sync
-      @link_source           = other.link_source
-      @provenance            = other.provenance
-    else
-      @raw = raw_input
-      parse_raw_input
-    end
-
-    # Capability fields — set after parse/copy so they can override.
-    @provenance = location if location && location != :stack
-    @ownership = ownership if ownership
-    @sync      = sync      if sync
-    # Sync types need a stable heap address.
-    # :raw and :symbol are data-access modes, not locks — they don't force heap provenance.
-    @provenance = :heap if @sync && @sync != :raw && @sync != :symbol && @ownership == :affine
-    # Symbol strings live in static read-only memory — always rodata, never heap/frame.
-    @provenance = :rodata if @sync == :symbol
-    # Pool collection always lives on the heap (owns internal slot array).
-    if collection
-      @collection = collection
-      @zig_type_cache = nil
-      @provenance = :heap if collection == :pool
-    end
-    @shard_count = shard_count if shard_count
-  end
-```
-
 ============================================================
 WORKTREE STATE
 ============================================================
@@ -152,50 +96,6 @@ From spec/provenance_annotation_spec.rb:13
      19:     fn.body.find { |s| (s.is_a?(AST::BindExpr) || s.is_a?(AST::VarDecl)) && s.name == var_name }
      20:   end
      21: 
-
-From spec/provenance_annotation_spec.rb:74
-     73:     it "caller binding has :heap provenance" do
-=>   74:       ast, _ = annotate(<<~CLEAR)
-     75:         STRUCT Holder { items: Int64[], label: String }
-     76:         FN build() RETURNS Holder ->
-     77:             MUTABLE vals: Int64[]@list = [];
-     78:             vals.append(1_i64);
-     79:             RETURN Holder{ items: vals, label: "test" };
-     80:         END
-     81:         FN main() RETURNS Void ->
-     82:             h = build();
-     83:             RETURN;
-     84:         END
-     85:       CLEAR
-     86:       binding = find_binding(ast, "main", "h")
-     87:       ti = binding.type_info
-     88:       ti = Type.new(ti) if !ti.is_a?(Type)
-     89:       # Provenance should be :heap for promoted return values
-     90:       if ti.heap_provenance?
-     91:         expect(ti.provenance).to eq(:heap)
-     92:       end
-     93:     end
-     94:   end
-
-From spec/provenance_annotation_spec.rb:64
-     53:     it "field's CopyNode has :heap provenance" do
-     54:       ast, _ = annotate(<<~CLEAR)
-     55:         STRUCT User { name: String, age: Int64 }
-     56:         FN main() RETURNS Void ->
-     57:             u = User{ name: "Alice", age: 30_i64 };
-     58:             RETURN;
-     59:         END
-     60:       CLEAR
-     61:       binding = find_binding(ast, "main", "u")
-     62:       struct_lit = binding.value
-     63:       name_field = struct_lit.fields["name"]
-=>   64:       # ensure_owned_value! wraps rodata string in CopyNode
-     65:       expect(name_field).to be_a(AST::CopyNode)
-     66:       ti = name_field.type_info
-     67:       ti = Type.new(ti) if !ti.is_a?(Type)
-     68:       expect(ti.provenance).to eq(:heap)
-     69:     end
-     70:   end
 
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.

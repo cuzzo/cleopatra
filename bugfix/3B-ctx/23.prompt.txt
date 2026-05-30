@@ -63,24 +63,6 @@ From spec/ownership_graph_spec.rb:200
 =>  200:       expect(graph.live?("x")).to be true
     201:     end
 
-From spec/ownership_graph_spec.rb:193
-    184:     it "returns true after borrow release" do
-    185:       graph.declare("x")
-    186:       graph.borrow("y", "x", mutable: false)
-    187:       graph.release_borrow("y")
-    188:       expect(graph.can_write?("x")).to be true
-    189:     end
-
-From spec/ownership_graph_spec.rb:194
-=>  194:     it "captures and restores node states" do
-    195:       graph.declare("x")
-    196:       snapshot = graph.fork_lightweight
-    197:       graph.transfer("x", "y")
-    198:       expect(graph.moved?("x")).to be true
-    199:       graph.restore_lightweight(snapshot)
-    200:       expect(graph.live?("x")).to be true
-    201:     end
-
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.
 

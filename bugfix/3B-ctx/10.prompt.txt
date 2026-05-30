@@ -22,45 +22,6 @@ def self.enum_entries
   end
 ```
 
-CLASS CONSTANT: AST::ERROR_KINDS (lines 20-20)
-```ruby
-  ERROR_KINDS = %i[Transient Input System NotFound Permission Canceled].freeze
-```
-
-CLASS CONSTANT: AST::ERROR_NAME_NONE (lines 26-26)
-```ruby
-  ERROR_NAME_NONE         = 0
-```
-
-CLASS CONSTANT: AST::ERROR_NAME_LOCK_TIMEOUT (lines 27-27)
-```ruby
-  ERROR_NAME_LOCK_TIMEOUT = 1
-```
-
-CLASS CONSTANT: AST::ERROR_NAME_LOCK_CYCLE (lines 28-28)
-```ruby
-  ERROR_NAME_LOCK_CYCLE   = 2
-```
-
-CLASS CONSTANT: AST::ERROR_NAME_DEADLOCK (lines 29-29)
-```ruby
-  ERROR_NAME_DEADLOCK     = 3
-```
-
-CLASS CONSTANT: AST::ERROR_NAME_USER_FIRST (lines 30-30)
-```ruby
-  ERROR_NAME_USER_FIRST   = 4
-```
-
-CLASS CONSTANT: AST::ERROR_TYPES (lines 41-45)
-```ruby
-  ERROR_TYPES = {
-    LockTimeout: { kind: :Transient, zig_name: "LockTimeout", id: ERROR_NAME_LOCK_TIMEOUT, first_site: nil },
-    LockCycle:   { kind: :Transient, zig_name: "LockCycle",   id: ERROR_NAME_LOCK_CYCLE,   first_site: nil },
-    Deadlock:    { kind: :System,    zig_name: "Deadlock",    id: ERROR_NAME_DEADLOCK,     first_site: nil },
-  }
-```
-
 ============================================================
 WORKTREE STATE
 ============================================================
@@ -95,25 +56,6 @@ From spec/error_registry_spec.rb:132
     134:       expect(entries).to include([:LockCycle, 2])
     135:       expect(entries).to include([:Deadlock, 3])
     136:     end
-
-From spec/error_registry_spec.rb:126
-    115:     it "rewinds the next user id so subsequent user types start at 4" do
-    116:       AST.register_type!(:UserA, :Input)
-    117:       AST.reset_user_types!
-    118:       AST.register_type!(:UserB, :Input)
-    119:       expect(AST.id_of_type(:UserB)).to eq(AST::ERROR_NAME_USER_FIRST)
-    120:     end
-
-From spec/error_registry_spec.rb:143
-    138:     it "includes user types at >=4 sorted by id" do
-    139:       AST.register_type!(:UserA, :Input)
-    140:       AST.register_type!(:UserB, :Input)
-    141:       entries = AST.enum_entries
-    142:       ids = entries.map(&:last)
-=>  143:       expect(ids).to eq(ids.sort)
-    144:       expect(entries).to include([:UserA, 4])
-    145:       expect(entries).to include([:UserB, 5])
-    146:     end
 
 A new unit test was added and is failing.
 A new failing unit test was added; use it to understand expected behavior.

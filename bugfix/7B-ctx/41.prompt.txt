@@ -57,14 +57,6 @@ From spec/type_provenance_spec.rb:22
 =>   22:     expect(t.provenance_alloc).to eq(:frame)
      23:   end
 
-From spec/type_provenance_spec.rb:18
-=>   18:   it "can be set to :frame" do
-     19:     t = Type.new(:String)
-     20:     t.provenance = :frame
-     21:     expect(t.frame_provenance?).to be true
-     22:     expect(t.provenance_alloc).to eq(:frame)
-     23:   end
-
 A mutant/regression test is failing after local source edits.
 Active source edits exist; inspect dirty changed lines first.
 

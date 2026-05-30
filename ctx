@@ -5,14 +5,17 @@
 #
 # Usage:
 #   ctx src/example.rb:foo         # Print function foo from the file
+#   ctx src/example.rb:Class.foo   # Print a qualified method
 #   ctx src/example.rb#72          # Print the function containing line 72
-#   ctx src/example.rb:foo debug   # Print function + types + deps + members
-#   ctx src/example.rb#72 debug    # Same, by line number
+#   ctx src/example.rb:foo debug   # Print compact function metadata
+#   ctx --large src/example.rb:foo debug
+#                                  # Also print class-level signatures
 #
 # Prints:
 #   - The full function body
 #   - The class/module it belongs to (if any)
 #   - In debug mode: params with types, local methods, member vars, callee sigs
+#   - In --large/--full debug mode: sibling method and class constant signatures
 
 require 'prism'
 require 'shellwords'
@@ -89,7 +92,7 @@ def find_function(tree, name_or_line)
 end
 
 def search_by_name(component, name)
-  if component.type == :def && component.name.end_with?(".#{name}") || component.name == name
+  if component.type == :def && (component.name.end_with?(".#{name}") || component.name == name)
     return component
   end
   component.children.each do |child|
@@ -195,6 +198,38 @@ def find_callee_sig(callee_name, file_path, source)
   fn
 end
 
+def ruby_structural_delta(line)
+  stripped = line.sub(/#.*/, '')
+  stripped.count('({[') - stripped.count(')}]')
+end
+
+def class_constant_signatures(parent_class, source)
+  return [] unless parent_class
+
+  lines = source.lines(chomp: true)
+  class_lines = lines[(parent_class.start_line - 1)..(parent_class.end_line - 1)] || []
+  constants = []
+  class_lines.each_with_index do |line, offset|
+    next unless line =~ /^\s*([A-Z]\w*)\s*=/
+
+    name = Regexp.last_match(1)
+    start_idx = offset
+    end_idx = offset
+    depth = ruby_structural_delta(line)
+    while depth.positive? && end_idx < class_lines.length - 1 && (end_idx - start_idx) < 8
+      end_idx += 1
+      depth += ruby_structural_delta(class_lines[end_idx])
+    end
+    slice = class_lines[start_idx..end_idx].first(8).join("\n")
+    constants << {
+      name: name,
+      line: parent_class.start_line + start_idx,
+      slice: slice
+    }
+  end
+  constants
+end
+
 def git_output(*args)
   cmd = ['git', *args].shelljoin
   out = `#{cmd} 2>/dev/null`
@@ -259,15 +294,21 @@ end
 
 # === Main ===
 
+large_mode = ARGV.delete('--large')
+large_mode ||= ARGV.delete('--full')
+
 if ARGV.empty? || ARGV[0] == '--help'
   puts "Usage:"
-  puts "  ruby #{$0} <file>:<function_name> [debug]"
-  puts "  ruby #{$0} <file>#<line_number> [debug]"
+  puts "  ruby #{$0} [--large|--full] <file>:<function_name> [debug]"
+  puts "  ruby #{$0} [--large|--full] <file>:<class_or_module.function_name> [debug]"
+  puts "  ruby #{$0} [--large|--full] <file>#<line_number> [debug]"
   puts ""
   puts "Examples:"
   puts "  ruby #{$0} src/mir/hoist.rb:hoist_body!         # Print function body"
   puts "  ruby #{$0} src/mir/hoist.rb#142                  # Print function at line 142"
-  puts "  ruby #{$0} src/mir/hoist.rb:hoist_body! debug    # Print with context"
+  puts "  ruby #{$0} src/mir/hoist.rb:hoist_body! debug    # Print compact context"
+  puts "  ruby #{$0} --large src/mir/hoist.rb:hoist_body! debug"
+  puts "                                                      # Add class-level signatures"
   exit 0
 end
 
@@ -275,7 +316,7 @@ arg = ARGV[0]
 debug_mode = ARGV[1] == 'debug'
 
 # Parse the argument
-if arg =~ /^(.+?):(\w+[?!]?)$/
+if arg =~ /^(.+?):([A-Za-z_]\w*(?:(?:\.|::)[A-Za-z_]\w*)*[?!]?)$/
   file_path = $1
   fn_name = $2
 elsif arg =~ /^(.+?)#(\d+)$/
@@ -362,8 +403,9 @@ if debug_mode
     end
   end
   
-  # Class methods (if in a class)
-  if parent_class
+  # Class-level signatures are intentionally large-mode only. They are useful
+  # for missing-method/constant bugs, but noisy as a default context payload.
+  if large_mode && parent_class
     sibling_methods = parent_class.children.select { |c| c.type == :def && c.name != fn.name }
     if sibling_methods.any?
       puts ""
@@ -372,6 +414,16 @@ if debug_mode
         sig_line = source.split("\n")[sm.start_line - 1]&.strip || ''
         puts "  #{file_path}:#{sm.name}(...)  -- line #{sm.start_line}"
         puts "    #{sig_line[0..80]}"
+      end
+    end
+
+    constants = class_constant_signatures(parent_class, source)
+    if constants.any?
+      puts ""
+      puts "--- Class Constants in #{parent_class.name} ---"
+      constants.each do |const|
+        puts "  #{file_path}:#{parent_class.name}::#{const[:name]} -- line #{const[:line]}"
+        puts const[:slice].lines.map { |line| "    #{line.rstrip}" }.join
       end
     end
   end

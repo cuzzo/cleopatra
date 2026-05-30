@@ -29,12 +29,12 @@ def initialize(level:, message:, token:, category:, fixes:)
   end
 ```
 
-CLASS CONSTANT: FixableFinding::LEVELS (lines 73-73)
+CLASS CONSTANT SIGNATURE: FixableFinding::LEVELS (lines 73-73)
 ```ruby
   LEVELS = [:hint, :info, :warning, :error].freeze
 ```
 
-CLASS CONSTANT: FixableFinding::CATEGORIES (lines 74-74)
+CLASS CONSTANT SIGNATURE: FixableFinding::CATEGORIES (lines 74-74)
 ```ruby
   CATEGORIES = [:lint, :ownership, :capability, :escape, :type, :registry].freeze
 ```

@@ -26,31 +26,6 @@ def ==(other)
     end
 ```
 
-CLASS CONSTANT: OwnershipDataflow::UNINIT (lines 280-280)
-```ruby
-  UNINIT      = :uninit
-```
-
-CLASS CONSTANT: OwnershipDataflow::OWNED (lines 281-281)
-```ruby
-  OWNED       = :owned
-```
-
-CLASS CONSTANT: OwnershipDataflow::MOVED (lines 282-282)
-```ruby
-  MOVED       = :moved
-```
-
-CLASS CONSTANT: OwnershipDataflow::MAYBE_MOVED (lines 283-283)
-```ruby
-  MAYBE_MOVED = :maybe_moved
-```
-
-CLASS CONSTANT: OwnershipDataflow::OwnerEntry (lines 288-288)
-```ruby
-  OwnerEntry = Struct.new(:state, :allocator, :needs_cleanup, keyword_init: true) do
-```
-
 ============================================================
 WORKTREE STATE
 ============================================================

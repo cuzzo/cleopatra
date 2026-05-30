@@ -28,11 +28,6 @@ def initialize(description:, confidence: :interactive, edits:)
   end
 ```
 
-CLASS CONSTANT: Fix::CONFIDENCES (lines 54-54)
-```ruby
-  CONFIDENCES = [:auto, :interactive].freeze
-```
-
 ============================================================
 WORKTREE STATE
 ============================================================

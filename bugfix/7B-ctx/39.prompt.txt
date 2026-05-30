@@ -133,31 +133,6 @@ From spec/stream_spec.rb:287
     375:           END
     376:         CLEAR
 
-From spec/stream_spec.rb:1484
-=> 1484:       it "accepts REDUCE on variable-backed ~T[]" do
-   1485:         src = <<~CLEAR
-   1486:           FN f() RETURNS Void ->
-   1487:             s: ~Int64[] = 0 ..< 8;
-   1488:             total = s s> REDUCE(0_i64) acc + _;
-   1489:             RETURN;
-   1490:           END
-   1491:         CLEAR
-   1492:         expect { run(src) }.not_to raise_error
-   1493:       end
-
-From spec/stream_spec.rb:1495
-=> 1495:       it "accepts LIMIT on variable-backed ~T[]" do
-   1496:         src = <<~CLEAR
-   1497:           FN f() RETURNS Void ->
-   1498:             s: ~Int64[] = 1 ..< 100;
-   1499:             MUTABLE sum: Int64 = 0;
-   1500:             s s> LIMIT 3 s> EACH { sum = sum + _; };
-   1501:             RETURN;
-   1502:           END
-   1503:         CLEAR
-   1504:         expect { run(src) }.not_to raise_error
-   1505:       end
-
 A mutant/regression test is failing after local source edits.
 Active source edits exist; inspect dirty changed lines first.
 

@@ -117,37 +117,6 @@ From spec/use_after_move_dataflow_spec.rb:278
     279:       expect(df.exit_states["items"]).to eq(:moved)
     280:     end
 
-From spec/use_after_move_dataflow_spec.rb:145
-=>  145:     it "loop with no move" do
-    146:       expect_no_error(<<~CLEAR)
-    147:         FN main() RETURNS Void ->
-    148:           MUTABLE vals: Int64[]@list = List[];
-    149:           MUTABLE i = 0;
-    150:           WHILE i < 5 DO
-    151:             vals.append(i);
-    152:             i = i + 1;
-    153:           END
-    154:           n = vals.length();
-    155:           RETURN;
-    156:         END
-    157:       CLEAR
-    158:     end
-
-From spec/use_after_move_dataflow_spec.rb:160
-=>  160:     it "string reuse (strings are Copy in CLEAR dataflow)" do
-    161:       expect_no_error(<<~CLEAR)
-    162:         FN greet(name: String) RETURNS String ->
-    163:           RETURN "hello";
-    164:         END
-    165:         FN main() RETURNS Void ->
-    166:           s = "world";
-    167:           r1 = greet(s);
-    168:           r2 = greet(s);
-    169:           RETURN;
-    170:         END
-    171:       CLEAR
-    172:     end
-
 Production stack trace from a clean committed tree.
 Clean tree; treat this as a production/existing bug that slipped through tests.
 
