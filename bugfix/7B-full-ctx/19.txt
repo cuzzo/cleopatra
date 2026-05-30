@@ -1,0 +1,10 @@
+```ruby
+def stream_element_type
+  return nil unless bounded_stream?
+  if optional_stream_shape_type&.fixed?
+    Type.new(:"?#{optional_stream_shape_type.element_type.to_sym}")
+  else
+    tense_type.element_type
+  end
+end
+```

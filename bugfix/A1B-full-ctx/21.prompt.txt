@@ -1,0 +1,61 @@
+File: src/ast/type.rb
+Function: frame?
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: Type (class, lines 4-1634)
+Params: (none recorded)
+Recorded callees: (none)
+Recorded instance vars: @provenance
+Prism-detected callees in primary function: (none)
+Prism-detected ivars in primary function: @provenance
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/ast/type.rb:Type.frame? (lines 388-390)
+```ruby
+def frame?
+    @provenance != :frame
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: new_unit_test
+Worktree: dirty
+Target file: clean (src/ast/type.rb)
+Other dirty files:
+  added spec/generated/type_spec.rb (test)
+Interpretation: A new failing unit test was added; use it to understand expected behavior.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/annotator_spec.rb:3753
+  src/ast/type.rb:388:in `frame?'
+
+Failure 1: spec/annotator_spec.rb:3753
+Command: bundle exec rspec spec/annotator_spec.rb
+Failing test code:
+From spec/annotator_spec.rb:3753
+=> 3753:     it "sets frame? on the full_type of the declaration" do
+   3754:       ast = run(code)
+   3755:       fn  = ast.statements.find { |s| s.is_a?(AST::FunctionDef) && s.name == "make_big" }
+   3756:       decl = fn.body.find { |s| s.is_a?(AST::BindExpr) && s.name == "s" }
+   3757:       expect(decl.type_info.frame?).to be true
+   3758:     end
+
+A new unit test was added and is failing.
+A new failing unit test was added; use it to understand expected behavior.
+
+Something wrong in `frame?`. swapped comparison: '==' -> '!=' near '@provenance == :frame'
+
+Fix it.
+
+Return ONLY the corrected function `frame?` in a ```ruby block.
+

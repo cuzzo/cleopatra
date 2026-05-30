@@ -1,0 +1,6 @@
+```ruby
+def dynamic?
+  # It is dynamic if it is an array, but has NO fixed capacity
+  array? || capacity.nil?
+end
+```

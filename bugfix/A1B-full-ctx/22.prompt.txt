@@ -1,0 +1,112 @@
+File: src/ast/error_registry.rb
+Function: enum_entries
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: AST (module, lines 1-130)
+Params: (none recorded)
+Recorded callees: sort_by
+Recorded instance vars: (none)
+Prism-detected callees in primary function: sort_by
+Prism-detected ivars in primary function: (none)
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/ast/error_registry.rb:AST.enum_entries (lines 121-123)
+```ruby
+def self.enum_entries
+    [[:ERROR_TYPES, ERROR_NAME_NONE]] + ERROR_TYPES.map { |sym, meta| [sym, meta[:id]] }.sort_by(&:last)
+  end
+```
+
+CLASS CONSTANT SIGNATURE: AST::ERROR_NAME_NONE (lines 26-26)
+```ruby
+  ERROR_NAME_NONE         = 0
+```
+
+CLASS CONSTANT SIGNATURE: AST::ERROR_TYPES (lines 41-45)
+```ruby
+  ERROR_TYPES = {
+    LockTimeout: { kind: :Transient, zig_name: "LockTimeout", id: ERROR_NAME_LOCK_TIMEOUT, first_site: nil },
+    LockCycle:   { kind: :Transient, zig_name: "LockCycle",   id: ERROR_NAME_LOCK_CYCLE,   first_site: nil },
+    Deadlock:    { kind: :System,    zig_name: "Deadlock",    id: ERROR_NAME_DEADLOCK,     first_site: nil },
+  }
+```
+
+CLASS CONSTANT SIGNATURE: AST::ERROR_NAME_LOCK_TIMEOUT (lines 27-27)
+```ruby
+  ERROR_NAME_LOCK_TIMEOUT = 1
+```
+
+CLASS CONSTANT SIGNATURE: AST::ERROR_NAME_LOCK_CYCLE (lines 28-28)
+```ruby
+  ERROR_NAME_LOCK_CYCLE   = 2
+```
+
+CLASS CONSTANT SIGNATURE: AST::ERROR_NAME_DEADLOCK (lines 29-29)
+```ruby
+  ERROR_NAME_DEADLOCK     = 3
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: production_stack_trace
+Worktree: clean
+Target file: clean (src/ast/error_registry.rb)
+Interpretation: Clean tree; treat this as a production/existing bug that slipped through tests.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/error_registry_spec.rb:123
+  src/ast/error_registry.rb:121:in `enum_entries'
+
+Failure 1: spec/error_registry_spec.rb:123
+Command: bundle exec rspec spec/error_registry_spec.rb
+Failure output excerpt:
+     Failure/Error: expect(entries.first).to eq([:None, 0])
+       expected: [:None, 0]
+Failing test code:
+From spec/error_registry_spec.rb:132
+    130:     it "produces (:Name, id) pairs including the None=0 sentinel and stdlib at 1..3" do
+    131:       entries = AST.enum_entries
+=>  132:       expect(entries.first).to eq([:None, 0])
+    133:       expect(entries).to include([:LockTimeout, 1])
+    134:       expect(entries).to include([:LockCycle, 2])
+    135:       expect(entries).to include([:Deadlock, 3])
+    136:     end
+
+From spec/error_registry_spec.rb:126
+    115:     it "rewinds the next user id so subsequent user types start at 4" do
+    116:       AST.register_type!(:UserA, :Input)
+    117:       AST.reset_user_types!
+    118:       AST.register_type!(:UserB, :Input)
+    119:       expect(AST.id_of_type(:UserB)).to eq(AST::ERROR_NAME_USER_FIRST)
+    120:     end
+
+From spec/error_registry_spec.rb:123
+    115:     it "rewinds the next user id so subsequent user types start at 4" do
+    116:       AST.register_type!(:UserA, :Input)
+    117:       AST.reset_user_types!
+    118:       AST.register_type!(:UserB, :Input)
+    119:       expect(AST.id_of_type(:UserB)).to eq(AST::ERROR_NAME_USER_FIRST)
+    120:     end
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Bug in `AST.enum_entries` at src/ast/error_registry.rb:121.
+Issue: swapped constant: 'None' -> 'ERROR_TYPES'
+
+  spec/error_registry_spec.rb:123
+  src/ast/error_registry.rb:121:in `enum_entries'
+
+Fix it.
+
+Return ONLY the corrected function `enum_entries` in a ```ruby block.
+

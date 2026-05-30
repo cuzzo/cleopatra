@@ -1,0 +1,8 @@
+```ruby
+def initialize
+    @locals = {}
+    @dependencies = {}
+    @owned_names = Set.new  # Variables declared in THIS scope (not inherited from parent)
+    @types = {}  # Add this line to initialize the @types instance variable
+  end
+```

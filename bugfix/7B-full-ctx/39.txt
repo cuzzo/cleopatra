@@ -1,0 +1,5 @@
+```ruby
+def stream?
+  dynamic_stream? && bounded_stream? && open_stream? && inf_stream? && split_open_stream?
+end
+```

@@ -1,0 +1,150 @@
+File: src/ast/parser.rb
+Function: parse_fn_type_annotation
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: Parser (class, lines 10-3167)
+Params: (none recorded)
+Recorded callees: consume, match?, match!, FN, new
+Recorded instance vars: @reentrant
+Prism-detected callees in primary function: FN, consume, match!, match?, new
+Prism-detected ivars in primary function: @reentrant
+Included related functions: Parser.match?, Parser.match!
+
+BUG TARGET FUNCTION: src/ast/parser.rb:Parser.parse_fn_type_annotation (lines 2128-2159)
+```ruby
+def parse_fn_type_annotation
+    consume(:KEYWORD, 'FN')
+    consume(:CHAR, '(')
+    param_types = []
+    until match?(:CHAR, ')')
+      # Allow optional name annotation: `name: Type` or just `Type`
+      if match?(:VAR_ID) && peek.type != :CHAR && peek.value == ':'
+        consume(:VAR_ID)   # name is for documentation only
+        consume(:CHAR, ':')
+      end
+      param_types << parse_type_annotation
+      break unless match!(:CHAR, ',')
+    end
+    consume(:CHAR, ')')
+    consume(:ARROW, '->')
+    return_type = parse_type_annotation
+    # Parse optional @reentrant capability on fn-type annotations.
+    # FN(Int64) -> Bool @reentrant means the parameter accepts @reentrant functions.
+    allows_reentrant = false
+    if match?(:VAR_ID) && current.value == '@reentrant'
+      consume(:VAR_ID)
+      allows_reentrant = true
+    end
+    Type.new({
+      params: param_types.each_with_index.map { |t, i|
+        { name: "arg#{i}", type: t, required: true, mutable: false, takes: false }
+      },
+      return: { type: return_type },
+      fn_type: true,
+      reentrant: allows_reentrant
+    })
+  end
+```
+
+RELATED FUNCTION: src/ast/parser.rb:Parser.match! (lines 544-550)
+```ruby
+def match!(type, value=nil)
+    if match?(type, value)
+      consume(type) # We already know it matches, so this is safe
+    else
+      false
+    end
+  end
+```
+
+RELATED FUNCTION: src/ast/parser.rb:Parser.match? (lines 539-541)
+```ruby
+def match?(type, val=nil)
+    current.type == type && (val.nil? || current.value == val)
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: new_unit_test
+Worktree: dirty
+Target file: clean (src/ast/parser.rb)
+Other dirty files:
+  added spec/generated/parser_spec.rb (test)
+Interpretation: A new failing unit test was added; use it to understand expected behavior.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/first_class_function_spec.rb:35
+  src/ast/parser.rb:2128:in `parse_fn_type_annotation'
+
+Failure 1: spec/first_class_function_spec.rb:35
+Command: bundle exec rspec spec/first_class_function_spec.rb
+Failure output excerpt:
+     Failure/Error: expect { run(code) }.not_to raise_error
+       expected no Exception, got #<ParserError:"\n\e[31m[Parser Error]\e[0m Expected TYPE_ID, got n (VAR_ID) line 1\n\e[90mLocation:\e...   | \n  1 | cb: FN(n: Int64) -> Bool = %(n: Int64) -> n > 0;\n    | \e[31m       ^\e[0m\n    | \n"> with backtrace:
+Failing test code:
+From spec/first_class_function_spec.rb:12
+      4: require "fileutils"
+      5: 
+      6: require_relative "../src/backends/transpiler"
+      7: require_relative "../src/ast/ast"
+      8: 
+      9: RSpec.describe SemanticAnnotator do
+     10:   def run(source)
+     11:     tokens = Lexer.new(source).tokenize
+=>   12:     ast = Parser.new(tokens, source).parse
+     13:     annotator = SemanticAnnotator.new
+     14:     annotator.annotate!(ast)
+     15:     return ast
+     16:   end
+     17: 
+     18:   def get_last_type(source)
+     19:     run(source).statements.last.resolved_type
+     20:   end
+
+From spec/first_class_function_spec.rb:62
+     61:         it "parses without error (name is documentation only)" do
+=>   62:           expect { run(code) }.not_to raise_error
+     63:         end
+
+From spec/first_class_function_spec.rb:35
+     27:   # ===========================================================================
+     28:   describe "Function Types — Phase 1 (FN(T) -> R type annotations)" do
+     29: 
+     30:     def transpile(source)
+     31:       ZigTranspiler.new.transpile(source)
+     32:     end
+     33: 
+     34:     # -------------------------------------------------------------------------
+=>   35:     # Parser: parse_fn_type_annotation
+     36:     # -------------------------------------------------------------------------
+     37:     describe "Parser" do
+     38:       context "FN(Int64) -> Bool in a type annotation position" do
+     39:         let(:code) { "cb: FN(Int64) -> Bool = %(n: Int64) -> n > 0;" }
+     40:         it "parses without error" do
+     41:           expect { run(code) }.not_to raise_error
+     42:         end
+     43:       end
+
+A new unit test was added and is failing.
+A new failing unit test was added; use it to understand expected behavior.
+
+Test failure:
+  swapped comparison: '==' -> '!=' near ') && peek.type == :CHAR && pee'
+
+  spec/first_class_function_spec.rb:35
+  src/ast/parser.rb:2128:in `parse_fn_type_annotation'
+
+Fix the bug.
+
+Return ONLY the corrected function `parse_fn_type_annotation` in a ```ruby block.
+

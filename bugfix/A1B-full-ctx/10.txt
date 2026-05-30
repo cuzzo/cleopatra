@@ -1,0 +1,5 @@
+```ruby
+def self.enum_entries
+  [[:None, AST::ERROR_NAME_NONE]] + AST::ERROR_TYPES.map { |sym, meta| [sym, meta[:id]] }.sort_by(&:last)
+end
+```

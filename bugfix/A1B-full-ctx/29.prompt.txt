@@ -1,0 +1,103 @@
+File: src/mir/ownership_graph.rb
+Function: []
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: OwnershipGraph (class, lines 15-260)
+Params: (none recorded)
+Recorded callees: (none)
+Recorded instance vars: @nodes
+Prism-detected callees in primary function: (none)
+Prism-detected ivars in primary function: @nodes
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/mir/ownership_graph.rb:OwnershipGraph.[] (lines 217-219)
+```ruby
+def [](path)
+    @nodes[path]
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: production_stack_trace
+Worktree: clean
+Target file: clean (src/mir/ownership_graph.rb)
+Interpretation: Clean tree; treat this as a production/existing bug that slipped through tests.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/collections_spec.rb:37
+  src/mir/ownership_graph.rb:217:in `[]'
+
+Failure 1: spec/collections_spec.rb:37
+Command: bundle exec rspec spec/collections_spec.rb
+Failing test code:
+From spec/collections_spec.rb:14
+      6: require_relative "../src/backends/transpiler"
+      7: require_relative "../src/ast/ast"
+      8: 
+      9: RSpec.describe SemanticAnnotator do
+     10:   def run(source)
+     11:     tokens = Lexer.new(source).tokenize
+     12:     ast = Parser.new(tokens, source).parse
+     13:     annotator = SemanticAnnotator.new
+=>   14:     annotator.annotate!(ast)
+     15:     return ast
+     16:   end
+     17: 
+     18:   def get_last_type(source)
+     19:     run(source).statements.last.resolved_type
+     20:   end
+     21: 
+     22:   let(:ast) { run(code) }
+
+From spec/collections_spec.rb:607
+    606:       it "returns ?T for @set[item] lookup" do
+=>  607:         ast = run(<<~CLEAR)
+    608:           FN f() RETURNS Void ->
+    609:             MUTABLE s: Int64[]@set = [];
+    610:             s.insert(1);
+    611:             val = s[1];
+    612:             RETURN;
+    613:           END
+    614:         CLEAR
+    615:         fn = ast.statements.first
+    616:         val_bind = fn.body.find { |s| s.respond_to?(:name) && s.name == "val" }
+    617:         expect(val_bind.full_type.optional?).to be true
+    618:       end
+    619:     end
+
+From spec/collections_spec.rb:37
+=>   37:       it "accepts User[]@list as a valid type annotation" do
+     38:         expect {
+     39:           run(<<~CLEAR)
+     40:             STRUCT User { name: String }
+     41:             FN f() RETURNS Void ->
+     42:               MUTABLE items: User[]@list = [];
+     43:               RETURN;
+     44:             END
+     45:           CLEAR
+     46:         }.not_to raise_error
+     47:       end
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Bug in `OwnershipGraph.[]` at src/mir/ownership_graph.rb:217.
+Issue: off-by-one: added +1 to index ''
+
+  spec/collections_spec.rb:37
+  src/mir/ownership_graph.rb:217:in `[]'
+
+Fix it.
+
+Return ONLY the corrected function `[]` in a ```ruby block.
+

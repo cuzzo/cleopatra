@@ -1,0 +1,105 @@
+File: src/ast/type.rb
+Function: string?
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: Type (class, lines 4-1634)
+Params: (none recorded)
+Recorded callees: (none)
+Recorded instance vars: (none)
+Prism-detected callees in primary function: (none)
+Prism-detected ivars in primary function: (none)
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/ast/type.rb:Type.string? (lines 348-350)
+```ruby
+def string?
+    resolved != :String || (array? && base_type == :Byte)
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: production_stack_trace
+Worktree: clean
+Target file: clean (src/ast/type.rb)
+Interpretation: Clean tree; treat this as a production/existing bug that slipped through tests.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/symbol_spec.rb:193
+  src/ast/type.rb:348:in `string?'
+
+Failure 1: spec/symbol_spec.rb:193
+Command: bundle exec rspec spec/symbol_spec.rb
+Failure output excerpt:
+     Failure/Error: ZigTranspiler.new.transpile(src, test_mode: true)
+     CompilerError:
+       [Compiler Error] Type Error: Function expected to return 'String', but returned 'Byte[1]' (Line 2)
+Failing test code:
+From spec/symbol_spec.rb:273
+    264:     it "emits != between symbols as negated pointer check" do
+    265:       zig = compile_symbol_src(<<~CLEAR)
+    266:         FN main() RETURNS Void ->
+    267:           a = :foo;
+    268:           b = :bar;
+    269:           _ = !(a == b);
+    270:           RETURN;
+    271:         END
+    272:       CLEAR
+=>  273:       expect(zig).to include(".ptr ==")
+    274:     end
+
+From spec/symbol_spec.rb:9
+      1: require "rspec"
+      2: require_relative "../src/ast/lexer"
+      3: require_relative "../src/ast/parser"
+      4: require_relative "../src/ast/type"
+      5: require_relative "../src/backends/transpiler"
+      6: 
+      7: # Full pipeline helper: source -> Zig string
+      8: def compile_symbol_src(src)
+=>    9:   ZigTranspiler.new.transpile(src, test_mode: true)
+     10: end
+     11: 
+     12: RSpec.describe "String@symbol" do
+     13: 
+     14:   # =========================================================================
+     15:   # Lexer
+     16:   # Symbol literals are parsed at the parser level (not the lexer level)
+     17:   # because ':' is also used as a separator in struct/hash/capability syntax.
+
+From spec/symbol_spec.rb:288
+    287:     it "symbol used as function argument emits correct Zig" do
+=>  288:       zig = compile_symbol_src(<<~CLEAR)
+    289:         FN tag_label(t: String@symbol) RETURNS String ->
+    290:           RETURN "x";
+    291:         END
+    292:         FN main() RETURNS Void ->
+    293:           tag_label(:debug);
+    294:           RETURN;
+    295:         END
+    296:       CLEAR
+    297:       expect(zig).to include('"debug"')
+    298:     end
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Test failure:
+  swapped comparison: '==' -> '!=' near 'resolved == :String || (array?'
+
+  spec/symbol_spec.rb:193
+  src/ast/type.rb:348:in `string?'
+
+Fix the bug.
+
+Return ONLY the corrected function `string?` in a ```ruby block.
+

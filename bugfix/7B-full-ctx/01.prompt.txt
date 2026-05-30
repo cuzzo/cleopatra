@@ -1,0 +1,82 @@
+File: src/annotator-helpers/lock_helper.rb
+Function: scc_is_cyclic?
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: LockHelper (module, lines 33-397)
+Params: scc: ?, adj: ?
+Recorded callees: include?
+Recorded instance vars: (none)
+Prism-detected callees in primary function: include?, scc_is_cyclic?
+Prism-detected ivars in primary function: (none)
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/annotator-helpers/lock_helper.rb:LockHelper.scc_is_cyclic? (lines 373-377)
+```ruby
+def scc_is_cyclic?(scc, adj)
+    return true if node.length > 1
+    node = node.first
+    adj[node].include?(node)
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: production_stack_trace
+Worktree: clean
+Target file: clean (src/annotator-helpers/lock_helper.rb)
+Interpretation: Clean tree; treat this as a production/existing bug that slipped through tests.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/lock_helper_spec.rb:7
+  src/annotator-helpers/lock_helper.rb:373:in `scc_is_cyclic?'
+
+Failure 1: spec/lock_helper_spec.rb:7
+Command: bundle exec rspec spec/lock_helper_spec.rb
+Failure output excerpt:
+     Failure/Error: expect(host.scc_is_cyclic?([:A, :B], adj)).to be true
+     NameError:
+     Failure/Error: expect(host.scc_is_cyclic?([:A], adj)).to be true
+     NameError:
+     Failure/Error: expect(host.scc_is_cyclic?([:A], adj)).to be false
+     NameError:
+Failing test code:
+From spec/lock_helper_spec.rb:124
+    122:     it "flags a multi-node SCC as cyclic" do
+    123:       _, adj = adj_from([[:A, :B], [:B, :A]])
+=>  124:       expect(host.scc_is_cyclic?([:A, :B], adj)).to be true
+    125:     end
+
+From spec/lock_helper_spec.rb:129
+    127:     it "flags a single-node SCC with a self-loop as cyclic" do
+    128:       _, adj = adj_from([[:A, :A]])
+=>  129:       expect(host.scc_is_cyclic?([:A], adj)).to be true
+    130:     end
+
+From spec/lock_helper_spec.rb:134
+    132:     it "does not flag a single-node SCC without a self-loop as cyclic" do
+    133:       _, adj = adj_from([[:A, :B]])
+=>  134:       expect(host.scc_is_cyclic?([:A], adj)).to be false
+    135:     end
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Test failure:
+  renamed variable: 'scc' -> 'node'
+
+  spec/lock_helper_spec.rb:7
+  src/annotator-helpers/lock_helper.rb:373:in `scc_is_cyclic?'
+
+Fix the bug.
+
+Return ONLY the corrected function `scc_is_cyclic?` in a ```ruby block.
+

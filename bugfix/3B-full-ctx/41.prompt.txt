@@ -1,0 +1,79 @@
+File: src/ast/type.rb
+Function: provenance_alloc
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: Type (class, lines 4-1633)
+Params: (none recorded)
+Recorded callees: (none)
+Recorded instance vars: @provenance
+Prism-detected callees in primary function: (none)
+Prism-detected ivars in primary function: @provenance
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/ast/type.rb:Type.provenance_alloc (lines 406-411)
+```ruby
+def provenance_alloc
+    case @provenance
+    when :heap  then :heap
+    else nil
+    end
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: dirty_source_change
+Worktree: dirty
+Target file: dirty (src/ast/type.rb)
+  lines 409-409: mutated bug line
+  lines 410-410: mutated bug line
+  lines 411-411: mutated bug line
+Interpretation: Active source edits exist; inspect dirty changed lines first.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/type_provenance_spec.rb:22
+  src/ast/type.rb:406:in `provenance_alloc'
+
+Failure 1: spec/type_provenance_spec.rb:22
+Command: bundle exec rspec spec/type_provenance_spec.rb
+Failure output excerpt:
+     Failure/Error: expect(t.provenance_alloc).to eq(:frame)
+       expected: :frame
+Failing test code:
+From spec/type_provenance_spec.rb:22
+     18:   it "can be set to :frame" do
+     19:     t = Type.new(:String)
+     20:     t.provenance = :frame
+     21:     expect(t.frame_provenance?).to be true
+=>   22:     expect(t.provenance_alloc).to eq(:frame)
+     23:   end
+
+From spec/type_provenance_spec.rb:18
+=>   18:   it "can be set to :frame" do
+     19:     t = Type.new(:String)
+     20:     t.provenance = :frame
+     21:     expect(t.frame_provenance?).to be true
+     22:     expect(t.provenance_alloc).to eq(:frame)
+     23:   end
+
+A mutant/regression test is failing after local source edits.
+Active source edits exist; inspect dirty changed lines first.
+
+CI broken.
+
+  spec/type_provenance_spec.rb:22
+  src/ast/type.rb:406:in `provenance_alloc'
+
+Fix the bug.
+
+Return ONLY the corrected function `provenance_alloc` in a ```ruby block.
+

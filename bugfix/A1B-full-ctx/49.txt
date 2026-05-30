@@ -1,0 +1,10 @@
+```ruby
+def ==(other)
+  if other.is_a?(Type) && other.responds?(:fn_type) && other.fn_type?
+    other_t = other
+    return false unless other_t.fn_type?
+    return @raw == other_t.raw
+  end
+  resolved == other.to_sym && @raw == other
+end
+```

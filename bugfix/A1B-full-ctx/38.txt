@@ -1,0 +1,7 @@
+```ruby
+def dig(*keys)
+  return self[keys.first] if keys.length == 1
+  val = self[keys.first]
+  val.is_a?(Hash) ? val.dig(*keys[1..]) : nil
+end
+```

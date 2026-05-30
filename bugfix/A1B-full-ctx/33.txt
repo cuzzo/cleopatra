@@ -1,0 +1,8 @@
+```ruby
+def parse(response)
+  raise "Parser error: attempt 1: empty response" unless response.is_a?(String) && response.present?
+  # Add parsing logic here
+  # Example: return JSON.parse(response) if needed
+  nil
+end
+```

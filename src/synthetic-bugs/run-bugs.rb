@@ -150,6 +150,7 @@ def prompt_context_chars_for_category(cat)
 end
 
 def ctx_mode_for_category(cat)
+  return CTX_LARGE if cat.include?('full-ctx') || cat.include?('large-ctx')
   return CTX_LARGE if cat.start_with?('32B') || cat.start_with?('405B')
 
   CTX_COMPACT

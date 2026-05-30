@@ -1,0 +1,122 @@
+File: src/ast/scope.rb
+Function: lookup_type_schema
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: ScopeHelper (module, lines 226-271)
+Params: name: ?
+Recorded callees: sub, Top, Bottom, resolve_type_definition
+Recorded instance vars: @scope_stack
+Prism-detected callees in primary function: Bottom, Top, lookup_type_schema, resolve_type_definition, sub
+Prism-detected ivars in primary function: @scope_stack
+Included related functions: Scope.resolve_type_definition
+
+BUG TARGET FUNCTION: src/ast/scope.rb:ScopeHelper.lookup_type_schema (lines 253-262)
+```ruby
+def lookup_type_schema(name)
+    # For generic instances like :"Pair<Number>", look up the base type ":Pair"
+    scope = name.to_s.sub(/<.*>$/, '').to_sym
+    # Search from Top (newest) to Bottom (global)
+    @scope_stack.reverse_each do |scope|
+      schema = scope.resolve_type_definition(scope)
+      return schema if schema
+    end
+    nil
+  end
+```
+
+RELATED FUNCTION: src/ast/scope.rb:Scope.resolve_type_definition (lines 113-116)
+```ruby
+def resolve_type_definition(name)
+    entry = @types[name]
+    entry ? entry[:schema] : nil
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: new_unit_test
+Worktree: dirty
+Target file: clean (src/ast/scope.rb)
+Other dirty files:
+  added spec/generated/scope_spec.rb (test)
+Interpretation: A new failing unit test was added; use it to understand expected behavior.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/ownership_dataflow_spec.rb:194
+  src/ast/scope.rb:253:in `lookup_type_schema'
+
+Failure 1: spec/ownership_dataflow_spec.rb:194
+Command: bundle exec rspec spec/ownership_dataflow_spec.rb
+Failing test code:
+From spec/ownership_dataflow_spec.rb:194
+    177:     it "never under-guards vs CleanupClassifier" do
+    178:       test_files = Dir.glob("transpile-tests/*.cht").sort
+    179:       under_guarded = []
+    180: 
+    181:       test_files.each do |f|
+    182:         next if File.read(f).include?("REQUIRE")
+    183:         begin
+    184:           code = File.read(f)
+    185:           tokens = Lexer.new(code).tokenize
+    186:           ast = Parser.new(tokens, code).parse
+    187:           PipelineRewriter.new.rewrite!(ast)
+    188:           ann = SemanticAnnotator.new
+    189:           ann.annotate!(ast)
+    190:           StringConcatRewriter.new.rewrite!(ast)
+    191: 
+    192:           fn_nodes = {}
+    193:           ast.statements.each { |s| fn_nodes[s.name] = s if s.is_a?(AST::FunctionDef) }
+=>  194:           schema = ->(n) { ann.lookup_type_schema(n) }
+    195: 
+    196:           fn_nodes.each do |name, fn|
+    197:             next unless fn.body
+    198:             bindings = CleanupClassifier.classify(fn, fn_nodes: fn_nodes, schema_lookup: schema)
+    199:             next if bindings.empty?
+    200: 
+    201:             df = OwnershipDataflow.analyze(fn)
+    202:             summary = df.cleanup_summary
+    203: 
+    204:             bindings.each do |var, entry|
+    205:               next unless entry[:needs_cleanup]
+    206:               plan_guard = entry[:has_moved_guard] || false
+    207:               df_entry = summary[var]
+    208:               next unless df_entry
+    209:               df_guard = df_entry[:has_moved_guard]
+    210:               # Under-guard: dataflow says guard needed but plan says no
+    211:               if !plan_guard && df_guard
+    212:                 under_guarded << "#{File.basename(f)} #{name}() #{var}"
+    213:               end
+    214:             end
+    215:           end
+    216:         rescue
+    217:           # Skip files with parse/annotation errors
+    218:         end
+    219:       end
+    220: 
+    221:       expect(under_guarded).to eq([])
+    222:     end
+    223:   end
+    224: end
+
+A new unit test was added and is failing.
+A new failing unit test was added; use it to understand expected behavior.
+
+Bug in `ScopeHelper.lookup_type_schema` at src/ast/scope.rb:253.
+Issue: renamed variable: 'base_name' -> 'scope'
+
+  spec/ownership_dataflow_spec.rb:194
+  src/ast/scope.rb:253:in `lookup_type_schema'
+
+Fix it.
+
+Return ONLY the corrected function `lookup_type_schema` in a ```ruby block.
+

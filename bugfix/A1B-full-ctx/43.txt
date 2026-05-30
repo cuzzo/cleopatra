@@ -1,0 +1,10 @@
+```ruby
+def annotate!(node)
+  return unless node
+  return if node.is_a?(Symbol)
+
+  # Dynamic Dispatch
+  method_name = "visit_#{node.class.name.split('::').last}"
+  send(method_name, node)
+end
+```

@@ -1,0 +1,64 @@
+File: src/mir/ownership_graph.rb
+Function: initialize
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: OwnershipGraph (class, lines 15-259)
+Params: (none recorded)
+Recorded callees: (none)
+Recorded instance vars: @nodes, @edges, @edges_by_target, @edges_by_source, @children
+Prism-detected callees in primary function: (none)
+Prism-detected ivars in primary function: @children, @edges, @edges_by_source, @nodes
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/mir/ownership_graph.rb:OwnershipGraph.initialize (lines 31-36)
+```ruby
+def initialize
+    @nodes = {}           # path => Node
+    @edges = []           # Array of Edge
+    @edges_by_source = Hash.new { |h, k| h[k] = [] }  # source_path => [Edge]
+    @children = Hash.new { |h, k| h[k] = Set.new }    # parent_path => Set of child paths
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: dirty_source_change
+Worktree: dirty
+Target file: dirty (src/mir/ownership_graph.rb)
+  lines 31-37: entire function edited
+Interpretation: Active source edits exist; inspect dirty changed lines first.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/annotator_spec.rb:1102
+  src/mir/ownership_graph.rb:31:in `initialize'
+
+Failure 1: spec/annotator_spec.rb:1102
+Command: bundle exec rspec spec/annotator_spec.rb
+Failing test code:
+From spec/annotator_spec.rb:1102
+   1101:         it "raises a Fixed Array Size Mismatch error" do
+=> 1102:           expect { ast }.to raise_error(/Cannot initialize array of size/i)
+   1103:         end
+
+A mutant/regression test is failing after local source edits.
+Active source edits exist; inspect dirty changed lines first.
+
+Suspect bug in `initialize` at src/mir/ownership_graph.rb:31.
+Issue: forgotten line: '@edges_by_target = Hash.new { |h, k| h[k] = [] }  # target_path => [Edge]'
+
+  spec/annotator_spec.rb:1102
+  src/mir/ownership_graph.rb:31:in `initialize'
+
+Fix it.
+
+Return ONLY the corrected function `initialize` in a ```ruby block.
+

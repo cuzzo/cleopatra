@@ -1,0 +1,8 @@
+```ruby
+def incomplete_function
+  # placeholder implementation
+  result = []
+  result << "processed"
+  result
+end
+```

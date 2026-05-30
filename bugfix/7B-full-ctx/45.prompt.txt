@@ -1,0 +1,117 @@
+File: src/ast/ast.rb
+Function: walk_body
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: AST (module, lines 6-944)
+Params: (none recorded)
+Recorded callees: is_a?, walk_body, MatchStatement, DoBlock
+Recorded instance vars: (none)
+Prism-detected callees in primary function: DoBlock, MatchStatement, is_a?, walk_body
+Prism-detected ivars in primary function: (none)
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/ast/ast.rb:AST.walk_body (lines 11-43)
+```ruby
+def self.walk_body(body, &visitor)
+    return unless nodes
+    nodes = nodes.is_a?(Array) ? nodes : [nodes]
+    nodes.each do |node|
+      yield node
+      case node
+      when IfStatement
+        walk_body(node.then_branch, &visitor)
+        walk_body(node.else_branch, &visitor)
+      when MatchStatement
+        (node.cases || []).each { |c| walk_body(c[:nodes], &visitor) }
+        walk_body(node.default_case, &visitor) if node.default_case
+      when WhileLoop, WhileBindLoop
+        walk_body(node.do_branch, &visitor)
+      when ForRange, ForEach
+        walk_body(node.nodes, &visitor)
+      when BgBlock, BgStreamBlock
+        walk_body(node.nodes, &visitor)
+      when WithBlock
+        walk_body(node.nodes, &visitor)
+      when DoBlock
+        (node.branches || []).each { |b| walk_body(b[:nodes], &visitor) }
+      when FunctionDef
+        walk_body(node.nodes, &visitor)
+      when TestBlock
+        walk_body(node.setup, &visitor)
+        node.whens&.each do |w|
+          walk_body(w.setup, &visitor)
+          w.tests&.each { |t| walk_body(t.nodes, &visitor) }
+        end
+      end
+    end
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: new_unit_test
+Worktree: dirty
+Target file: clean (src/ast/ast.rb)
+Other dirty files:
+  added spec/generated/ast_spec.rb (test)
+Interpretation: A new failing unit test was added; use it to understand expected behavior.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/annotator_spec.rb:2174
+  src/ast/ast.rb:11:in `walk_body'
+
+Failure 1: spec/annotator_spec.rb:2174
+Command: bundle exec rspec spec/annotator_spec.rb
+Failure output excerpt:
+rspec ./spec/annotator_spec.rb:4186 # SemanticAnnotator Integer literal overflow detection prefixed literals default to Byte accepts 0xFF (=255) where Byte expected
+rspec ./spec/annotator_spec.rb:4202 # SemanticAnnotator Integer literal overflow detection prefixed literals coerce to wider types accepts 0o755 where UInt32 expected
+rspec ./spec/annot
+... truncated ...
+ted (minimum)
+rspec ./spec/annotator_spec.rb:4234 # SemanticAnnotator Integer literal overflow detection negated literals in declarations rejects -32769 where Int16 expected
+rspec ./spec/annotator_spec.rb:4239 # SemanticAnnotator Integer literal overflow detection negated literals in declarations rejects negative value where unsigned type expected
+Failing test code:
+From spec/annotator_spec.rb:2174
+   2139:       it "emits CheatLib.charAtCodepoint (UTF-8) for regular String" do
+   2140:         out = transpile_fn(<<~CLEAR)
+   2141:           data = "hello";
+   2142:           ch = charAt(data, 1);
+   2143:         CLEAR
+   2144:         expect(out).to include("charAtCodepoint")
+   2145:         expect(out).not_to include("CheatLib.charAt(data")
+   2146:       end
+   2147:     end
+
+From spec/annotator_spec.rb:4173
+=> 4173:       it "accepts return within range" do
+   4174:         expect { transpile("FN f() RETURNS Byte -> RETURN 255; END") }.not_to raise_error
+   4175:       end
+
+From spec/annotator_spec.rb:4177
+=> 4177:       it "rejects return out of range" do
+   4178:         expect { transpile("FN f() RETURNS Byte -> RETURN 256; END") }
+   4179:           .to raise_error(/overflow/i)
+   4180:       end
+
+A new unit test was added and is failing.
+A new failing unit test was added; use it to understand expected behavior.
+
+Bug in `AST.walk_body` at src/ast/ast.rb:11.
+Issue: renamed variable: 'body' -> 'nodes'
+
+  spec/annotator_spec.rb:2174
+  src/ast/ast.rb:11:in `walk_body'
+
+Fix it.
+
+Return ONLY the corrected function `walk_body` in a ```ruby block.
+

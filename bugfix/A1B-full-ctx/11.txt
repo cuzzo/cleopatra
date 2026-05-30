@@ -1,0 +1,7 @@
+```ruby
+def fetch_data
+  response = HTTParty.get("https://api.example.com/data")
+  raise "Parser error: attempt 1: empty response" unless response.body.present?
+  JSON.parse(response.body)
+end
+```

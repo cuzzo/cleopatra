@@ -1,0 +1,11 @@
+```ruby
+def initialize(description:, raise:, edits:)
+  unless CONFIDENCES.include?(raise)
+    raise ArgumentError, "Fix.raise must be one of #{CONFIDENCES}, got #{raise.inspect}"
+  end
+  @description = description
+  @raise = raise
+  @edits = Array(edits)
+  raise ArgumentError, "Fix needs at least one edit" if @edits.empty?
+end
+```

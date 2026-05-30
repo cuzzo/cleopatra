@@ -1,0 +1,170 @@
+File: src/mir/control_flow.rb
+Function: collect_binding_moves
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: OwnershipDataflow (class, lines 279-874)
+Params: node: ?, state: ?
+Recorded callees: collect_ownership_transfers
+Recorded instance vars: (none)
+Prism-detected callees in primary function: collect_binding_moves
+Prism-detected ivars in primary function: (none)
+Included related functions: OwnershipDataflow.collect_ownership_transfers
+
+RELATED FUNCTION: src/mir/control_flow.rb:OwnershipDataflow.collect_ownership_transfers (lines 646-702)
+```ruby
+def collect_ownership_transfers(node, state, consumed)
+    return unless node
+
+    case node
+    when AST::Identifier
+      name = node.name.to_s
+      return unless state[name]
+      return if copy_type?(node) # Copy types are never consumed
+      consumed << name
+
+    when AST::StructLit
+      node.fields&.each_value { |v| collect_ownership_transfers(v, state, consumed) }
+
+    when AST::MethodCall
+      # Union constructors: U.Variant(payload) - payload transfers ownership.
+      # Regular method calls in binding RHS: only was_moved args.
+      # Distinguish by token type: TYPE_ID = union constructor, VAR_ID = method call.
+      if node.object.is_a?(AST::Identifier) && node.object.token&.type == :TYPE_ID
+        node.args&.each { |a| collect_ownership_transfers(a, state, consumed) }
+      else
+        collect_explicit_in(node, state, consumed)
+      end
+
+    when AST::FuncCall
+      collect_explicit_in(node, state, consumed)
+
+    when AST::ListLit
+      node.items&.each { |i| collect_ownership_transfers(i, state, consumed) }
+
+    when AST::MoveNode
+      inner = node.value
+      if inner.is_a?(AST::Identifier)
+        name = inner.name.to_s
+        consumed << name if state[name]
+      end
+
+    when AST::CopyNode, AST::CloneNode, AST::FreezeNode
+      # COPY / FREEZE do NOT move the source.
+
+    when AST::CapabilityWrap
+      # Unwrap: S{ field: x } @shared still consumes x.
+      collect_ownership_transfers(node.value, state, consumed)
+
+    when AST::BgBlock, AST::BgStreamBlock
+      # Resources captured by BG fibers transfer ownership.
+      node.capture_analysis&.resource_captures&.each do |name|
+        consumed << name if state[name]
+      end
+      # GIVE x inside the BG body moves the outer x into the fiber.
+      collect_bg_body_gives(node).each do |name|
+        consumed << name if state[name]
+      end
+
+    else
+      collect_explicit_in(node, state, consumed)
+    end
+  end
+```
+
+BUG TARGET FUNCTION: src/mir/control_flow.rb:OwnershipDataflow.collect_binding_moves (lines 639-643)
+```ruby
+def collect_binding_moves(node, state)
+    return [] unless node
+    consumed = Set.new
+    consumed.to_a
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: dirty_source_change
+Worktree: dirty
+Target file: dirty (src/mir/control_flow.rb)
+  lines 641-641: nearby edited line
+  lines 642-642: mutated bug line
+  lines 643-643: nearby edited line
+Interpretation: Active source edits exist; inspect dirty changed lines first.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/use_after_move_dataflow_spec.rb:278
+  src/mir/control_flow.rb:639:in `collect_binding_moves'
+
+Failure 1: spec/use_after_move_dataflow_spec.rb:278
+Command: bundle exec rspec spec/use_after_move_dataflow_spec.rb
+Failure output excerpt:
+     Failure/Error: expect(entry.state).to eq(:moved)
+       expected: :moved
+     Failure/Error: expect(df.exit_states["a"]).to eq(:moved)
+       expected: :moved
+Failing test code:
+From spec/use_after_move_dataflow_spec.rb:279
+    270:     it "direct return of collection marks source as moved" do
+    271:       df = analyze_state(<<~CLEAR, "makeList")
+    272:         FN makeList() RETURNS Int64[] ->
+    273:           MUTABLE items: Int64[]@list = List[];
+    274:           items.append(1_i64);
+    275:           RETURN items;
+    276:         END
+    277:       CLEAR
+    278:       # Direct return of identifier: marked as moved by collect_binding_moves
+=>  279:       expect(df.exit_states["items"]).to eq(:moved)
+    280:     end
+
+From spec/use_after_move_dataflow_spec.rb:306
+    296:     it "return preserves allocator info on moved OwnerEntry" do
+    297:       df = analyze_state(<<~CLEAR, "makeList")
+    298:         FN makeList() RETURNS Int64[] ->
+    299:           MUTABLE items: Int64[]@list = List[];
+    300:           items.append(1_i64);
+    301:           RETURN items;
+    302:         END
+    303:       CLEAR
+    304:       entry = df.exit_states["items"]
+    305:       if entry.is_a?(OwnershipDataflow::OwnerEntry)
+=>  306:         expect(entry.state).to eq(:moved)
+    307:         expect(entry.allocator).not_to be_nil
+    308:       end
+    309:     end
+
+From spec/use_after_move_dataflow_spec.rb:338
+    328:     it "non-Copy assignment marks source as moved" do
+    329:       df = analyze_state(<<~CLEAR)
+    330:         STRUCT User { id: Int64 }
+    331:         FN main() RETURNS Void ->
+    332:           a: %User = User{ id: 1 };
+    333:           b = a;
+    334:           RETURN;
+    335:         END
+    336:       CLEAR
+    337:       # Direct assignment of non-Copy heap struct IS a move
+=>  338:       expect(df.exit_states["a"]).to eq(:moved)
+    339:       expect(df.exit_states["b"]).to eq(:owned)
+    340:     end
+
+A mutant/regression test is failing after local source edits.
+Active source edits exist; inspect dirty changed lines first.
+
+Test failure:
+  forgotten line: 'collect_ownership_transfers(node, state, consumed)'
+
+  spec/use_after_move_dataflow_spec.rb:278
+  src/mir/control_flow.rb:639:in `collect_binding_moves'
+
+Fix the bug.
+
+Return ONLY the corrected function `collect_binding_moves` in a ```ruby block.
+

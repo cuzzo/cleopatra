@@ -1,0 +1,115 @@
+File: src/annotator-helpers/function_signature.rb
+Function: dig
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: FunctionSignature (class, lines 7-137)
+Params: *keys: ?
+Recorded callees: is_a?, dig
+Recorded instance vars: (none)
+Prism-detected callees in primary function: dig, is_a?
+Prism-detected ivars in primary function: (none)
+Included related functions: FunctionSignature.is_a?
+
+BUG TARGET FUNCTION: src/annotator-helpers/function_signature.rb:FunctionSignature.dig (lines 104-108)
+```ruby
+def dig(*keys)
+    val = self[keys.first]
+    return val if !(keys.length == 1)
+    val.is_a?(Hash) ? val.dig(*keys[1..]) : nil
+  end
+```
+
+RELATED FUNCTION: src/annotator-helpers/function_signature.rb:FunctionSignature.is_a? (lines 99-102)
+```ruby
+def is_a?(klass)
+    return true if klass == Hash  # many sites check is_a?(Hash) to detect function sigs
+    super
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: new_unit_test
+Worktree: dirty
+Target file: clean (src/annotator-helpers/function_signature.rb)
+Other dirty files:
+  added spec/generated/function_signature_spec.rb (test)
+Interpretation: A new failing unit test was added; use it to understand expected behavior.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/allocation_strategy_spec.rb:83
+  src/annotator-helpers/function_signature.rb:104:in `dig'
+
+Failure 1: spec/allocation_strategy_spec.rb:83
+Command: bundle exec rspec spec/allocation_strategy_spec.rb
+Failing test code:
+From spec/allocation_strategy_spec.rb:36
+     28: 
+     29:   # --- helpers ----------------------------------------------------------------
+     30: 
+     31:   def run_mir(src)
+     32:     tokens = Lexer.new(src).tokenize
+     33:     ast = Parser.new(tokens, src).parse
+     34:     PipelineRewriter.new.rewrite!(ast)
+     35:     annotator = SemanticAnnotator.new
+=>   36:     annotator.annotate!(ast)
+     37:     StringConcatRewriter.new.rewrite!(ast)
+     38:     fn_nodes = {}
+     39:     ast.statements.each { |s| fn_nodes[s.name] = s if s.is_a?(AST::FunctionDef) }
+     40:     mir = MIRPass.new(fn_nodes: fn_nodes,
+     41:                       schema_lookup: ->(n) { annotator.lookup_type_schema(n) })
+     42:     mir.transform!(ast)
+     43:     ast
+     44:   end
+
+From spec/allocation_strategy_spec.rb:569
+    568:     it "borrow return has no MIR::Drop in function body" do
+=>  569:       ast = run_mir(<<~CLEAR)
+    570:         FN main() RETURNS Void ->
+    571:           MUTABLE raw = "  world  ";
+    572:           MUTABLE trimmed: String = raw.trim();
+    573:           RETURN;
+    574:         END
+    575:       CLEAR
+    576:       fn = main_fn(ast)
+    577:       drops = fn.body.select { |s| s.is_a?(MIR::Drop) }
+    578:       trimmed_drop = drops.any? { |d| d.name.to_s == "trimmed" }
+    579:       expect(trimmed_drop).to be false
+    580:     end
+
+From spec/allocation_strategy_spec.rb:83
+     73:     it "Int64 → storage :stack, no cleanup" do
+     74:       ast = run_mir(<<~CLEAR)
+     75:         FN main() RETURNS Void ->
+     76:           MUTABLE x = 42_i64;
+     77:           RETURN;
+     78:         END
+     79:       CLEAR
+     80:       fn = main_fn(ast)
+     81:       d = find_decl_in(fn, "x")
+     82:       expect(d.storage).to eq(:stack)
+=>   83:       expect(cleanup_entry(fn, "x")&.dig(:needs_cleanup)).to be_falsey
+     84:     end
+
+A new unit test was added and is failing.
+A new failing unit test was added; use it to understand expected behavior.
+
+Test failure:
+  negated condition: 'keys.length == 1'
+
+  spec/allocation_strategy_spec.rb:83
+  src/annotator-helpers/function_signature.rb:104:in `dig'
+
+Fix the bug.
+
+Return ONLY the corrected function `dig` in a ```ruby block.
+

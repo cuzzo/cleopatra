@@ -1,0 +1,108 @@
+File: src/ast/error_registry.rb
+Function: register_type!
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: AST (module, lines 1-130)
+Params: (none recorded)
+Recorded callees: include?
+Recorded instance vars: @next_user_id, @stdlib_frozen
+Prism-detected callees in primary function: include?, register_type!
+Prism-detected ivars in primary function: @next_user_id, @stdlib_frozen
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/ast/error_registry.rb:AST.register_type! (lines 85-105)
+```ruby
+def self.register_type!(type_sym, kind_sym, site_token: nil)
+    type_sym = ERROR_TYPES[type_sym]
+    if type_sym.nil?
+      id = @next_user_id
+      @next_user_id += 1
+      ERROR_TYPES[type_sym] = {
+        kind: kind_sym,
+        zig_name: type_sym.to_s,
+        id: id,
+        first_site: site_token,
+      }
+      return [false, nil]
+    end
+    return [true, nil] if type_sym[:kind] == kind_sym
+    [true, {
+      existing_kind: type_sym[:kind],
+      given_kind:    kind_sym,
+      first_site:    type_sym[:first_site],
+      is_stdlib:     @stdlib_frozen.include?(type_sym),
+    }]
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: production_stack_trace
+Worktree: clean
+Target file: clean (src/ast/error_registry.rb)
+Interpretation: Clean tree; treat this as a production/existing bug that slipped through tests.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/error_registry_spec.rb:50
+  src/ast/error_registry.rb:85:in `register_type!'
+
+Failure 1: spec/error_registry_spec.rb:50
+Command: bundle exec rspec spec/error_registry_spec.rb
+Failure output excerpt:
+     Failure/Error: expect(existed).to be true
+       expected true
+            got false
+     Failure/Error: expect(conflict).not_to be_nil
+       expected: not nil
+     Failure/Error: expect(conflict[:is_stdlib]).to be true
+       expected true
+            got false
+     Failure/Error: expect(AST::ERROR_TYPES[:ParseError][:first_site]).to equal(tok)
+     NoMethodError:
+       undefined method `[]' for nil:NilClass
+     Failure/Error: expect(AST.id_of_type(:A)).to eq(AST::ERROR_NAME_USER_FIRST)
+Failing test code:
+From spec/error_registry_spec.rb:61
+     57:     it "registers a new user type and assigns the next user id" do
+     58:       existed, conflict = AST.register_type!(:ParseError, :Input)
+     59:       expect(existed).to be false
+     60:       expect(conflict).to be_nil
+=>   61:       expect(AST.kind_of_type(:ParseError)).to eq(:Input)
+     62:       expect(AST.id_of_type(:ParseError)).to eq(AST::ERROR_NAME_USER_FIRST)
+     63:     end
+
+From spec/error_registry_spec.rb:53
+     45:     it "user types start at id 4" do
+     46:       expect(AST::ERROR_NAME_USER_FIRST).to eq(4)
+     47:     end
+
+From spec/error_registry_spec.rb:68
+     65:     it "returns existed=true with no conflict on a matching second registration" do
+     66:       AST.register_type!(:ParseError, :Input)
+     67:       existed, conflict = AST.register_type!(:ParseError, :Input)
+=>   68:       expect(existed).to be true
+     69:       expect(conflict).to be_nil
+     70:     end
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Test failure:
+  renamed variable: 'entry' -> 'type_sym'
+
+  spec/error_registry_spec.rb:50
+  src/ast/error_registry.rb:85:in `register_type!'
+
+Fix the bug.
+
+Return ONLY the corrected function `register_type!` in a ```ruby block.
+

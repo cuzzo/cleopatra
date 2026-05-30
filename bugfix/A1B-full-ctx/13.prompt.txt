@@ -1,0 +1,189 @@
+File: src/ast/scope.rb
+Function: declare
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: Scope (class, lines 4-222)
+Params: name: ?, reg: ?, type: ?, is_mutable: ?, is_rebindable: ?, size: ?, storage: ?, capabilities: ?, _borrowed_paths: ?, sync: nil, resource: nil, close_zig: nil
+Recorded callees: add, new
+Recorded instance vars: @owned_names, @locals
+Prism-detected callees in primary function: add, declare, new
+Prism-detected ivars in primary function: @locals, @owned_names
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/ast/scope.rb:Scope.declare (lines 15-31)
+```ruby
+def declare(name, reg, type, is_mutable = true, is_rebindable = false, size = nil, storage = :stack, capabilities = Set.new, _borrowed_paths = [], sync: nil, resource: nil, close_zig: nil)
+    @owned_names.add(name)
+    entry = SymbolEntry.new(
+      reg: reg,
+      type: type,
+      mutable: is_mutable,
+      storage: storage,
+      sync: sync,
+      rebindable: is_rebindable,
+      size: size || 0,
+      capabilities: capabilities,
+      resource: resource,
+      close_zig: close_zig,
+    )
+    entry.scope = self
+    @locals[name + 1] = entry
+  end
+```
+
+CONSTRUCTOR SIGNATURE: src/ast/symbol_entry.rb:SymbolEntry (lines 31-46)
+```ruby
+def initialize(reg:, type:, mutable:, storage:, sync: nil, rebindable: false,
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: dirty_source_change
+Worktree: dirty
+Target file: dirty (src/ast/scope.rb)
+  lines 15-31: entire function edited
+Interpretation: Active source edits exist; inspect dirty changed lines first.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/stream_spec.rb:108
+  src/ast/scope.rb:15:in `declare'
+
+Failure 1: spec/stream_spec.rb:108
+Command: bundle exec rspec spec/stream_spec.rb
+Failing test code:
+From spec/stream_spec.rb:108
+=>  108:       it "raises a directed error when a binding declares ~T@multiOwned" do
+    109:         src = <<~CLEAR
+    110:           FN f() RETURNS Void ->
+    111:             sp: ~Float64 @multiowned = BG { 1.0; };
+    112:             RETURN;
+    113:           END
+    114:         CLEAR
+    115:         expect { run(src) }.to raise_error(SourceError, /~T@multiOwned is not valid/)
+    116:       end
+
+From spec/stream_spec.rb:1387
+=> 1387:       it "suggests @shared as the correct alternative" do
+   1388:         src = <<~CLEAR
+   1389:           FN f() RETURNS Void ->
+   1390:             p: ~Float64 @multiowned = BG { 1.0; };
+   1391:             RETURN;
+   1392:           END
+   1393:         CLEAR
+   1394:         expect { run(src) }.to raise_error(/Use ~T@shared instead/)
+   1395:       end
+
+From spec/stream_spec.rb:1399
+=> 1399:       it "allows bare ~T[] in BindExpr declaration for finite streams" do
+   1400:         src = <<~CLEAR
+   1401:           FN f() RETURNS Void ->
+   1402:             s: ~Float64[] = BG STREAM { YIELD 1.0; };
+   1403:             RETURN;
+   1404:           END
+   1405:         CLEAR
+   1406:         expect { run(src) }.not_to raise_error
+   1407:       end
+   1408: 
+   1409:       it "allows bare ~T[] in VarDecl (MUTABLE declaration) path" do
+   1410:         # VarDecl path: MUTABLE declarations
+   1411:         src = <<~CLEAR
+   1412:           FN f() RETURNS Void ->
+   1413:             MUTABLE s: ~Float64[] = BG STREAM { YIELD 1.0; };
+   1414:             RETURN;
+   1415:           END
+   1416:         CLEAR
+   1417:         expect { run(src) }.not_to raise_error
+   1418:       end
+   1419: 
+   1420:       it "rejects BG STREAM as a bounded stream source" do
+   1421:         src = <<~CLEAR
+   1422:           FN f() RETURNS Void ->
+   1423:             s: ~Float64[3] = BG STREAM { YIELD 1.0; YIELD 2.0; YIELD 3.0; };
+   1424:             RETURN;
+   1425:           END
+   1426:         CLEAR
+   1427:         expect { run(src) }.to raise_error(SourceError, /Type Mismatch: Cannot assign ~\?Float64\[] to ~Float64\[3\]/)
+   1428:       end
+   1429: 
+   1430:       it "still accepts infinite streams as a separate syntax" do
+   1431:         src = <<~CLEAR
+   1432:           FN f() RETURNS Void ->
+   1433:             s: ~Float64[INF] = BG STREAM { YIELD 1.0; };
+   1434:             RETURN;
+   1435:           END
+   1436:         CLEAR
+   1437:         expect { run(src) }.not_to raise_error
+   1438:       end
+   1439: 
+   1440:       it "accepts the new open-stream spelling ~?T[]" do
+   1441:         src = <<~CLEAR
+   1442:           FN f() RETURNS Void ->
+   1443:             s: ~?Float64[] = BG STREAM { YIELD 1.0; };
+   1444:             RETURN;
+   1445:           END
+   1446:         CLEAR
+   1447:         expect { run(src) }.not_to raise_error
+   1448:       end
+   1449: 
+   1450:       it "still accepts legacy ~T[?] as an alias during migration" do
+   1451:         src = <<~CLEAR
+   1452:           FN f() RETURNS Void ->
+   1453:             s: ~Float64[?] = BG STREAM { YIELD 1.0; };
+   1454:             RETURN;
+   1455:           END
+   1456:         CLEAR
+   1457:         expect { run(src) }.not_to raise_error
+   1458:       end
+   1459: 
+   1460:       it "does NOT raise when ~T[INF] is used (valid infinite stream)" do
+   1461:         src = <<~CLEAR
+   1462:           FN f() RETURNS Void ->
+   1463:             s: ~Float64[INF] = BG STREAM { WHILE TRUE DO YIELD 1.0; END };
+   1464:             RETURN;
+   1465:           END
+   1466:         CLEAR
+   1467:         expect { run(src) }.not_to raise_error
+   1468:       end
+   1469: 
+   1470:       it "allows variable-backed ~T[] pipelines for fusible EACH chains" do
+   1471:         src = <<~CLEAR
+   1472:           FN f() RETURNS Void ->
+   1473:             s: ~Int64[] = 0 ..< 8;
+   1474:             MUTABLE acc: Int64 = 0;
+   1475:             s s> SELECT _ * 2 s> WHERE _ > 3 s> EACH {
+   1476:               acc = acc + _;
+   1477:             };
+   1478:             RETURN;
+   1479:           END
+   1480:         CLEAR
+   1481:         expect { run(src) }.not_to raise_error
+   1482:       end
+   1483: 
+   1484:       it "accepts REDUCE on variable-backed ~T[]" do
+   1485:         src = <<~CLEAR
+   1486:           FN f() RETURNS Void ->
+   1487:             s: ~Int64[] = 0 ..< 8;
+   1488:             total = s s> REDUCE(0_i64) acc + _;
+
+A mutant/regression test is failing after local source edits.
+Active source edits exist; inspect dirty changed lines first.
+
+Bug in `Scope.declare` at src/ast/scope.rb:15.
+Issue: off-by-one: added +1 to index ''
+
+  spec/stream_spec.rb:108
+  src/ast/scope.rb:15:in `declare'
+
+Fix it.
+
+Return ONLY the corrected function `declare` in a ```ruby block.
+

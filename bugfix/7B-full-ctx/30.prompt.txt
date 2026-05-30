@@ -1,0 +1,155 @@
+File: src/annotator.rb
+Function: visit_WhileLoop
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: SemanticAnnotator (class, lines 26-4490)
+Params: node: ?
+Recorded callees: visit, error!, is_a?, record_effect, iteration, analyze_control_flow_branches, visit_stmts, finalize_scope, errors, types, loop, collect_body_identifier_names, dig, moved?, include?, new, lookup_type_schema, AST, validate_tight_body!
+Recorded instance vars: @loop_depth, @og, @reentrant
+Prism-detected callees in primary function: AST, analyze_control_flow_branches, collect_body_identifier_names, dig, error!, errors, finalize_scope, include?, is_a?, iteration, lookup_type_schema, loop, moved?, new, node, record_effect, types, validate_tight_body!, visit_WhileLoop, visit_stmts
+Prism-detected ivars in primary function: @loop_depth, @og, @reentrant
+Included related functions: SemanticAnnotator.visit, SemanticAnnotator.visit_stmts
+
+BUG TARGET FUNCTION: src/annotator.rb:SemanticAnnotator.visit_WhileLoop (lines 1397-1465)
+```ruby
+def visit_WhileLoop(node)
+    # 1. Analyze Condition
+    node(node.condition)
+
+    if node.condition.resolved_type != :Bool
+      error!(node, "Condition must be a Boolean, got #{node.condition.resolved_type}")
+    end
+
+    # Effect tracking: WHILE TRUE or any non-trivially-bounded loop.
+    if node.condition.is_a?(AST::Identifier) && node.condition.name == "TRUE"
+      record_effect(EffectTracker::LOOP_UNBOUND)
+    elsif node.condition.is_a?(AST::Literal) && node.condition.value == true
+      record_effect(EffectTracker::LOOP_UNBOUND)
+    end
+
+    # 2. Analyze Body in a New Scope AND increment loop depth
+    if current_fn_ctx then current_fn_ctx.loop_depth += 1 else @loop_depth += 1 end
+
+    # We use analyze_control_flow_branches to handle state merging and drops.
+    # Note: For a loop, if a variable dies in the body, it dies for the next iteration (merged to parent).
+    pre_loop_states = @og&.fork_lightweight
+
+    analyze_control_flow_branches([
+      proc {
+        if node.do_branch.is_a?(Array)
+          visit_stmts(node.do_branch)
+        else
+          node(node.do_branch)
+        end
+        finalize_scope(node)
+
+        # Post-analysis check for loop-specific errors (use of moved value in next iteration)
+        # Copyable types (primitives, strings, slices, unions) are exempt — they're copied implicitly.
+        # Variables not referenced in the loop body are also exempt — they were moved before the
+        # loop (e.g. MATCH struct bindings with field extraction) and aren't consumed by iteration.
+        loop_body_names = collect_body_identifier_names(node.do_branch)
+        current_scope.locals.each do |name, _entry|
+          was_live = pre_loop_states&.dig(:node_states, name) == :live
+          is_moved = @og&.moved?(name)
+          if was_live && is_moved
+            next unless loop_body_names.include?(name)
+            var_type = current_scope.locals[name]&.type
+            type_obj = var_type.is_a?(Type) ? var_type : Type.new(var_type.to_s)
+            is_copy = type_obj.implicitly_copyable? { |t| lookup_type_schema(t) }
+            unless is_copy
+              error!(node, "Use of moved value '#{name}' in loop. The variable is moved in the first iteration and not available for the next.")
+            end
+          end
+        end
+        node.deferred_drops
+      }
+    ], merge_to_parent: false)
+
+    if current_fn_ctx then current_fn_ctx.loop_depth -= 1 else @loop_depth -= 1 end
+
+    # 4. TIGHT validation: deep-scan the entire loop body AST (including nested
+    # if/while/match blocks) for direct calls to @reentrant or EXTERN FN functions.
+    # Does NOT recurse into bodies of called CLEAR functions — those are separate
+    # compilation units and their internal behaviour is their own concern.
+    if node.tight
+      validate_tight_body!(node.do_branch, node)
+    end
+
+    # mark_per_iter is set by LoopFrameAnalysis in Pass 2, after CleanupClassifier
+    # has finalized every binding's allocator.
+    node.mark_per_iter = false
+
+    node.full_type = :Void
+  end
+```
+
+RELATED FUNCTION: src/annotator.rb:SemanticAnnotator.visit_stmts (lines 769-777)
+```ruby
+def visit_stmts(stmts)
+    return unless stmts.is_a?(Array)
+    saved = @stmts_after
+    stmts.each_with_index do |stmt, i|
+      @stmts_after = stmts[(i + 1)..]
+      visit(stmt)
+    end
+    @stmts_after = saved
+  end
+```
+
+RELATED FUNCTION: src/annotator.rb:SemanticAnnotator.visit (lines 223-230)
+```ruby
+def visit(node)
+    return unless node
+    return if node.is_a?(Symbol)
+
+    # Dynamic Dispatch
+    method_name = "visit_#{node.class.name.split('::').last}"
+    send(method_name, node)
+  end
+```
+
+CONSTRUCTOR SIGNATURE: src/ast/type.rb:Type (lines 152-203)
+```ruby
+def initialize(raw_input, ownership: nil, sync: nil, location: nil, collection: nil, shard_count: nil, stripe_count: nil) # stripe_count kept for backwards compat (ignored)
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: production_stack_trace
+Worktree: clean
+Target file: clean (src/annotator.rb)
+Interpretation: Clean tree; treat this as a production/existing bug that slipped through tests.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/annotator_spec.rb:1447
+  src/annotator.rb:1397:in `visit_WhileLoop'
+
+Failure 1: spec/annotator_spec.rb:1447
+Command: bundle exec rspec spec/annotator_spec.rb
+Failing test code:
+From spec/annotator_spec.rb:1447
+   1424:         it "raises error because Float64[2] != Float64[1]" do
+   1425:           expect { ast }.to raise_error(/List literal contains mixed types/)
+   1426:         end
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+CI broken.
+
+  spec/annotator_spec.rb:1447
+  src/annotator.rb:1397:in `visit_WhileLoop'
+
+Fix the bug.
+
+Return ONLY the corrected function `visit_WhileLoop` in a ```ruby block.
+

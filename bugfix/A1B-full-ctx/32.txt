@@ -1,0 +1,6 @@
+```ruby
+def collect_binding_moves(node, state)
+  return [] unless node
+  Set.new
+end
+```

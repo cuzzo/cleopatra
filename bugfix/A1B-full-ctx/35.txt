@@ -1,0 +1,5 @@
+```ruby
+def incomplete_function
+  # TODO: implement missing logic
+end
+```

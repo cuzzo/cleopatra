@@ -1,0 +1,12 @@
+```ruby
+def lookup_type_schema(name)
+    # For generic instances like :"Pair<Number>", look up the base type ":Pair"
+    scope = name.to_s.sub(/<.*>$/, '').to_sym
+    # Search from Top (newest) to Bottom (global)
+    @scope_stack.reverse_each do |scope|
+      schema = scope.resolve_type_definition(scope)
+      return schema if schema
+    end
+    nil
+  end
+```

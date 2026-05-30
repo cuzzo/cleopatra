@@ -1,0 +1,6 @@
+```ruby
+def scc_is_cyclic?(scc, adj)
+  return true if scc.length > 1
+  scc.first.tell?([scc.first], adj)
+end
+```

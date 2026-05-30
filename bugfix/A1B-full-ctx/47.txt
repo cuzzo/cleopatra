@@ -1,0 +1,14 @@
+```ruby
+def self.stmt(type, value, node_class = nil, pattern = nil, inject: [], &block)
+  if block
+    @@stmt_rules[[type, value]] = lambda do
+      start_token = current
+      args = process_pattern(block)
+      args.concat(inject)
+      node_class.new(start_token, *args)
+    end
+  else
+    @@stmt_rules[[type, value]] = block
+  end
+end
+```

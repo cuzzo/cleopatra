@@ -1,0 +1,161 @@
+File: src/ast/type.rb
+Function: dynamic?
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: Type (class, lines 4-1634)
+Params: (none recorded)
+Recorded callees: (none)
+Recorded instance vars: (none)
+Prism-detected callees in primary function: (none)
+Prism-detected ivars in primary function: (none)
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/ast/type.rb:Type.dynamic? (lines 356-359)
+```ruby
+def dynamic?
+    # It is dynamic if it is an array, but has NO fixed capacity
+    array? || capacity.nil?
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: production_stack_trace
+Worktree: clean
+Target file: clean (src/ast/type.rb)
+Interpretation: Clean tree; treat this as a production/existing bug that slipped through tests.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/stream_spec.rb:691
+  src/ast/type.rb:356:in `dynamic?'
+
+Failure 1: spec/stream_spec.rb:691
+Command: bundle exec rspec spec/stream_spec.rb
+Failing test code:
+From spec/stream_spec.rb:691
+=>  691:       it "dynamic? is false for Float64[?] (it is not dynamic — it is open-stream)" do
+    692:         t = Type.new(:"Float64[?]")
+    693:         expect(t.dynamic?).to be false
+    694:       end
+    695:     end
+
+From spec/stream_spec.rb:1154
+=> 1154:       it "emits CheatLib.InfStream(f64) for ~Float64[INF]" do
+   1155:         expect(Type.new(:"~Float64[INF]").zig_type).to eq "CheatLib.InfStream(f64)"
+   1156:       end
+   1157: 
+   1158:       it "emits CheatLib.InfStream(bool) for ~Bool[INF]" do
+   1159:         expect(Type.new(:"~Bool[INF]").zig_type).to eq "CheatLib.InfStream(bool)"
+   1160:       end
+   1161:     end
+   1162: 
+   1163:     # -------------------------------------------------------------------
+   1164:     # Parser: [INF] in type annotations
+   1165:     # -------------------------------------------------------------------
+   1166:     describe "parser" do
+   1167:       it "parses ~Float64[INF] as a type annotation" do
+   1168:         src = <<~CLEAR
+   1169:           FN f() RETURNS Void ->
+   1170:             s: ~Float64[INF] = BG STREAM { WHILE TRUE DO YIELD 1.0; END };
+   1171:             RETURN;
+   1172:           END
+   1173:         CLEAR
+   1174:         expect { run(src) }.not_to raise_error
+   1175:       end
+   1176:     end
+   1177: 
+   1178:     # -------------------------------------------------------------------
+   1179:     # Annotator: BgStreamBlock with ~T[INF] declared type
+   1180:     # -------------------------------------------------------------------
+   1181:     describe "BgStreamBlock annotation with ~T[INF]" do
+   1182:       it "infers ~Float64[INF] type when declared as ~Float64[INF]" do
+   1183:         src = <<~CLEAR
+   1184:           FN f() RETURNS Void ->
+   1185:             s: ~Float64[INF] = BG STREAM { WHILE TRUE DO YIELD 1.0; END };
+   1186:             RETURN;
+   1187:           END
+   1188:         CLEAR
+   1189:         ast = run(src)
+   1190:         fn_node = ast.statements.first
+   1191:         decl = fn_node.body.first
+   1192:         expect(decl.value.full_type.inf_stream?).to be true
+   1193:         expect(decl.value.full_type.inf_stream_element_type.resolved).to eq :Float64
+   1194:       end
+   1195: 
+   1196:       it "infers ~Bool[INF] when YIELD produces Bool" do
+   1197:         src = <<~CLEAR
+   1198:           FN f() RETURNS Void ->
+   1199:             s: ~Bool[INF] = BG STREAM { WHILE TRUE DO YIELD TRUE; END };
+   1200:             RETURN;
+   1201:           END
+   1202:         CLEAR
+   1203:         ast = run(src)
+   1204:         fn_node = ast.statements.first
+   1205:         decl = fn_node.body.first
+   1206:         expect(decl.value.full_type.inf_stream?).to be true
+   1207:         expect(decl.value.full_type.inf_stream_element_type.resolved).to eq :Bool
+   1208:       end
+   1209:     end
+   1210: 
+   1211:     # -------------------------------------------------------------------
+   1212:     # NextExpr on ~T[INF] returns T (not ?T)
+   1213:     # -------------------------------------------------------------------
+   1214:     describe "NextExpr on ~T[INF]" do
+   1215:       it "NEXT on ~Float64[INF] returns Float64 (not ?Float64)" do
+   1216:         src = <<~CLEAR
+   1217:           FN f() RETURNS Void ->
+   1218:             s: ~Float64[INF] = BG STREAM { WHILE TRUE DO YIELD 1.0; END };
+   1219:             v: Float64 = NEXT s;
+   1220:             RETURN;
+   1221:           END
+   1222:         CLEAR
+   1223:         ast = run(src)
+   1224:         fn_node = ast.statements.first
+   1225:         next_decl = fn_node.body[1]
+   1226:         expect(next_decl.value.full_type.optional?).to be false
+   1227:         expect(next_decl.value.full_type.resolved).to eq :Float64
+   1228:       end
+   1229: 
+   1230:       it "NEXT on ~Bool[INF] returns Bool (not ?Bool)" do
+   1231:         src = <<~CLEAR
+   1232:           FN f() RETURNS Void ->
+   1233:             s: ~Bool[INF] = BG STREAM { WHILE TRUE DO YIELD TRUE; END };
+   1234:             v: Bool = NEXT s;
+   1235:             RETURN;
+   1236:           END
+   1237:         CLEAR
+   1238:         ast = run(src)
+   1239:         fn_node = ast.statements.first
+   1240:         next_decl = fn_node.body[1]
+   1241:         expect(next_decl.value.full_type.optional?).to be false
+   1242:         expect(next_decl.value.full_type.resolved).to eq :Bool
+   1243:       end
+
+From spec/stream_spec.rb:1158
+=> 1158:       it "emits CheatLib.InfStream(bool) for ~Bool[INF]" do
+   1159:         expect(Type.new(:"~Bool[INF]").zig_type).to eq "CheatLib.InfStream(bool)"
+   1160:       end
+   1161:     end
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Bug in `Type.dynamic?` at src/ast/type.rb:356.
+Issue: swapped && -> ||
+
+  spec/stream_spec.rb:691
+  src/ast/type.rb:356:in `dynamic?'
+
+Fix it.
+
+Return ONLY the corrected function `dynamic?` in a ```ruby block.
+
