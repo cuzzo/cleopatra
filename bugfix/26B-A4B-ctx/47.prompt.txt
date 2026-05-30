@@ -1,0 +1,144 @@
+File: src/ast/parser.rb
+Function: stmt
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: Parser (class, lines 10-3167)
+Params: (none recorded)
+Recorded callees: process_pattern, concat, new
+Recorded instance vars: @stmt_rules
+Prism-detected callees in primary function: concat, new, process_pattern, stmt
+Prism-detected ivars in primary function: @stmt_rules
+Included related functions: Parser.process_pattern
+
+RELATED FUNCTION: src/ast/parser.rb:Parser.process_pattern (lines 370-398)
+```ruby
+def process_pattern(pattern)
+    captures = []
+
+    pattern.each do |item|
+      case item
+      # RULE 1: String Literal -> Match & Ignore
+      # Example: '=', ';'
+      when String
+        consume_literal(item)
+
+      # RULE 2: Hash -> Optional
+      # Example: { ':' => :type_annotation }
+      when Hash
+        trigger, action = item.first # Get key/value pair
+
+        if match_literal!(trigger)
+          captures << run_action(action)
+        else
+          captures << :Any
+        end
+
+      # RULE 3: Symbol -> Capture Token or Run Method
+      when Symbol
+        captures << run_action(item)
+      end
+    end
+
+    captures
+  end
+```
+
+BUG TARGET FUNCTION: src/ast/parser.rb:Parser.stmt (lines 17-29)
+```ruby
+def self.stmt(type, value, node_class = nil, pattern = nil, inject: [], &block)
+    if block
+      # If block provided, create a block that runs the engine
+      @@stmt_rules[[type, value]] = lambda do
+        start_token = current
+        args = process_pattern(block)
+        args.concat(inject)
+        node_class.new(start_token, *args)
+      end
+    else
+      @@stmt_rules[[type, value]] = block
+    end
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: new_unit_test
+Worktree: dirty
+Target file: clean (src/ast/parser.rb)
+Other dirty files:
+  added spec/generated/parser_spec.rb (test)
+Interpretation: A new failing unit test was added; use it to understand expected behavior.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/mir_comparison_spec.rb:45
+  src/ast/parser.rb:17:in `stmt'
+
+Failure 1: spec/mir_comparison_spec.rb:45
+Command: bundle exec rspec spec/mir_comparison_spec.rb
+Failure output excerpt:
+      Failure/Error: old_zig = ZigTranspiler.new.transpile(src)
+      NoMethodError:
+        undefined method `each' for #<Proc:0x00007115e5af20c8 /home/yahn/cleopatra/.eval/cheat/src/ast/parser.rb:79>
+Failing test code:
+From spec/mir_comparison_spec.rb:594
+    585:     it "produces complete Zig for enum + match" do
+    586:       src = <<~CLEAR
+    587:         ENUM Dir { N, S, E, W }
+    588:         FN main() RETURNS Void ->
+    589:           d: Dir = Dir.N;
+    590:           MATCH d START Dir.N -> ASSERT TRUE, "ok";, DEFAULT -> ASSERT FALSE, "bad"; END
+    591:           RETURN;
+    592:         END
+    593:       CLEAR
+=>  594:       zig = ZigTranspiler.new.transpile_mir(src)
+    595:       expect(zig).to include("Dir")
+    596:       expect(zig).to include("enum")
+    597:       expect(zig).to include("clearMain")
+    598:     end
+    599: 
+    600:     it "matches old transpiler structure for simple programs" do
+    601:       src = <<~CLEAR
+    602:         STRUCT Point { x: Number }
+    603:         FN main() RETURNS Void ->
+    604:           p = Point { x: 42 };
+    605:           ASSERT p.x == 42, "fail";
+    606:           RETURN;
+    607:         END
+    608:       CLEAR
+    609:       old_zig = ZigTranspiler.new.transpile(src)
+    610:       new_zig = ZigTranspiler.new.transpile_mir(src)
+    611: 
+    612:       # Both should have the same structural elements
+    613:       expect(new_zig).to include("Point")
+    614:       expect(new_zig).to include("clearMain")
+    615:       expect(new_zig).to include("pub fn main()")
+    616: 
+    617:       # Both should have runtime imports
+    618:       expect(old_zig).to include("CheatHeader")
+    619:       expect(new_zig).to include("CheatHeader")
+    620:     end
+    621:   end
+    622: end
+
+A new unit test was added and is failing.
+A new failing unit test was added; use it to understand expected behavior.
+
+Test failure:
+  renamed variable: 'pattern' -> 'block'
+
+  spec/mir_comparison_spec.rb:45
+  src/ast/parser.rb:17:in `stmt'
+
+Fix the bug.
+
+Return ONLY the corrected function `stmt` in a ```ruby block.
+

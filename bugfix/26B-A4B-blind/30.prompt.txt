@@ -1,0 +1,2394 @@
+File: src/annotator.rb
+Function: visit_WhileLoop
+
+Source file excerpt centered around `SemanticAnnotator.visit_WhileLoop`:
+```ruby
+# ... file truncated before line 245; centered around SemanticAnnotator.visit_WhileLoop lines 1397-1465 ...
+    # Register all type definitions first so they can be used in function signatures.
+    node.statements.each do |stmt|
+      visit(stmt) if stmt.is_a?(AST::StructDef) || stmt.is_a?(AST::ExternStructDecl) ||
+                     stmt.is_a?(AST::EnumDef)   || stmt.is_a?(AST::UnionDef)
+    end
+
+    # PASS 2: Hoist Function Signatures (FunctionDef + ExternFnDecl)
+    # Register function signatures in the global scope.
+    # This allows functions to call other functions defined later in the file.
+    node.statements.each do |stmt|
+      pre_register_function(stmt) if stmt.is_a?(AST::FunctionDef)
+      visit_ExternFnDecl(stmt)    if stmt.is_a?(AST::ExternFnDecl)
+    end
+
+    # PASS 2.5: Validate union method requirements.
+    # All function signatures are now registered; check that required methods exist.
+    # Methods with default bodies that have no concrete override are synthesized here.
+    @synthetic_fns = []
+    node.statements.each do |stmt|
+      next unless stmt.is_a?(AST::UnionDef) && stmt.methods&.any?
+      validate_union_methods!(stmt)
+    end
+    # Pre-register synthesized default functions so Pass 3 bodies can call them.
+    @synthetic_fns.each { |fn| pre_register_function(fn) }
+
+    # PASS 2.9: Seed the error-type registry from every RAISE site that
+    # provides both a kind and a type. This pre-pass means CATCH Type
+    # clauses can reference types registered by later-in-source RAISE
+    # sites (source order independence). Collision diagnostics still
+    # point at the first-seen site since register_type! records the
+    # token.
+    seed_error_types_from_raises!(node)
+
+    # PASS 3: Analyze Logic
+    # Visit all statements in order.
+    # - VarDecls will be registered here (linear scoping).
+    # - FunctionDefs will be visited "fully" here (analyzing their bodies).
+    node.statements.each do |stmt|
+      # Skip nodes already processed in earlier passes.
+      next if stmt.is_a?(AST::StructDef)    || stmt.is_a?(AST::RequireNode) ||
+              stmt.is_a?(AST::ExternFnDecl) || stmt.is_a?(AST::ExternStructDecl) ||
+              stmt.is_a?(AST::EnumDef)      || stmt.is_a?(AST::UnionDef)
+
+      visit(stmt)
+    end
+
+    # Analyze synthesized default function bodies and append to program so
+    # the transpiler emits them as top-level Zig functions.
+    @synthetic_fns.each do |fn|
+      visit_FunctionDef(fn)
+      node.statements << fn
+    end
+
+    # PASS 4: Indirect reentrancy cycle detection.
+    # Now that all function bodies have been analyzed and @call_graph is complete,
+    # detect mutually-recursive function groups and require @reentrant or @nonReentrant.
+    check_indirect_reentrancy!
+
+    # PASS 5: Compute needs_rt and can_fail for every function via call-graph fixed-point.
+    compute_needs_rt!
+    compute_can_fail!
+
+    # PASS 5b: Functions referenced as fn-type values must match the fn-pointer calling
+    # convention (*Runtime, params) !return. Mark them needs_rt=true so their signatures
+    # are compatible with the fn-type Zig type emitted by type.rb#zig_type.
+    mark_fn_value_references!(node)
+
+    # PASS 6: Compute effect sets for every function via call-graph fixed-point.
+    compute_effects!
+
+    # PASS 6b: Static lock-cycle / self-deadlock detection. Propagates
+    # lock acquires through @call_graph, synthesizes held-while-calling
+    # edges, then runs SCC over the global held->acquired graph and
+    # reports any cycles.
+    check_lock_cycles!
+
+    # PASS 7: Compute stack tier recommendations per function.
+    compute_stack_tiers!
+
+    # PASS 8: Auto-size fiber spawns (BG/DO blocks) from call-graph analysis.
+    assign_fiber_stack_tiers!(node)
+
+    # PASS 9: Copy computed metadata to FunctionSignature objects in scope.
+    # This allows callers to read needs_rt, can_fail, return_provenance from
+    # the signature without needing @fn_nodes.
+    @fn_nodes.each do |name, fn|
+      sig = fn.full_type
+      # Unwrap Type objects that wrap a FunctionSignature (e.g. @reentrant functions
+      # whose full_type was set to a Type by fn-type resolution).
+      if sig.is_a?(Type) && sig.raw.is_a?(FunctionSignature)
+        sig = sig.raw
+      end
+      next unless sig.is_a?(FunctionSignature)
+      sig.needs_rt = fn.needs_rt
+      sig.can_fail = fn.can_fail
+      sig.return_provenance = fn.return_provenance
+      sig.effects = fn.effects
+      sig.stack_tier = fn.stack_tier
+    end
+
+    # Determine Program Result Type (Type of the last statement)
+    if node.statements.any?
+      node.full_type = node.statements.last.full_type
+    else
+      node.full_type = :Void
+    end
+  end
+
+  def visit_RequireNode(node)
+    unless @importer
+      error!(node, "REQUIRE is only supported when using the Importer. " \
+                   "Pass importer: and source_dir: to SemanticAnnotator.new.")
+    end
+
+    mod = if node.kind == :package
+      @importer.compile_package(node.path, caller_dir: @source_dir)
+    else
+      @importer.compile_file(node.path, caller_dir: @source_dir)
+    end
+    node.full_type = :Void
+
+    # Packages are always external — only :pub symbols are importable.
+    same_dir = (node.kind != :package) && (mod.source_dir == @source_dir)
+
+    # Import function signatures that are visible from this call site.
+    mod.global_scope.locals.each do |name, entry|
+      sig = entry.type
+      next unless sig.is_a?(FunctionSignature) || (sig.is_a?(Hash) && sig.key?(:params))
+
+      # For package imports: skip functions that were themselves imported from
+      # another module (they have a pre-existing module_alias). Those functions
+      # live in their own package's Zig module and must be accessed through it.
+      next if node.kind == :package && sig.module_alias
+
+      # For local imports: skip re-exporting functions that were imported from
+      # a deeper module. They live in their original namespace's struct wrapper
+      # and the requiring file already has them with the correct module_alias.
+      next if node.kind != :package && sig.module_alias
+
+      vis = sig.visibility || :package
+      importable = (vis == :pub) || (vis == :package && same_dir)
+      next unless importable
+
+      # Tag the signature with the namespace so the transpiler can qualify calls.
+      imported_sig = sig.merge(module_alias: node.namespace)
+      current_scope.declare(name, nil, imported_sig, false, false, nil, :static)
+    end
+
+    # Import type definitions (structs, unions, enums) respecting visibility.
+    mod.global_scope.types.each do |type_name, type_entry|
+      vis = type_entry[:schema][:visibility] || :package
+      next if vis == :private
+      next unless (vis == :pub) || (vis == :package && same_dir)
+      current_scope.declare_type(type_name, type_entry[:schema])
+    end
+  end
+
+  # EXTERN FN name(params) RETURNS type FROM "module"
+  # Registers a native Zig/C function in the current scope.
+  # At call sites, no rt is injected and no try is emitted.
+  def visit_ExternFnDecl(node)
+    signature = FunctionSignature.new(
+      params: node.params.map { |p| {
+        name: p[:name],
+        type: p[:type],
+        required: p[:default].nil?,
+        mutable: p[:mutable] || false,
+        comptime: p[:comptime] || false
+      }},
+      return_type: node.return_type || :Any,
+      visibility: :pub,
+      extern: true,
+      module_alias: node.from_module,
+      extern_effects: node.effects || {},
+      fn_type_params: node.fn_type_params || [],
+      type_params: (node.fn_type_params || []).any? ? (node.fn_type_params || []) : nil,
+      owner_type: node.owner_type,
+      owner_type_params: node.owner_type_params || []
+    )
+
+    if node.owner_type
+      # EXTERN FN TypeName<T>.method(...) — register as method on the type
+      type_sym = node.owner_type.to_sym
+      type_schema = current_scope.types[type_sym]&.dig(:schema)
+      if type_schema.is_a?(Hash)
+        type_schema[:methods] ||= {}
+        type_schema[:methods][node.name] = signature
+      end
+    else
+      # Free function — register in scope as before
+      current_scope.declare(node.name, nil, signature, false, false, nil, :static)
+    end
+    node.full_type = :Void
+  end
+
+  # EXTERN STRUCT Name<T> { fields } [CLOSE "method"] FROM "module"
+  # Registers a native Zig/C struct type for CLEAR type-checking.
+  # CLOSE makes it a resource type — auto-defer cleanup via RAII.
+  def visit_ExternStructDecl(node)
+    schema = node.fields.transform_keys(&:to_s).transform_values { |f| f[:type] }
+    type_params = node.respond_to?(:type_params) ? node.type_params : nil
+    schema[:type_params] = type_params if type_params&.any?
+    schema[:extern_module] = node.from_module
+
+    if node.close_method && node.from_module
+      schema[:kind] = :resource
+      # Instance method call: parsed.deinit() — not a module-level function.
+      schema[:close_zig] = "{0}.#{node.close_method}()"
+    end
+    schema[:as_type] = node.as_type if node.as_type
+
+    current_scope.declare_type(node.name.to_sym, schema)
+    node.full_type = :Void
+  end
+
+  def pre_register_function(node)
+    signature = FunctionSignature.new(
+      params: node.params.map { |p| {
+        name: p[:name],
+        type: p[:type],
+        required: p[:default].nil?,
+        default: p[:default],
+        mutable: p[:mutable],
+        takes: p[:takes] || false,
+        sync: (p[:type].is_a?(Type) && p[:type].any_sync?) ? p[:type].sync : nil
+      }},
+      return_type: (node.return_type || :Any),
+      return_lifetime: get_lifetime_path(node),
+      visibility: node.visibility,
+      reentrant: node.reentrant == :reentrant
+    )
+    signature.requires = node.requires
+
+    current_scope.declare(
+      node.name,
+      nil,        # Reg (Unused in Analyzer)
+      signature,  # Type Info
+      false,      # Mutable?
+      false,      # Rebindable?
+      nil,        # Size
+      :static     # Storage
+    )
+  end
+
+  # TODO: Implement return_strategy for lambdas
+  # TODO: Implement force heap for USE
+  # Unifies analysis for callables (Functions and Lambdas).
+  # Handles scope entry, parameter/capture declaration, body analysis, 
+  # cleanup generation, and return-type inference.
+  #
+  # @param node [AST::FunctionDef, AST::LambdaLit]
+  # @param body [AST::Node, Array<AST::Node>]
+  # @param declared_return [Symbol] The explicitly declared return type (or :Any)
+  # @param is_implicit [Boolean] True if no return type was specified in source
+  # @return [Symbol] The final resolved/inferred return type
+  #
+  def visit_LambdaLit(node)
+    # Lambdas are always implicit return unless we add syntax for it later
+    return_type = analyze_routine(node, node.body, :Any, true)
+
+    # Build standard signature (same format as user-defined functions)
+    # This enables verify_function_signature! to validate lambda calls
+    node.full_type = build_lambda_signature(node.params, return_type)
+  end
+
+  def visit_FunctionDef(node)
+    effects_begin_function(node.name)
+
+    # 1. Setup metadata
+    is_implicit_return = node.return_type.nil?
+    declared_return = node.return_type || :Any
+    lifetime_path = get_lifetime_path(node)
+    fn_type_params = (node.type_params || []).map(&:to_sym)
+    @function_context_stack.push(FunctionContext.new(
+      name: node.name, return_type: declared_return,
+      lifetime: lifetime_path, type_params: fn_type_params
+    ))
+
+    # 2. Validation & Lifetime
+    has_mutable_param = node.params.any? { |p| p[:mutable] }
+    if has_mutable_param && !node.name.end_with?("!")
+      error!(node, "Style Error: Function '#{node.name}' has MUTABLE parameters. Its name must end in '!'")
+    end
+    verify_lifetime!(node)
+
+    # Validate generic type params on the function definition
+    validate_type_param_list!(node, node.type_params, "function") if fn_type_params.any?
+
+    # Make type params visible during type annotation validation
+    node.params.each { |p| validate_type_annotation!(node, p[:type], is_param: true) if p[:type].is_a?(Type) }
+    validate_type_annotation!(node, node.return_type) if node.return_type.is_a?(Type)
+
+    # 3. Pre-declaration (so the function can be recursive)
+    signature = FunctionSignature.new(
+      params: node.params.map { |p| {
+        name: p[:name], type: p[:type], required: p[:default].nil?,
+        default: p[:default], mutable: p[:mutable], takes: p[:takes],
+        sync: (p[:type].is_a?(Type) && p[:type].any_sync?) ? p[:type].sync : nil
+      }},
+      return_type: declared_return, return_lifetime: lifetime_path,
+      visibility: node.visibility,
+      type_params: fn_type_params.any? ? fn_type_params : nil,
+      reentrant: node.reentrant == :reentrant
+    )
+    signature.requires = node.requires
+    current_scope.declare(node.name, nil, signature, false, false, nil, :static)
+
+    # Register function node BEFORE body analysis so visit_ReturnNode can
+    # set returns_promoted on it and callers in the same pass can read it.
+    @fn_nodes[node.name] = node
+
+    # 4. Routine Analysis
+    final_return_type = analyze_routine(node, node.body, declared_return, is_implicit_return)
+
+    # 4.5 Reentrancy analysis: scan body after annotation so fn_var_call flags are set.
+    called_names, has_fnptr = scan_for_calls(node.body)
+    directly_recursive = called_names.include?(node.name)
+    # Record in call graph for the later indirect-cycle post-pass.
+    @call_graph[node.name]   = called_names - [node.name]
+    @fn_has_fnptr[node.name] = has_fnptr
+
+    if directly_recursive
+      record_effect(EffectTracker::REENTRANT)
+      case node.reentrant
+      when :non_reentrant
+        error!(node, "Reentrancy Error: '#{node.name}' directly calls itself. " \
+                     "Use @reentrant (not @nonReentrant) for directly recursive functions.")
+      when nil
+        error!(node, "Reentrancy Error: '#{node.name}' calls itself recursively. " \
+                     "Add @reentrant to the function signature to allow this.")
+      end
+
+      # Tail call validation: if @reentrant:tailCall, verify the self-call is in tail position.
+      if node.tail_call
+        validate_tail_call!(node)
+      end
+    elsif node.tail_call
+      error!(node, "@reentrant:tailCall on '#{node.name}' but the function is not recursive. " \
+                   "Remove :tailCall - it only applies to self-recursive functions.")
+    end
+
+    # Note: calling through a fn-type variable (parameter or local lambda) does NOT
+    # require @reentrant — the caller controls what is passed and self-recursion is
+    # the caller's explicit choice.  Only the call-graph cycle post-pass (below) fires
+    # errors for implicit mutual/direct recursion.
+
+    # 5. Finalize Signature
+    if (is_implicit_return || declared_return == :Any)
+      node.return_type = final_return_type
+      signature.return_type = final_return_type
+    end
+
+    signature.return_strategy = get_return_strategy(signature.return_type)
+    node.full_type = signature
+    ctx = current_fn_ctx
+    node.uses_frame = (ctx.frame_count > 0)
+    node.uses_heap  = (ctx.heap_count > 0)
+    node.uses_alloc = (ctx.alloc_count > 0)
+    node.stack_vars_bytes = ctx.stack_vars_bytes
+    # Seed for compute_can_fail! post-pass: direct failure sources.
+    ret_type_obj = signature.respond_to?(:return_type) ? signature.return_type : (signature.is_a?(Hash) ? signature[:return]&.dig(:type) : nil)
+    heap_ret     = ret_type_obj.is_a?(Type) && (ret_type_obj.heap? || ret_type_obj.dynamic?)
+    @fn_raises_directly[node.name] = node.uses_frame || node.uses_heap || node.uses_alloc || heap_ret ||
+      (@fn_has_fnptr[node.name] == true) ||
+      (node.reentrant == :non_reentrant) ||
+      scan_for_raises(node.body)
+
+    # Visit CATCH clause bodies with __error and snapshot in scope.
+    if node.catch_clauses.is_a?(Array) && node.catch_clauses.any?
+      # Resolve each parsed clause to a { kind, error_names } pair the
+      # lowering can emit directly. Validates every type against the
+      # registry (seeded by PASS 2.9) and rejects kind mismatches.
+      node.catch_clauses.each { |c| resolve_catch_clause!(c) }
+
+      # Collect snapshot types from pipeline steps for typed snapshot access
+      snap_types = Set.new
+      collect_pipe_input_types(node.body, snap_types)
+      node.snapshot_types = snap_types
+
+      all_catch_bodies = node.catch_clauses.map { |c| c[:body] }
+      all_catch_bodies << node.default_catch if node.default_catch.is_a?(Array)
+      all_catch_bodies.compact.each do |clause_body|
+        with_new_scope do
+          # Declare __error as a struct-like type accessible in CATCH
+          current_scope.declare("__error", nil, :ErrorContext, false, false, nil, :stack)
+          # Declare snapshot if unambiguous
+          if snap_types.size == 1
+            current_scope.declare("snapshot", nil, snap_types.first.to_sym, false, false, nil, :stack)
+          end
+          visit_stmts(clause_body)
+        end
+      end
+
+      # CATCH wrappers heap-dupe all string returns (both success and catch paths).
+      ret_type = node.return_type.is_a?(Type) ? node.return_type : Type.new(node.return_type || :Void)
+      if ret_type.string?
+        node.return_provenance = :heap
+      end
+    end
+
+    @function_context_stack.pop
+  end
+
+  # Pre-pass: walk every RAISE and OR EXIT site that provides both a
+  # kind and a type, and seed the registry with (kind, type). Lets
+  # CATCH Type clauses resolve regardless of source order. OR EXIT
+  # counts too because it can introduce new types that only the
+  # CATCH for a particular call needs to see.
+  def seed_error_types_from_raises!(program_node)
+    seed_body = lambda do |stmts|
+      AST.walk_body(stmts) do |n|
+        case n
+        when AST::Raise
+          next unless n.kind && n.error_name
+          resolve_error_registration!(n, n.kind, n.error_name, n.token)
+        when AST::OrExit
+          next unless n.kind && n.error_name
+          resolve_error_registration!(n, n.kind, n.error_name, n.token)
+        end
+      end
+    end
+    program_node.statements.each do |stmt|
+      next unless stmt.is_a?(AST::FunctionDef)
+      seed_body.call(stmt.body)
+      seed_body.call(stmt.catch_clauses&.map { |c| c[:body] }&.flatten || [])
+    end
+  end
+
+  # Resolve a parsed CATCH clause into its runtime-dispatch form.
+  # The parser produces:
+  #   { items:   [{ form: :kind|:type, name:, token: }, ...],
+  #     filters: [{ form: :type|:message, value:, token: }, ...],
+  #     body:    [...] }
+  # After this method, the clause carries four lowering-ready fields:
+  #   clause[:kinds]            = [Symbol, ...] — kinds from items
+  #   clause[:types]            = [String, ...] — types from items
+  #   clause[:filter_types]     = [String, ...] — types from WITH
+  #   clause[:filter_messages]  = [AST node, ...] — messages from WITH
+  # Match semantics: (any kind matches OR any type matches) AND
+  #   (filters empty OR any filter_type matches OR any filter_message
+  #    matches). No cross-constraint between items and filters — a
+  #   mixed `CATCH Kind, Type` simply ORs the two checks.
+  def resolve_catch_clause!(clause)
+    kinds = []
+    types = []
+    (clause[:items] || []).each do |item|
+      if item[:form] == :kind
+        kind_sym = item[:name].to_sym
+        unless AST.error_kind?(kind_sym)
+          emit_registry_mismatch!(
+            item[:token], item[:name], AST::ERROR_KINDS,
+            "Unknown error kind '#{item[:name]}'. Expected one of: #{AST::ERROR_KINDS.join(', ')}",
+            "closest known kind"
+          )
+        end
+        kinds << kind_sym if AST.error_kind?(kind_sym)
+      else
+        type_sym = item[:name].to_sym
+        unless AST.error_type?(type_sym)
+          emit_registry_mismatch!(
+            item[:token], item[:name], AST::ERROR_TYPES.keys,
+            "CATCH #{item[:name]}: error type '#{item[:name]}' is not registered. A type " \
+            "must be registered via RAISE/OR EXIT before it can be CATCHed.",
+            "closest registered type"
+          )
+        end
+        types << item[:name] if AST.error_type?(type_sym)
+      end
+    end
+    clause[:kinds] = kinds.uniq
+    clause[:types] = types.uniq
+
+    filter_types    = []
+    filter_messages = []
+    (clause[:filters] || []).each do |f|
+      case f[:form]
+      when :type
+        type_sym = f[:value].to_sym
+        unless AST.error_type?(type_sym)
+          error!(f[:token],
+                 "CATCH ... WITH(#{f[:value]}): error type '#{f[:value]}' is not registered.")
+        end
+        filter_types << f[:value]
+      when :message
+        # value is the parsed STRING expression. Visit so the string
+        # literal gets its Type stamped for downstream lowering.
+        visit(f[:value])
+        filter_messages << f[:value]
+      end
+    end
+    clause[:filter_types]    = filter_types.uniq
+    clause[:filter_messages] = filter_messages
+  end
+
+  # Collect input types from pipeline s> steps that can fail.
+  def collect_pipe_input_types(body, types)
+    body.each do |stmt|
+      walk_ast(stmt) do |node|
+        if node.is_a?(AST::BinaryOp) && node.op == :SMOOTH
+          lhs_type = node.left.respond_to?(:full_type) ? node.left.full_type : nil
+          if lhs_type
+            t = Type.new(lhs_type)
+            types << t.resolved.to_s unless t.void? || t.error_union?
+          end
+        end
+      end
+    end
+  end
+
+  def walk_ast(node, &block)
+    block.call(node)
+    return unless node.respond_to?(:class) && node.class.respond_to?(:members)
+    node.class.members.each do |m|
+      val = node.send(m) rescue next
+      case val
+      when Array then val.each { |v| walk_ast(v, &block) if v.respond_to?(:class) }
+      when AST::Locatable then walk_ast(val, &block)
+      end
+    end
+  end
+
+  # Visit a statement body while tracking remaining siblings in @stmts_after.
+  # This lets visit_MatchStatement check whether the match subject is used
+  # after the match (to avoid incorrect auto-TAKES consumption).
+  def visit_stmts(stmts)
+    return unless stmts.is_a?(Array)
+    saved = @stmts_after
+    stmts.each_with_index do |stmt, i|
+      @stmts_after = stmts[(i + 1)..]
+      visit(stmt)
+    end
+    @stmts_after = saved
+  end
+
+  def visit_StructDef(node)
+    # Validate generic type parameters (duplicate / builtin-shadow)
+    validate_type_param_list!(node, node.type_params, "struct") if node.type_params&.any?
+
+    # Register the Type Name with its field schema.
+    schema = node.fields.transform_values { |f| f[:type] }
+
+    # Store field defaults so empty struct literals (Foo{}) can be validated.
+    field_defaults = node.fields.each_with_object({}) { |(k, f), h| h[k] = f[:default] if f[:default] }
+    schema[:field_defaults] = field_defaults unless field_defaults.empty?
+
+    # Track which fields are BORROWED (references, not owned).
+    borrowed_fields = node.fields.select { |_, f| f[:borrowed] }.keys
+    schema[:borrowed_fields] = borrowed_fields.to_set if borrowed_fields.any?
+
+    # For generic structs, record the type parameter names so field-type
+    # lookups don't reject them as unknown types.
+    schema[:type_params] = node.type_params.map(&:to_sym) if node.type_params&.any?
+
+    schema[:visibility] = node.visibility || :package
+    current_scope.declare_type(node.name.to_sym, schema)
+    node.full_type = :Void
+  end
+
+  def visit_EnumDef(node)
+    schema = { kind: :enum, variants: node.variants.to_set }
+    schema[:visibility] = node.visibility || :package
+    current_scope.declare_type(node.name.to_sym, schema)
+    node.full_type = :Void
+  end
+
+  def visit_UnionDef(node)
+    # Validate generic type parameters (duplicate / builtin-shadow)
+    validate_type_param_list!(node, node.type_params, "union") if node.type_params&.any?
+
+    # Inline struct variants are not supported in generic unions.
+    if node.type_params&.any? && node.variants.any? { |_, v| v.is_a?(Hash) && v[:kind] == :inline_struct }
+      error!(node, :UNION_INLINE_IN_GENERIC)
+    end
+
+    # Register a synthetic struct schema for each inline struct variant so
+    # that MATCH AS bindings (e.g. `Shape.Circle AS c`) can field-access the payload.
+    node.variants.each do |var_name, var_data|
+      next unless var_data.is_a?(Hash) && var_data[:kind] == :inline_struct
+      synthetic_name = :"#{node.name}_#{var_name}"
+      current_scope.declare_type(synthetic_name, var_data[:fields])
+
+      # Pre-compute deinit entries for transpiler: which fields need cleanup.
+      indirect = var_data[:indirect_fields] || Set.new
+      deinit_entries = []
+      var_data[:fields].each do |fname, ftype|
+        ft = ftype.is_a?(Type) ? ftype : Type.new(ftype || :Any)
+        if indirect.include?(fname)
+          deinit_entries << { field: fname, kind: :indirect, zig_type: ft.zig_type(is_field: true) }
+        elsif ft.array? && !ft.string?
+          deinit_entries << { field: fname, kind: :array, elem_zig_type: Type.new(ft.element_type).zig_type }
+        end
+      end
+      var_data[:deinit_entries] = deinit_entries if deinit_entries.any?
+    end
+
+    schema = { kind: :union, variants: node.variants }
+    schema[:type_params] = node.type_params.map(&:to_sym) if node.type_params&.any?
+    schema[:visibility] = node.visibility || :package
+    current_scope.declare_type(node.name.to_sym, schema)
+    node.full_type = :Void
+  end
+
+  # Called after Pass 2 (all function signatures registered).
+  # Verifies that every method requirement declared inside the UNION body
+  # is satisfied by a concrete top-level function with a matching signature.
+  def visit_UnionVariantLit(node)
+    schema = lookup_type_schema(node.union_name.to_sym)
+    var_data = validate_union_schema!(node, schema)
+    validate_union_fields!(node, var_data[:fields])
+    node.full_type = node.union_name.to_sym
+  end
+
+
+  # ==========================================
+  # CONTROL FLOW
+  # ==========================================
+  # Unifies logic for analyzing multiple code paths (branches).
+  # Snapshots initial variable states, executes each branch in a clean scope,
+  # and merges states back to the parent scope.
+  #
+  # @param branches [Array<Proc>] Procs that execute branch logic
+  # @return [Array<Array<Hash>>] Array of drops for each branch
+  def analyze_control_flow_branches(branches, merge_to_parent: true)
+    og_snapshot = @og&.fork_lightweight
+    og_branch_snapshots = []
+    branch_terminates = []
+    all_drops = []
+
+    branches.each do |branch_logic|
+      # Restore graph to pre-branch state before analyzing each branch
+      @og&.restore_lightweight(og_snapshot) if og_snapshot
+      prev_terminated = @branch_terminated
+      @branch_terminated = false
+      with_new_scope(current_scope) do
+        og_push_scope
+        all_drops << branch_logic.call
+        og_branch_snapshots << (@og&.fork_lightweight)
+        branch_terminates << @branch_terminated
+        og_pop_scope
+      end
+      @branch_terminated = prev_terminated
+    end
+
+    if merge_to_parent
+      # Restore to base, then merge only non-terminating branch results.
+      # A terminating branch (RETURN/RAISE) cannot reach the merge point, so
+      # its moved states must not poison the post-branch scope.
+      @og&.restore_lightweight(og_snapshot) if og_snapshot
+      og_branch_snapshots.each_with_index do |snap, i|
+        next if branch_terminates[i]
+        next unless snap
+        # Lightweight merge: just apply moved states
+        snap[:node_states].each do |path, state|
+          node = @og.nodes[path]
+          next unless node
+          if node.state != state
+            node.state = :moved if state == :moved
+          end
+        end
+      end
+    else
+      @og&.restore_lightweight(og_snapshot) if og_snapshot
+    end
+
+    all_drops
+  end
+
+  def visit_BlockExpr(node)
+    with_new_scope(current_scope) do
+      node.body.each { |stmt| visit(stmt) }
+      visit(node.result)
+      node.full_type = node.result.full_type
+      node.storage   = node.result.storage
+    end
+  end
+
+  def visit_IfStatement(node)
+    visit(node.condition)
+
+    branch_logic = [
+      proc {
+        visit_stmts(node.then_branch)
+        finalize_scope(node, branch: :then)
+        node.then_drops
+      },
+      proc {
+        visit_stmts(node.else_branch)
+        finalize_scope(node, branch: :else)
+        node.else_drops
+      }
+    ]
+
+    analyze_control_flow_branches(branch_logic)
+
+    # Store branch result types so use sites can promote to expression mode.
+    node.then_result_type = expr_result_type(node.then_branch)
+    node.else_result_type = expr_result_type(node.else_branch)
+
+    node.full_type = :Void
+  end
+
+  # Walk through field/index chains to the root binding. Used to determine
+  # whether an IF-AS source borrows from a non_escaping binding.
+  def ifbind_source_root(expr)
+    case expr
+    when AST::Identifier  then expr
+    when AST::GetField    then ifbind_source_root(expr.target)
+    when AST::GetIndex    then ifbind_source_root(expr.target)
+    else                       nil
+    end
+  end
+
+  def visit_IfBind(node)
+    # Visit and validate each binding expression.
+    node.bindings.each do |b|
+      visit(b[:expr])
+      ti = b[:expr].type_info
+      unless ti&.optional?
+        error!(b[:expr], "IF ... AS binding requires an optional type, got '#{b[:expr].resolved_type}'")
+      end
+      # Annotate each binding with the unwrapped type for use in lowering.
+      unwrapped = ti.wrapped_type
+      # RESOLVE returns ?T@multiowned/shared where the caller owns the strong ref.
+      # Propagate ownership so field access auto-derefs through .ctrl.data and
+      # the lowering knows to inject rcRelease cleanup.
+      if b[:expr].is_a?(AST::ResolveNode) && (ti.multiowned? || ti.shared?)
+        unwrapped.ownership = ti.ownership
+        unwrapped.link_source = ti.link_source
+      end
+      b[:unwrapped_type] = unwrapped
+    end
+
+    branch_logic = [
+      proc {
+        # Declare each binding in the then-scope with the unwrapped type.
+        node.bindings.each do |b|
+          unwrapped = b[:unwrapped_type]
+          sym = unwrapped.is_a?(Type) ? unwrapped.resolved : unwrapped
+          current_scope.declare(b[:name], nil, unwrapped, false, false, nil, :stack)
+          entry = current_scope.locals[b[:name]]
+          b[:symbol] = entry
+          # Propagate non_escaping when the source is borrow-derived from a
+          # non_escaping binding (a WITH alias or another transitive borrow
+          # of one). IF-AS on `p[i]` / `p.field` where `p` is the alias
+          # makes the new binding a borrow into locked data; it must not
+          # escape the enclosing WITH scope either.
+          src_root = ifbind_source_root(b[:expr])
+          if src_root && src_root.respond_to?(:symbol) && src_root.symbol&.non_escaping
+            entry.non_escaping = true
+          end
+          classify_ownership!(entry)
+          og_declare(b[:name].to_s, nil, unwrapped)
+        end
+        visit_stmts(node.then_branch)
+        nil
+      },
+      proc {
+        visit_stmts(node.else_branch)
+        nil
+      }
+    ]
+
+    analyze_control_flow_branches(branch_logic)
+    node.full_type = :Void
+  end
+
+  # Type-checks a struct destructuring pattern against the match subject type.
+  # Verifies field names exist and value types match the struct schema.
+  def annotate_struct_pattern!(match_node, pat)
+    expr_type = match_node.expr.resolved_type
+    primitives = [:Float64, :Bool, :Byte, :Int64, :Float64, :String, :NIL, :BOOLEAN, :Any, :Void]
+
+    if primitives.include?(expr_type)
+      error!(match_node, "MATCH struct pattern requires a struct type, got #{expr_type}")
+    end
+
+    schema = lookup_type_schema(expr_type)
+
+    pat.fields.each do |f|
+      next if f[:value] == :wildcard
+
+      if schema
+        unless schema.key?(f[:name])
+          error!(match_node, "MATCH struct pattern: field '#{f[:name]}' does not exist on type #{expr_type}")
+        end
+      end
+
+      if f[:value] == :bind
+        # Destructuring bind: declare a local variable with the field's type.
+        if schema && schema.key?(f[:name])
+          field_def = schema[f[:name]]
+          field_type = field_def.is_a?(Hash) ? field_def[:type] : field_def
+          field_type = field_type.is_a?(Type) ? field_type : Type.new(field_type)
+          current_scope.declare(f[:name], nil, field_type, false, false, nil, :stack)
+          og_declare(f[:name], nil, field_type)
+        end
+      else
+        visit(f[:value])
+
+        if schema
+          field_def = schema[f[:name]]
+          field_type = field_def.is_a?(Type) ? field_def.resolved : (field_def.is_a?(Hash) ? field_def[:type]&.resolved : field_def&.resolved)
+          val_type   = f[:value].resolved_type
+          is_numeric_promo = (val_type == :Int64 && (field_type == :Float64 || field_type == :Float64))
+          unless val_type == field_type || val_type == :Any || field_type == :Any || is_numeric_promo
+            error!(match_node, "MATCH struct pattern: field '#{f[:name]}' has type #{field_type}, but pattern value has type #{val_type}")
+          end
+        end
+      end
+    end
+  end
+
+  def visit_PassStmt(node)
+    node.full_type = :Void
+  end
+
+  def visit_MatchStatement(node)
+    visit(node.expr)
+
+    # Determine whether the subject is an enum or union for exhaustiveness / payload capture
+    expr_t    = Type.new(node.expr.resolved_type || :Any)
+    node.string_match = true if expr_t.string?
+    type_name = expr_t.generic_instance? ? expr_t.generic_base : expr_t.resolved
+    schema    = lookup_type_schema(type_name)
+    is_enum   = schema.is_a?(Hash) && schema[:kind] == :enum
+    is_union  = schema.is_a?(Hash) && schema[:kind] == :union
+
+    # Build type-param substitution for generic union payload capture
+    # e.g. Option<Number> → { T: :Float64 }
+    union_subst = {}
+    if is_union && expr_t.generic_instance? && schema[:type_params]&.any?
+      schema[:type_params].zip(expr_t.generic_args).each { |p, a| union_subst[p] = a.resolved }
+    end
+
+    # MATCH TAKES: if the source is explicitly consumed (MATCH TAKES expr START),
+    # mark the source as moved BEFORE branch analysis. Without TAKES, the source
+    # is implicitly borrowed and AS bindings are borrowed views into it.
+    #
+    # Auto-consume: when an AS binding extracts a non-Copy variant (one with heap
+    # data), auto-promote to TAKES semantics. Without this, source and binding
+    # share heap data leading to double-free or leak.
+    # Auto-TAKES: when ALL cases have AS bindings and the DEFAULT doesn't use
+    # the source, the source can be consumed. This prevents heap data sharing
+    # between source and extracted binding (double-free/leak).
+    auto_takes = false
+    if !node.takes && is_union && node.expr.is_a?(AST::Identifier)
+      # Check if any AS case extracts a non-Copy payload that would share
+      # heap ownership with the source. Strings are Copy in CLEAR, so
+      # extracting a string variant doesn't require consuming the source.
+      has_non_copy_as = node.cases&.any? { |c|
+        next false unless c[:binding]
+        vn = case c[:value]
+             when AST::GetField then c[:value].field
+             when AST::MethodCall then c[:value].name
+             end
+        next false unless vn
+        vt = (schema[:variants] || {})[vn]
+        next false unless vt
+        # Inline struct with heap fields: non-Copy (strings/collections/indirect)
+        if vt.is_a?(Hash) && (vt[:kind] == :inline_struct || vt[:kind] == :indirect_payload)
+          Type.variant_has_heap?(vt)
+        else
+          # Simple payload: only non-Copy if it's a collection/array (not string)
+          t = vt.is_a?(Type) ? vt : (Type.new(vt) rescue nil)
+          t && !t.string? && (t.collection? || t.map? || (t.array? && !t.fixed?))
+        end
+      }
+      if has_non_copy_as
+        source_name = node.expr.name
+        # Check no case lacks a binding (all cases extract payloads).
+        all_cases_bind = node.cases&.all? { |c| c[:binding] }
+        # Check DEFAULT doesn't reference the source value.
+        # walk_body only visits statement-level nodes; we need to check
+        # expression sub-trees too (e.g. RETURN input; has input inside).
+        default_refs_source = false
+        if node.default_case
+          check_refs = lambda { |n|
+            next unless n
+            if n.is_a?(AST::Identifier) && n.name == source_name
+              default_refs_source = true
+              next
+            end
+            # Recurse into common expression wrappers
+            check_refs.call(n.value) if n.respond_to?(:value)
+            check_refs.call(n.left) if n.respond_to?(:left)
+            check_refs.call(n.right) if n.respond_to?(:right)
+            check_refs.call(n.condition) if n.respond_to?(:condition) && !n.is_a?(AST::IfStatement)
+            n.args&.each { |a| check_refs.call(a) } if n.respond_to?(:args)
+          }
+          node.default_case.each { |stmt| check_refs.call(stmt) }
+        end
+        auto_takes = all_cases_bind && !default_refs_source
+        auto_takes = false if @og[source_name]&.kind == :borrowed
+        # Don't auto-consume if the source is referenced after the MATCH.
+        if auto_takes && @stmts_after&.any?
+          @stmts_after.each do |s|
+            walk_ast(s) do |n|
+              if n.is_a?(AST::Identifier) && n.name == source_name
+                auto_takes = false
+                break
+              end
+            end
+            break unless auto_takes
+          end
+        end
+      end
+    end
+    if (node.takes || auto_takes) && is_union && node.expr.is_a?(AST::Identifier)
+      node.takes = true if auto_takes
+      source_name = node.expr.name
+      if @og[source_name] && @og[source_name].kind != :borrowed
+        node.expr.was_moved = true
+        og_set_moved(source_name)
+      end
+    end
+
+    branch_logic = node.cases.map do |c|
+      proc {
+        if c[:kind] == :when
+          visit(c[:value])
+          unless c[:value].resolved_type == :Bool
+            error!(node, "WHEN condition must be Bool, got #{c[:value].resolved_type}")
+          end
+        elsif c[:kind] == :struct_pattern
+          annotate_struct_pattern!(node, c[:value])
+        else
+          # Suppress inline-struct "needs braces" error: variant names in MATCH cases are
+          # patterns (tag identifiers), not constructors — they don't need field values.
+          @match_pattern_context = true
+          visit(c[:value])
+          @match_pattern_context = false
+          expr_t2 = Type.new(node.expr.resolved_type || :Any)
+          case_t2 = Type.new(c[:value].resolved_type || :Any)
+          # Allow union base type (e.g. :Option) to match a generic instance (e.g. :"Option<Number>")
+          base_match = expr_t2.generic_instance? && expr_t2.generic_base == c[:value].resolved_type
+          # Allow Byte[N] string literals (e.g. "hello") to match a String-typed subject
+          string_match = expr_t2.string? && case_t2.string?
+          unless c[:value].resolved_type == node.expr.resolved_type ||
+                 node.expr.resolved_type == :Any ||
+                 c[:value].resolved_type == :Any ||
+                 base_match ||
+                 string_match
+            error!(node, "MATCH case type #{c[:value].resolved_type} does not match expression type #{node.expr.resolved_type}")
+          end
+
+          # Payload capture: `Shape.Circle AS r ->`
+          if c[:binding]
+            if is_enum
+              error!(node, "Cannot capture payload from enum variant: enums have no payload. Remove 'AS #{c[:binding]}'.")
+            elsif is_union
+              variant_name = case c[:value]
+                             when AST::GetField   then c[:value].field
+                             when AST::MethodCall then c[:value].name
+                             end
+              if variant_name
+                raw_payload = schema[:variants][variant_name]
+                if raw_payload.nil?
+                  error!(node, "Cannot bind 'AS #{c[:binding]}': '#{variant_name}' is a unit variant with no payload.")
+                elsif raw_payload.is_a?(Hash) && raw_payload[:kind] == :inline_struct
+                  synthetic_type = :"#{type_name}_#{variant_name}"
+                  current_scope.declare(c[:binding], nil, Type.new(synthetic_type), false, false, nil, :stack)
+                  og_declare(c[:binding], nil, Type.new(synthetic_type))
+                  classify_ownership!(current_scope.locals[c[:binding]])
+                elsif raw_payload.is_a?(Hash) && raw_payload[:kind] == :indirect_payload
+                  # @indirect payload: bind to the dereferenced inner type (not the *T pointer).
+                  inner_type = raw_payload[:type].is_a?(Type) ? raw_payload[:type] : Type.new(raw_payload[:type])
+                  inner_type = union_subst.any? ? apply_type_subst(inner_type, union_subst) : inner_type
+                  current_scope.declare(c[:binding], nil, inner_type, false, false, nil, :stack)
+                  og_declare(c[:binding], nil, inner_type)
+                  classify_ownership!(current_scope.locals[c[:binding]])
+                  c[:indirect_payload_as] = true  # transpiler must emit subject.Variant.* (deref *T)
+                else
+                  payload_type = union_subst.any? ? apply_type_subst(raw_payload, union_subst) : Type.new(raw_payload)
+                  current_scope.declare(c[:binding], nil, payload_type, false, false, nil, :stack)
+                  og_declare(c[:binding], nil, payload_type)
+                  classify_ownership!(current_scope.locals[c[:binding]])
+                end
+                # MATCH AS: borrow view into the source union's payload.
+                # MATCH TAKES: owned extraction - source is consumed.
+                unless node.takes
+                  @og[c[:binding]]&.kind = :borrowed
+                end
+              end
+            end
+          end
+
+          # Union variant destructuring: `Result.Ok{ value, count } ->`
+          # Declares each named field as a local binding with the correct type.
+          if c[:destructure] && is_union
+            variant_name = case c[:value]
+                           when AST::GetField   then c[:value].field
+                           when AST::MethodCall then c[:value].name
+                           end
+            if variant_name
+              raw_payload = schema[:variants][variant_name]
+              # Resolve the payload's field schema (inline struct or named type)
+              payload_schema = if raw_payload.is_a?(Hash) && raw_payload[:kind] == :inline_struct
+                raw_payload[:fields]
+              else
+                payload_type_sym = raw_payload.is_a?(Type) ? raw_payload.resolved : raw_payload
+                payload_type_sym = union_subst[payload_type_sym] if union_subst[payload_type_sym]
+                lookup_type_schema(payload_type_sym)
+              end
+
+              if payload_schema.is_a?(Hash) && !payload_schema[:kind]
+                c[:destructure].fields.each do |f|
+                  next unless f[:value] == :bind
+                  unless payload_schema.key?(f[:name])
+                    error!(node, "MATCH destructure: field '#{f[:name]}' does not exist on variant #{variant_name}")
+                  end
+                  field_def = payload_schema[f[:name]]
+                  field_type = field_def.is_a?(Hash) ? field_def[:type] : field_def
+                  field_type = field_type.is_a?(Type) ? field_type : Type.new(field_type)
+                  current_scope.declare(f[:name], nil, field_type, false, false, nil, :stack)
+                  og_declare(f[:name], nil, field_type)
+                end
+              end
+            end
+          end
+        end
+        visit_stmts(c[:body])
+        collect_scope_drops(node: node)
+      }
+    end
+
+    if node.default_case
+      branch_logic << proc {
+        visit_stmts(node.default_case)
+        collect_scope_drops(node: node)
+      }
+    end
+
+    all_drops = analyze_control_flow_branches(branch_logic)
+
+    if node.default_case
+      node.default_drops = all_drops.pop
+    end
+    node.case_drops = all_drops
+
+    # Exhaustiveness check — only enforced for MATCH IFF.
+    if node.exhaustive
+      # MATCH IFF requires an enum or union subject.
+      unless is_enum || is_union
+        type_label = expr_t.resolved
+        error!(node, "MATCH IFF requires an enum or union type, got '#{type_label}'.")
+      end
+
+      # MATCH IFF forbids DEFAULT (defeats exhaustiveness).
+      if node.default_case
+        error!(node, "MATCH IFF cannot have a DEFAULT branch — every variant must be handled explicitly.")
+      end
+
+      # MATCH IFF forbids WHEN guards (arbitrary conditions break static exhaustiveness).
+      if node.cases.any? { |c| c[:kind] == :when }
+        error!(node, "MATCH IFF cannot contain WHEN guards — every variant must be handled by an exact case.")
+      end
+
+      # Every variant must appear exactly once.
+      covered = node.cases.flat_map do |c|
+        variant_name = case c[:value]
+                       when AST::GetField   then c[:value].field
+                       when AST::MethodCall then c[:value].name
+                       else nil
+                       end
+        variant_name ? [variant_name] : []
+      end.to_set
+
+      all_variants = is_enum ? schema[:variants] : schema[:variants].keys.to_set
+      missing = all_variants - covered
+      unless missing.empty?
+        type_label2 = is_enum ? "enum" : "union"
+        error!(node, "MATCH IFF on #{type_label2} '#{type_name}' is non-exhaustive: missing variants: #{missing.sort.join(', ')}")
+      end
+    end
+
+    # Store case result types so use sites can promote to expression mode.
+    node.case_result_types = node.cases.map { |c| expr_result_type(c[:body]) }
+    node.default_result_type = expr_result_type(node.default_case)
+
+    node.full_type = :Void
+  end
+
+  def visit_ForRange(node)
+    # 1. Type-check range bounds
+    visit(node.start_expr)
+    visit(node.end_expr)
+    start_type = node.start_expr.resolved_type
+    end_type   = node.end_expr.resolved_type
+    error!(node, "FOR range start must be Int64, got #{start_type}") unless start_type == :Int64
+    error!(node, "FOR range end must be Int64, got #{end_type}") unless end_type == :Int64
+
+    # 2. Analyze body in new scope with loop variable declared as immutable Int64
+    if current_fn_ctx then current_fn_ctx.loop_depth += 1 else @loop_depth += 1 end
+    analyze_control_flow_branches([
+      proc {
+        current_scope.declare(node.var_name, nil, :Int64, false, false, nil, :stack)
+        node.symbol = current_scope.locals[node.var_name]
+        classify_ownership!(node.symbol)
+        visit_stmts(node.body)
+        finalize_scope(node)
+        node.deferred_drops
+      }
+    ], merge_to_parent: false)
+    if current_fn_ctx then current_fn_ctx.loop_depth -= 1 else @loop_depth -= 1 end
+
+    # 4. TIGHT validation (same as WhileLoop).
+    if node.tight
+      validate_tight_body!(node.body, node)
+    end
+
+    # mark_per_iter is set by LoopFrameAnalysis in Pass 2, after CleanupClassifier
+    # has finalized every binding's allocator.
+    node.mark_per_iter = false
+
+    node.full_type = :Void
+  end
+
+  def visit_ForEach(node)
+    # 1. Visit collection to determine element type
+    visit(node.collection)
+    coll_type = node.collection.full_type
+    ct = coll_type.is_a?(Type) ? coll_type : Type.new(coll_type)
+
+    # Determine element type from collection
+    elem_type = if ct.array? || ct.list_collection?
+      ct.element_type || ct.value_type || :Any
+    elsif ct.map?
+      # FOR k IN map iterates over keys (strings)
+      :String
+    else
+      error!(node, "FOR ... IN requires an array, list, or map, got #{coll_type}")
+    end
+
+    elem_sym = elem_type.is_a?(Type) ? elem_type.resolved : elem_type
+
+    # 2. Analyze body with loop variable
+    if current_fn_ctx then current_fn_ctx.loop_depth += 1 else @loop_depth += 1 end
+    analyze_control_flow_branches([
+      proc {
+        current_scope.declare(node.var_name, nil, elem_sym, node.is_mutable == true, false, nil, :stack)
+        node.symbol = current_scope.locals[node.var_name]
+        classify_ownership!(node.symbol)
+        visit_stmts(node.body)
+        finalize_scope(node)
+        node.deferred_drops
+      }
+    ], merge_to_parent: false)
+    if current_fn_ctx then current_fn_ctx.loop_depth -= 1 else @loop_depth -= 1 end
+
+    node.full_type = :Void
+  end
+
+  def visit_WhileLoop(node)
+    # 1. Analyze Condition
+    node(node.condition)
+
+    if node.condition.resolved_type != :Bool
+      error!(node, "Condition must be a Boolean, got #{node.condition.resolved_type}")
+    end
+
+    # Effect tracking: WHILE TRUE or any non-trivially-bounded loop.
+    if node.condition.is_a?(AST::Identifier) && node.condition.name == "TRUE"
+      record_effect(EffectTracker::LOOP_UNBOUND)
+    elsif node.condition.is_a?(AST::Literal) && node.condition.value == true
+      record_effect(EffectTracker::LOOP_UNBOUND)
+    end
+
+    # 2. Analyze Body in a New Scope AND increment loop depth
+    if current_fn_ctx then current_fn_ctx.loop_depth += 1 else @loop_depth += 1 end
+
+    # We use analyze_control_flow_branches to handle state merging and drops.
+    # Note: For a loop, if a variable dies in the body, it dies for the next iteration (merged to parent).
+    pre_loop_states = @og&.fork_lightweight
+
+    analyze_control_flow_branches([
+      proc {
+        if node.do_branch.is_a?(Array)
+          visit_stmts(node.do_branch)
+        else
+          node(node.do_branch)
+        end
+        finalize_scope(node)
+
+        # Post-analysis check for loop-specific errors (use of moved value in next iteration)
+        # Copyable types (primitives, strings, slices, unions) are exempt — they're copied implicitly.
+        # Variables not referenced in the loop body are also exempt — they were moved before the
+        # loop (e.g. MATCH struct bindings with field extraction) and aren't consumed by iteration.
+        loop_body_names = collect_body_identifier_names(node.do_branch)
+        current_scope.locals.each do |name, _entry|
+          was_live = pre_loop_states&.dig(:node_states, name) == :live
+          is_moved = @og&.moved?(name)
+          if was_live && is_moved
+            next unless loop_body_names.include?(name)
+            var_type = current_scope.locals[name]&.type
+            type_obj = var_type.is_a?(Type) ? var_type : Type.new(var_type.to_s)
+            is_copy = type_obj.implicitly_copyable? { |t| lookup_type_schema(t) }
+            unless is_copy
+              error!(node, "Use of moved value '#{name}' in loop. The variable is moved in the first iteration and not available for the next.")
+            end
+          end
+        end
+        node.deferred_drops
+      }
+    ], merge_to_parent: false)
+
+    if current_fn_ctx then current_fn_ctx.loop_depth -= 1 else @loop_depth -= 1 end
+
+    # 4. TIGHT validation: deep-scan the entire loop body AST (including nested
+    # if/while/match blocks) for direct calls to @reentrant or EXTERN FN functions.
+    # Does NOT recurse into bodies of called CLEAR functions — those are separate
+    # compilation units and their internal behaviour is their own concern.
+    if node.tight
+      validate_tight_body!(node.do_branch, node)
+    end
+
+    # mark_per_iter is set by LoopFrameAnalysis in Pass 2, after CleanupClassifier
+    # has finalized every binding's allocator.
+    node.mark_per_iter = false
+
+    node.full_type = :Void
+  end
+
+  def visit_WhileBindLoop(node)
+    visit(node.condition)
+    ti = node.condition.type_info
+    unless ti&.optional?
+      error!(node.condition, "WHILE ... AS binding requires an optional type, got '#{node.condition.resolved_type}'")
+    end
+
+    unwrapped = ti.wrapped_type
+    if node.condition.is_a?(AST::ResolveNode) && (ti.multiowned? || ti.shared?)
+      unwrapped.ownership = ti.ownership
+      unwrapped.link_source = ti.link_source
+    end
+
+    if current_fn_ctx then current_fn_ctx.loop_depth += 1 else @loop_depth += 1 end
+
+    pre_loop_states = @og&.fork_lightweight
+
+    # Footgun guard: a MethodCall on an immutable receiver cannot advance the
+    # loop condition and will loop forever.  RESOLVE is a ResolveNode (not a
+    # MethodCall) and is safe; mutable receivers may mutate state each iteration.
+    cond = node.condition
+    if cond.is_a?(AST::MethodCall)
+      recv = cond.object
+      if recv.is_a?(AST::Identifier) && current_scope.is_immutable?(recv.name)
+        error!(node, "WHILE ... AS binding: '#{cond.name}' is called on immutable '#{recv.name}' -- the condition cannot advance and may loop forever. Declare '#{recv.name}' as MUTABLE or use a regular WHILE loop.")
+      end
+    end
+
+    analyze_control_flow_branches([
+      proc {
+        current_scope.declare(node.binding_name, nil, unwrapped, false, false, nil, :stack)
+        entry = current_scope.locals[node.binding_name]
+        classify_ownership!(entry)
+        og_declare(node.binding_name.to_s, nil, unwrapped)
+
+        visit_stmts(node.do_branch)
+        finalize_scope(node)
+
+        loop_body_names = collect_body_identifier_names(node.do_branch)
+        current_scope.locals.each do |name, _entry|
+          next if name == node.binding_name
+          was_live = pre_loop_states&.dig(:node_states, name) == :live
+          is_moved = @og&.moved?(name)
+          if was_live && is_moved
+            next unless loop_body_names.include?(name)
+            var_type = current_scope.locals[name]&.type
+            type_obj = var_type.is_a?(Type) ? var_type : Type.new(var_type.to_s)
+            is_copy = type_obj.implicitly_copyable? { |t| lookup_type_schema(t) }
+            unless is_copy
+              error!(node, "Use of moved value '#{name}' in loop.")
+            end
+          end
+        end
+        node.deferred_drops
+      }
+    ], merge_to_parent: false)
+
+    if current_fn_ctx then current_fn_ctx.loop_depth -= 1 else @loop_depth -= 1 end
+
+    node.mark_per_iter = false
+    node.full_type = :Void
+  end
+
+  # Deep validation for TIGHT loops.
+  # Walks the full AST subtree (nested ifs, whiles, match blocks) looking for
+  # any call to a @reentrant or EXTERN FN function. Stops at FunctionDef
+  # boundaries — nested lambdas/closures are separate compilation units.
+  def visit_BreakNode(node)
+    if (current_fn_ctx&.loop_depth || @loop_depth) <= 0
+      error!(node, "BREAK must be used inside a loop")
+    end
+    node.full_type = :Void
+  end
+
+  def visit_ContinueNode(node)
+    if (current_fn_ctx&.loop_depth || @loop_depth) <= 0
+      error!(node, "CONTINUE must be used inside a loop")
+    end
+    node.full_type = :Void
+  end
+
+  def visit_Assert(node)
+    visit(node.condition)
+    if node.condition.resolved_type != :Bool
+       error!(node, "Assert condition must be Boolean")
+    end
+    # Optional: check message type if it exists
+    node.full_type = :Void
+  end
+
+  def visit_TestBlock(node)
+    with_new_scope do
+      node.setup.each { |s| visit(s) }
+      node.whens.each { |w| visit_WhenBlock(w) }
+    end
+    node.full_type = :Void
+  end
+
+  def visit_WhenBlock(node)
+    node.setup.each { |s| visit(s) }
+
+    # Strict test mode: verify all IO functions are stubbed in this WHEN block.
+    if @strict_test
+      stubbed_fns = node.setup
+        .select { |s| s.is_a?(AST::StubDecl) }
+        .map { |s| s.function_name }
+        .to_set
+      node.tests.each { |t| validate_strict_io!(t, stubbed_fns) }
+    end
+
+    node.tests.each do |t|
+      with_new_scope(current_scope) do
+        visit_TestThat(t)
+      end
+    end
+    node.benchmarks.each { |b| visit(b) }
+    node.full_type = :Void
+  end
+
+  def visit_TestThat(node)
+    visit_stmts(node.body)
+    node.full_type = :Void
+  end
+
+  def visit_AssertRaises(node)
+    visit(node.expression)
+    node.full_type = :Void
+  end
+
+  def visit_BenchmarkStmt(node)
+    visit(node.expression)
+    node.full_type = :Void
+  end
+
+  def visit_SmashStmt(node)
+    visit(node.expression)
+    node.full_type = :Void
+  end
+
+  def visit_ProfileStmt(node)
+    visit(node.expression)
+    node.full_type = :Void
+  end
+
+  def visit_StubDecl(node)
+    # Visit the value for type checking if it's an expression.
+    visit(node.value) if node.value.respond_to?(:full_type)
+    # CAPTURES stubs declare a variable in the current scope.
+    if node.kind == :captures
+      cap_name = node.value  # the variable name string
+      # Declare as Int64 counter (tracks number of calls captured)
+      current_scope.declare(cap_name, node, :Int64, true, false, nil, :stack)
+      og_declare(cap_name, node, :Int64)
+    end
+    node.full_type = :Void
+  end
+
+  def visit_DieNode(node)
+     # Usually takes an integer status code
+     visit(node.status) if node.status
+     node.full_type = :NoReturn # Special type indicating execution stops
+  end
+
+  def visit_Raise(node)
+    visit(node.message_expr) if node.message_expr
+    resolve_error_registration!(node, node.kind, node.error_name, node.token)
+    node.full_type = :NoReturn # Raises propagate up or are caught
+    @branch_terminated = true
+  end
+
+  # Unified registration for RAISE / OR EXIT / EXIT sites that name an
+  # error type. Rules:
+  #   - kind given + type given  : register or verify (kind, type).
+  #   - kind nil   + type given  : type MUST already be registered;
+  #                                node.kind is backfilled to the
+  #                                registered kind.
+  #   - kind given + type nil    : no-op (no type to register).
+  #   - kind nil   + type nil    : no-op (legacy message-only form).
+  # On collision, emits a diagnostic anchored at the second site,
+  # naming the first registration line for context.
+  def resolve_error_registration!(node, kind_sym, type_name_str, site_tok)
+    return if type_name_str.nil?
+    type_sym = type_name_str.to_sym
+
+    if kind_sym.nil?
+      # Type-only form — require prior registration.
+      unless AST.error_type?(type_sym)
+        error!(site_tok || node,
+               "Error type '#{type_name_str}' is not registered. The first RAISE / OR EXIT site " \
+               "that names a new type must provide a kind: use 'RAISE Kind, #{type_name_str}, \"msg\"' " \
+               "or similar.")
+        return
+      end
+      # Backfill the node with the registered kind so downstream
+      # passes (mir-lowering) can emit rt.setError(.Kind, ...).
+      node.kind = AST.kind_of_type(type_sym)
+      return
+    end
+
+    # Kind + type: first use registers, subsequent verifies.
+    _, conflict = AST.register_type!(type_sym, kind_sym, site_token: site_tok)
+    return unless conflict
+    first_site = conflict[:first_site]
+    first_loc  = first_site ? " (first registered at line #{first_site.line})" : ""
+    if conflict[:is_stdlib]
+      error!(site_tok || node,
+             "'#{type_name_str}' is reserved by the stdlib as kind '#{conflict[:existing_kind]}'. " \
+             "Pick a different type name.")
+    else
+      error!(site_tok || node,
+             "'#{type_name_str}' is already mapped to kind '#{conflict[:existing_kind]}'#{first_loc}. " \
+             "Either use the same kind here, or pick a different type name.")
+    end
+  end
+
+  # ==========================================
+  # VARIABLES & DEPENDENCIES
+  # ==========================================
+
+  def visit_ReturnNode(node)
+    # Handle optional return node for Void functions.
+    expected = current_fn_ctx&.return_type
+    if node.value.nil?
+      # If the function expects a value but we return nothing -> ERROR
+      if expected && expected != :Void && expected != :Any
+        error!(node, "Function expects return type #{expected}, got Void")
+      end
+
+      node.full_type = :Void
+      @branch_terminated = true
+      return # Stop here, nothing else to analyze
+    end
+
+    visit(node.value)
+
+    # RETURN inside a WITH block is forbidden ONLY when the returned value
+    # carries a borrow of the WITH alias (the `AS` binding). Pure values
+    # — primitives, fresh values returned by methods on the alias (e.g.
+    # `p.insert(...)` returning a fresh Id<T>) — escape safely. The
+    # SymbolEntry#non_escaping flag is set on every WITH alias by
+    # declare_capability_scope!; it's the same flag ensure_owned_value!
+    # already uses to prevent storing WITH-scoped values in containers.
+    if (@with_block_depth || 0) > 0
+      val = node.value
+      if val.is_a?(AST::Identifier) && val.symbol&.non_escaping
+        error!(node, "Cannot RETURN '#{val.name}' from inside a WITH block. " \
+                     "WITH aliases are borrows of locked data and cannot escape their scope.")
+      elsif val.is_a?(AST::GetField) && val.target.respond_to?(:symbol) && val.target.symbol&.non_escaping
+        error!(node, "Cannot RETURN a field of a WITH-scoped binding. " \
+                     "Field access borrows from the locked data; the borrow cannot escape the WITH scope.")
+      elsif val.is_a?(AST::GetIndex) && val.target.respond_to?(:symbol) && val.target.symbol&.non_escaping
+        error!(node, "Cannot RETURN an indexed access of a WITH-scoped binding. " \
+                     "Index access borrows from the locked data; the borrow cannot escape the WITH scope.")
+      end
+    end
+    promote_to_expr_if!(node, node.value) if node.value.is_a?(AST::IfStatement)
+    promote_to_expr_match!(node, node.value) if node.value.is_a?(AST::MatchStatement)
+
+    # 1. Lifetime Tracking
+    verify_return(node.value)
+
+    actual = node.value.resolved_type
+    expected = current_fn_ctx.return_type
+
+    # 2. Move marking: returning a non-Copy value moves it out of the function.
+    # Set was_moved so the transpiler emits _moved = true before return.
+    if node.value.is_a?(AST::Identifier)
+      vti = node.value.type_info
+      if vti && !vti.implicitly_copyable? { |t| lookup_type_schema(t) rescue nil }
+        node.value.was_moved = true
+      end
+    end
+
+    # RETURN COPY expr or RETURN Struct{ field: COPY ... }: the COPY heap-dupes,
+    # so the caller receives heap-allocated data.
+    # But COPY of an implicitly-copyable value (e.g. Id<T>) is value-like and
+    # must not force heap return provenance.
+    if node.value.is_a?(AST::CopyNode)
+      fn_node = @fn_nodes[current_fn_ctx&.name]
+      copy_ti = node.value.type_info
+      resolver = ->(name) { lookup_type_schema(name) rescue nil }
+      unless copy_ti&.implicitly_copyable?(resolver)
+        if fn_node
+          fn_node.return_provenance = :heap
+        end
+      end
+    elsif node.value.is_a?(AST::StructLit)
+      # ensure_owned_value! only wraps @list/rodata in CopyNode, never value types.
+      # No implicitly_copyable? gate needed here.
+      has_copy_field = node.value.fields.any? { |_, v| v.is_a?(AST::CopyNode) }
+      if has_copy_field
+        fn_node = @fn_nodes[current_fn_ctx&.name]
+        if fn_node
+          fn_node.return_provenance = :heap
+        end
+      end
+    end
+
+    # Promote non-identifier literals to heap when the expected return type requires it.
+    unless node.value.is_a?(AST::Identifier)
+      expected_type = Type.new(expected) if expected
+      if expected_type && (expected_type.heap? || expected_type.dynamic?) &&
+         node.value.respond_to?(:storage=) &&
+         node.value.type_info&.requires_move?
+        node.value.storage = :heap
+      end
+    end
+
+    if expected && expected != :Void && expected != :Any && actual != expected
+      # Basic check (you might want to allow Number[3] -> Number[] coercion)
+      if !is_safe_autocast?(actual, expected)
+        error!(node, :RETURN_MISMATCH, expected, actual)
+      end
+      node.value.coerced_type = expected  # Don't coerce EXPLICIT returns
+      check_prefixed_int_range!(node.value, expected)
+    end
+
+    node.full_type = actual
+
+    if current_fn_ctx
+      current_fn_ctx.returns << {storage: node.value.storage, type: actual, metatype: node.value.metatype}
+    end
+
+    @branch_terminated = true
+  end
+
+  def visit_StaticCall(node)
+    node.args.each { |arg| visit(arg) }
+
+    type_name = node.type_name.name.to_sym
+    schema    = lookup_type_schema(type_name)
+
+    unless schema
+      error!(node, :STATIC_UNKNOWN_TYPE, type_name)
+    end
+
+    unless schema[:kind] == :resource
+      error!(node, :STATIC_NOT_RESOURCE, type_name)
+    end
+
+    static_methods = schema[:static_methods] || {}
+    method_def     = static_methods[node.method_name]
+
+    unless method_def
+      available = static_methods.keys.join(", ")
+      available = "(none)" if available.empty?
+      method_tok = node.type_name.token
+      # Method name starts at `TypeName::` + 2 (the `::`).
+      if method_tok
+        anchor = anchor_at(
+          method_tok.line,
+          method_tok.column + node.type_name.name.to_s.length + 2
+        )
+        emit_typo_suggestion!(
+          anchor, node.method_name, static_methods.keys,
+          "Type Error: No static method '#{node.method_name}' on '#{type_name}'. Available: #{available}.",
+          "static method of #{type_name}",
+          category: :type, cascade: true
+        )
+      else
+        error!(node, :STATIC_UNKNOWN_METHOD, node.method_name, type_name, available)
+      end
+    end
+
+    expected_args = method_def[:args]
+    if node.args.length != expected_args.length
+      error!(node, :STATIC_ARITY, type_name, node.method_name, expected_args.length, node.args.length)
+    end
+
+    node.args.zip(expected_args).each_with_index do |(arg, expected), i|
+      actual = arg.resolved_type
+      unless expected == :Any || actual == :Any || is_safe_autocast?(actual, expected)
+        error!(node, :STATIC_ARG_TYPE, i + 1, type_name, node.method_name, expected, actual)
+      end
+    end
+
+    node.zig_pattern = method_def[:zig]
+    node.full_type   = method_def[:return]
+    node.matched_stdlib_def = method_def
+    node.stdlib_allocates = true if method_def[:allocates]
+    node.mutates_receiver = true if method_def[:mutates_receiver]
+    node.can_fail = true if method_def[:can_fail]
+    node.error_kind = method_def[:error_kind] if method_def[:error_kind]
+    node.error_type = method_def[:error_type] if method_def[:error_type]
+    current_fn_ctx.alloc_count += 1 if current_fn_ctx && (method_def[:allocates] || method_def[:can_fail])
+  end
+
+  def visit_FuncCall(node)
+    # Mark struct literal args as call arguments so ensure_owned_value!
+    # skips CopyNode wrapping for rodata strings. The struct is a temporary
+    # argument - rodata strings are valid for the call's lifetime. The callee
+    # dupes strings it needs to escape via promoteFields.
+    node.args.each { |arg| arg.instance_variable_set(:@is_call_arg, true) if arg.is_a?(AST::StructLit) }
+    node.args.each { |arg|
+      visit(arg)
+      promote_to_expr_if!(node, arg) if arg.is_a?(AST::IfStatement)
+      promote_to_expr_match!(node, arg) if arg.is_a?(AST::MatchStatement)
+    }
+
+    # Handle "native_call" special case
+    if node.name == "native_call"
+      node.full_type = :Any
+      return
+    end
+
+    resolve_call(node, node.args)
+
+    # Phase 2: when this call happens inside a held WITH scope and targets
+    # a user-defined function, record a held->callee site so the post-pass
+    # can add (held, T) edges for every T the callee transitively acquires.
+    # Uses the Array-of-Hash @held_lock_types shape so opted_out flows
+    # through to synthesized edges.
+    if @held_lock_types && !@held_lock_types.empty? && @fn_nodes.key?(node.name)
+      fn_name = current_fn_ctx&.name || "<top>"
+      record_held_call!(fn_name, node.name, @held_lock_types, node.token)
+    end
+  end
+
+  def visit_MethodCall(node)
+    visit(node.object)
+    node.args.each { |arg| visit(arg) }
+
+    # Collection method dispatch (Pool/HashMap) via declarative registry.
+    return if resolve_collection_method(node)
+
+    # EXTERN method dispatch: check if the object's type has EXTERN methods registered.
+    obj_type = node.object.type_info
+    if obj_type
+      resolved = obj_type.is_a?(Type) ? obj_type.resolved : obj_type.to_s.to_sym
+      # Check for generic instance: Parsed<MyDoc> → base type Parsed
+      base = obj_type.is_a?(Type) && obj_type.generic_instance? ? obj_type.generic_base : resolved
+      type_schema = lookup_type_schema(base)
+      if type_schema.is_a?(Hash) && type_schema[:methods]&.key?(node.name)
+        method_sig = type_schema[:methods][node.name]
+        node.extern_call = true
+        node.extern_effects = method_sig[:extern_effects] if method_sig[:extern_effects]
+        node.instance_variable_set(:@extern_method, true)
+        node.full_type = method_sig.respond_to?(:return_type) ? (method_sig.return_type || :Void) : (method_sig[:return]&.dig(:type) || :Void)
+        record_effect(EffectTracker::EXTERN)
+        # Track allocator usage for EFFECTS :alloc methods.
+        alloc_kind = method_sig[:extern_effects]&.dig(:alloc)
+        if alloc_kind && current_fn_ctx
+          if alloc_kind == :heap
+            current_fn_ctx.heap_count += 1
+          else
+            current_fn_ctx.frame_count += 1
+          end
+        end
+        return
+      end
+    end
+
+    # Fall through to UFCS: obj.method(args) → method(obj, args)
+    ufcs_args = [node.object] + node.args
+    resolve_call(node, ufcs_args)
+  end
+
+  # Shared logic for resolving function/method calls.
+  # Handles intrinsics, user-defined functions, and lambdas uniformly.
+  #
+  # @param node [AST::FuncCall, AST::MethodCall] The call node
+  # @param args [Array] The arguments (includes receiver for UFCS method calls)
+  # Handles intrinsic function calls by finding the matching overload and
+  # using verify_function_signature! for validation (same as user-defined functions).
+  #
+  # @param node [AST::FuncCall, AST::MethodCall] The call node
+  # @param args [Array] The arguments (includes receiver for method calls - UFCS)
+  def visit_IntrinsicFunc(node, args)
+    definitions = STD_LIB[node.name]
+    definitions = [definitions] if definitions.is_a?(Hash)
+
+    # 1. Find matching overload (needed for polymorphic intrinsics like 'length')
+    matched_def = find_matching_intrinsic(definitions, args)
+
+    unless matched_def
+      sigs = definitions.map { |d| format_intrinsic_args(d[:args]) }.join(" or ")
+      arg_types = args.map { |a| a.resolved_type }.join(", ")
+      error!(node, "No overload for '#{node.name}' matches arguments (#{arg_types}).\nCandidates: #{sigs}")
+      return
+    end
+
+    # 2. Normalize to standard signature format and verify
+    signature = normalize_intrinsic_signature(matched_def)
+
+    if signature
+      # Create a synthetic node with the full args (for UFCS method calls,
+      # node.args doesn't include the receiver, but args does)
+      call_node = Struct.new(:token, :name, :args).new(node.token, node.name, args)
+      verify_function_signature!(call_node, signature)
+    end
+    # Varargs functions skip verify_function_signature! (arity is flexible)
+
+    # 3. Resolve return type (may be dynamic via method call).
+    # Dynamic resolver methods are named `infer_*` to avoid collisions with
+    # Ruby Kernel conversion methods (Integer, String, Array, etc.).
+    ret = matched_def[:return]
+    if ret.is_a?(Hash) && ret[:type]
+      # Structured return: { type: :String, sync: :raw } etc. — preserves capabilities.
+      node.full_type = Type.new(ret[:type], sync: ret[:sync], ownership: ret[:ownership])
+    elsif ret.is_a?(Symbol) && ret.to_s.start_with?("infer_") && respond_to?(ret, true)
+      node.full_type = send(ret, args, node)
+    elsif ret.respond_to?(:call)
+      node.full_type = ret.call(args.map(&:resolved_type), node)
+    else
+      node.full_type = ret
+    end
+
+    # 4. Store Zig pattern and stdlib metadata for transpiler
+    node.zig_pattern = matched_def[:zig]
+    node.matched_stdlib_def = matched_def
+    node.stdlib_allocates = true if matched_def[:allocates]
+    node.mutates_receiver = true if matched_def[:mutates_receiver]
+    node.can_fail = true if matched_def[:can_fail] || matched_def[:allocates]
+    node.error_kind = matched_def[:error_kind] if matched_def[:error_kind]
+    node.error_type = matched_def[:error_type] if matched_def[:error_type]
+    current_fn_ctx.alloc_count += 1 if current_fn_ctx && (matched_def[:allocates] || matched_def[:can_fail] || matched_def[:needs_rt])
+
+    # 5. Flag mutable access through list indexing.
+    #    When a mutating intrinsic (e.g., append, remove) is called on a receiver
+    #    that chains through a GetIndex, the GetIndex must emit pointer access
+    #    instead of by-value getAt().
+    if matched_def[:mutates_receiver] && node.is_a?(AST::MethodCall)
+      mark_chain_needs_mut_ref!(node.object)
+    end
+
+    # 6. Collection type narrowing (e.g., append narrows Any[] → T[])
+    narrow_collection_type!(matched_def, args)
+    # Ownership for TAKES args (e.g., append value) is handled uniformly
+    # by verify_function_signature! via the takes: true flag in STD_LIB.
+  end
+
+  # Loop-local SROA: when a large struct literal (storage == :frame) is declared
+  # inside a loop body, downgrade it to :stack allocation.
+  #
+  # Rationale: the frame arena's save/restore mark is per-function, not per-iteration.
+  # A :frame allocation inside a loop bumps the arena every iteration and never
+  # reclaims it until function exit — burning O(N) memory for N iterations.
+  # A Zig `var BigVec` on the OS stack is reclaimed automatically each iteration;
+  # LLVM then SROAs the fields to registers and dead-code-eliminates unused ones.
+  #
+  # Safety: CLEAR uses value semantics for structs (pass/return by copy).  A large
+  # struct on the stack cannot have its address escape the loop body through normal
+  # CLEAR operations, so :stack is always safe here.
+  def visit_VarDecl(node)
+    if node.value.is_a?(AST::ListLit) && node.type.is_a?(Type) && node.type.fixed?
+      node.value.storage = :stack
+    end
+    visit(node.value)
+    promote_to_expr_if!(node, node.value) if node.value.is_a?(AST::IfStatement)
+    promote_to_expr_match!(node, node.value) if node.value.is_a?(AST::MatchStatement)
+    finalize_decl_node!(node, node.mutable)
+  end
+
+  # Shared declaration body used by visit_VarDecl and the declaration path of
+  # visit_BindExpr. mutable_flag is node.mutable for VarDecl and false for BindExpr
+  # (BindExpr declarations are immutable by default).
+  def finalize_decl_node!(node, mutable_flag)
+    verify_unrestricted!(node)
+    handle_assign_move(node)
+    handle_assign_borrow(node)
+
+    validate_type_annotation!(node, node.type) if node.type
+    validate_stream_type!(node)
+
+    final_type, error = node.value.coerce!(node.type)
+    error!(node, error) if error
+
+    check_prefixed_int_range!(node.value, node.value.coerced_type || final_type)
+    propagate_declared_type_to_value!(node, final_type)
+
+    storage = finalize_decl_storage!(node, final_type)
+    propagate_collection_metadata!(node, final_type)
+    propagate_call_flags!(node)
+    set_cleanup_alloc!(node)
+    is_resource, resource_close = resolve_resource_close(node, final_type)
+    node.resource_close_zig = resource_close
+    node.type_info.is_resource = true if is_resource && node.type_info.respond_to?(:is_resource=)
+
+    Capabilities.validate!(node, node.type_info) { |n, msg| error!(n, msg) }
+
+    node_sync = node.type_info&.sync
+    # Preserve collection metadata (e.g. :set from DISTINCT) in scope so
+    # resolve_full_type returns the correct dispatch_key for method lookup.
+    # Do NOT store the full node.type_info — it embeds ownership/sync from
+    # finalize_storage!, which breaks resolve_type in declare_capability_scope!
+    # (WITH EXCLUSIVE unwrapping reads the raw entry.type expecting just the base type).
+    scope_type = if node.type_info&.collection && !(final_type.is_a?(Type) && final_type.collection)
+      ft = Type.new(final_type)
+      ft.collection = node.type_info.collection
+      ft
+    else
+      final_type
+    end
+    current_scope.declare(
+      node.name, node, scope_type, mutable_flag, false, node.slot_size, storage,
+      Set.new, [],
+      sync: node_sync,
+      resource: is_resource,
+      close_zig: resource_close
+    )
+    node.symbol = current_scope.locals[node.name]
+    # Propagate @link_source from the value type to the scope entry.
+    val_ti = node.value&.type_info
+    if val_ti&.link?
+      link_src = val_ti.link_source
+      node.symbol.link_source = link_src if link_src
+    end
+    classify_ownership!(node.symbol)
+    og_declare(node.name, node, node.type_info || final_type)
+    register_container_borrow!(node)
+    # Non-Copy union locals need rt for cleanup (heapAlloc for *T/@indirect fields).
+    ti = node.type_info
+    if ti && !ti.implicitly_copyable? { |t| lookup_type_schema(t) rescue nil }
+      current_fn_ctx.heap_count += 1 if current_fn_ctx
+    end
+    accumulate_stack_bytes(storage, node)
+    track_union_alias(node.name, node.value)
+    record_capability_binding(node.name, node, final_type, storage)
+  end
+
+  # Keywordless `x = val` or `x: Type = val`.
+  # If x is not yet in scope → immutable declaration (like old VAR x = val).
+  # If x is in scope and mutable → assignment (like old SET x = val).
+  # If x is in scope and immutable → error.
+  def visit_BindExpr(node)
+    # Same pre-set as visit_VarDecl: mark fixed-array list literals as :stack before visiting.
+    if node.value.is_a?(AST::ListLit) && node.type.is_a?(Type) && node.type.fixed?
+      node.value.storage = :stack
+    end
+    visit(node.value)
+
+    scope = current_scope
+    if !scope.locals.key?(node.name)
+      # Declaration path
+      promote_to_expr_if!(node, node.value) if node.value.is_a?(AST::IfStatement)
+      promote_to_expr_match!(node, node.value) if node.value.is_a?(AST::MatchStatement)
+      node.mode = :decl
+      finalize_decl_node!(node, false)
+      # Struct with BORROWED fields: propagate non_escaping to the binding.
+      if node.value.instance_variable_get(:@has_borrowed_fields)
+        node.symbol.non_escaping   = true
+        node.symbol.borrowed_alias = true
+      end
+
+    elsif scope.is_immutable?(node.name)
+      emit_immutable_assignment_error!(node, scope)
+
+    else
+      # Assignment path
+      node.mode = :assign
+
+      verify_unrestricted!(node)
+      validate_assignment_type(node, scope.resolve_type(node.name), node.value.resolved_type)
+      node.full_type = scope.resolve_type(node.name)
+
+      handle_assign_move(node)
+      handle_assign_borrow(node)
+
+      mark_var_mutated(node.name)
+      og_set_live(node.name)
+    end
+  end
+
+  def visit_Identifier(node)
+    # Pipeline expressions (inside s>) are closures over the enclosing scope —
+    # lookup_scope_for searches all scopes. Normal code uses resolve_variable_scope
+    # which restricts to local scope + function-as-value references.
+    scope = @smooth_depth > 0 ? lookup_scope_for(node.name) : resolve_variable_scope(node.name)
+    unless scope
+      # Check if it's a type name used as a comptime argument (e.g., parseFromSlice(MyDoc, ...))
+      type_schema = lookup_type_schema(node.name.to_sym)
+      if type_schema
+        node.full_type = :Type
+        return
+      end
+      emit_typo_suggestion!(
+        node.token, node.name, outer_scope_vars.to_a,
+        "Undefined variable '#{node.name}'",
+        "closest in-scope variable"
+      )
+      return
+    end
+
+    # 1. Check Validity (View Invalidation Logic)
+    scope.check_validity!(node.name)
+
+    # 2. Resolve Type
+    raw_type = scope.resolve_full_type(node.name)
+    if raw_type.raw.is_a?(Hash) && raw_type.raw[:params] && !raw_type.fn_type?
+      # Named function used as a value — build a proper fn_type Type.
+      # Propagate :reentrant so the type-checker can enforce param constraints.
+      sig = raw_type.raw
+      node.full_type = Type.new({ params: sig[:params], return: sig[:return], fn_type: true, reentrant: sig[:reentrant] == true })
+      node.fn_ref = true
+    else
+      node.full_type = raw_type
+    end
+
+    # 3. Liveness
+    if @og&.moved?(node.name)
+      emit_use_of_moved_error!(node, @og.nodes[node.name])
+    end
+
+    # 5. Mark variable as read so the transpiler can skip `_ = &x` suppression.
+    owner = lookup_scope_for(node.name)
+    owner&.mark_read(node.name)
+    node.symbol = owner&.locals&.[](node.name)
+  end
+
+  # DEPRECATED (SROA hint only, no memory safety role): Sets ownership_kind on scope entries
+  # to guide the LLVM backend's SROA pass (whether to emit `_ = &name;` suppression).
+  # This has no effect on correctness or memory safety — it is purely a performance annotation.
+  # When SROA is revisited (likely as part of a dedicated LLVM codegen pass), this method and
+  # all call sites should be removed. The MIR layer owns all memory decisions; this is a
+  # leftover from before that architecture was established. Do not add new cases here.
+  def classify_ownership!(entry)
+    return unless entry
+    t = entry.type
+    return if t.is_a?(Hash) # function signature, not a variable
+    type_obj = t.is_a?(Type) ? t : Type.new(t || :Any)
+    entry.ownership_kind = if entry.resource
+      :resource
+    elsif type_obj.multiowned? || type_obj.shared? ||
+          entry.storage == :multiowned || entry.storage == :shared
+      :rc
+    elsif entry.sync
+      :sync
+    elsif type_obj.collection?
+      :collection
+    elsif entry.takes
+      # TAKES parameters own the data — always affine so cleanup is emitted.
+      :affine
+    elsif type_obj.implicitly_copyable? { |t| lookup_type_schema(t) }
+      :value
+    else
+      :affine
+    end
+  end
+
+  # Accumulate stack-local variable bytes for the current function context.
+  # Only counts :stack storage — :frame and :heap don't consume fiber stack.
+  # Track alias relationships for union values extracted from collections.
+  # When x = f(source) where f returns a union and source is a union/collection,
+  # x's backing data may alias source's. Skip cleanup for x.
+  # Track alias relationships for union values extracted from collections.
+  # Only UFCS method calls (x.get(key) returning same union type) are aliasing.
+  # FuncCall (parseValue!(json, pos, penv, depth)) creates new data, not aliasing.
+  # Track alias relationships for union values extracted from another union/collection.
+  # Aliased variables share backing data with the source - skip cleanup to avoid double-free.
+  def track_union_alias(var_name, value_node)
+    return unless value_node.is_a?(AST::FuncCall) || value_node.is_a?(AST::MethodCall)
+    ret_type = value_node.respond_to?(:full_type) ? value_node.full_type : nil
+    return unless ret_type
+    ret_type_obj = ret_type.is_a?(Type) ? ret_type : Type.new(ret_type)
+
+    # Check if the return type is a union with heap variants
+    schema = lookup_type_schema(ret_type_obj.resolved)
+    return unless schema.is_a?(Hash) && schema[:kind] == :union
+    has_heap = (schema[:variants] || {}).any? { |_, vt| Type.variant_has_heap?(vt) }
+    return unless has_heap
+
+    # Get the first argument (object for MethodCall, first arg for FuncCall)
+    first_arg = if value_node.is_a?(AST::MethodCall)
+      value_node.object
+    elsif value_node.args&.any?
+      value_node.args.first
+    end
+    return unless first_arg.is_a?(AST::Identifier)
+    arg_type = first_arg.resolved_type
+
+    # Alias when: first arg is the SAME union type (extraction like jsonGet)
+    # or first arg is a map (HashMap lookup returning union value)
+    if arg_type == ret_type_obj.resolved || first_arg.type_info&.map?
+      @og.edges << OwnershipGraph::Edge.new(from: var_name, to: first_arg.name, kind: :aliases)
+    end
+  end
+
+  def accumulate_stack_bytes(storage, node)
+    return unless storage == :stack && current_fn_ctx
+    bytes = (node.slot_size || 1) * 8
+    current_fn_ctx.stack_vars_bytes += bytes
+  end
+
+  def mark_var_mutated(name)
+    scope = lookup_scope_for(name)
+    return unless scope
+    decl_node = scope.locals[name]&.reg
+    decl_node.var_mutated = true if decl_node&.respond_to?(:var_mutated=)
+  end
+
+  # ==========================================
+  # Assignment
+  # ==========================================
+  def visit_Assignment(node)
+    visit(node.value)
+
+    verify_unrestricted!(node)
+
+    target = node.name
+    case target
+    when AST::Identifier, String
+      # Simple Variable Assignment: x = 1
+      visit_assignment_variable(target, node)
+
+    when AST::GetIndex
+      # Array/Map Index Assignment: x[0] = 1
+      visit_assignment_index(target, node)
+
+    when AST::GetField
+      # Struct Field Assignment: x.field = 1
+      visit_assignment_field(target, node)
+
+    else
+      error!(node, "Invalid assignment target: #{target.class}")
+    end
+
+    handle_assign_move(node)
+    handle_assign_borrow(node)
+
+    # If sucessfully assigned, set live
+    target_name = node.name.is_a?(AST::Identifier) ? node.name.name : node.name
+    og_set_live(target_name)
+  end
+
+  def visit_assignment_variable(identifier_or_name, node)
+    var_name = identifier_or_name.is_a?(AST::Identifier) ? identifier_or_name.name : identifier_or_name
+
+    scope = current_scope
+    if !scope.locals.key?(var_name)
+      error!(node, "Cannot assign to undefined variable '#{var_name}'")
+    end
+
+    if scope.is_immutable?(var_name)
+      error!(node, "Variable '#{var_name}' is immutable")
+    end
+
+    validate_assignment_type(node, scope.resolve_type(var_name), node.value.resolved_type)
+    node.full_type = scope.resolve_type(var_name)
+    mark_var_mutated(var_name)
+  end
+
+  def visit_assignment_index(index_node, assignment_node)
+    # 1. Analyze the access itself (resolves types, checks bounds if possible)
+    visit(index_node)
+
+    # 1b. Flag mutable access through list indexing in the target chain.
+    mark_chain_needs_mut_ref!(index_node)
+
+    # 2. Check Mutability of the owner
+    if index_node.target.is_a?(AST::Identifier)
+      var_name = index_node.target.name
+      if current_scope.is_immutable?(var_name)
+        error!(assignment_node, "Cannot modify index of immutable list '#{var_name}'")
+      end
+      mark_var_mutated(var_name)
+    end
+
+    # 3. Type Check — for map assignments, use the unwrapped value type (V, not ?V).
+    #    map[key] READ returns ?V, but map[key] = val STORES V.
+    assign_type = index_node.type_info
+    if assign_type&.optional?
+      assign_type_resolved = assign_type.wrapped_type.resolved
+    else
+      assign_type_resolved = index_node.resolved_type
+    end
+    validate_assignment_type(assignment_node, assign_type_resolved, assignment_node.value.resolved_type)
+
+    assignment_node.full_type = assign_type_resolved
+
+    # HashMap put requires heap allocation (rt.heapAlloc()) — record so needs_rt propagates.
+    target_type = index_node.target.type_info
+    if target_type&.map?
+      current_fn_ctx.heap_count += 1 if current_fn_ctx
+      record_effect(EffectTracker::HEAP)
+    end
+  end
+
+  def visit_assignment_field(field_node, assignment_node)
+    # 1. Analyze field access
+    visit(field_node)
+
+    # 1b. Flag mutable access through list indexing in the target chain.
+    mark_chain_needs_mut_ref!(field_node)
+
+    # 2. Check Mutability of the owner
+    # @alwaysMutable (RefCell) allows field mutation through const bindings.
+    if field_node.target.is_a?(AST::Identifier)
+      var_name = field_node.target.name
+      syn = field_node.target.symbol&.sync
+      if current_scope.is_immutable?(var_name) && syn != :always_mutable
+        error!(assignment_node, "Cannot modify field of immutable struct '#{var_name}'")
+      end
+      mark_var_mutated(var_name)
+
+      # 3. Auto-lock: if the target variable is @locked or @writeLocked, mark the
+      # assignment for inline guard emission. The borrow cannot escape because
+      # field assignments are statements (not expressions).
+      syn = field_node.target.symbol&.sync
+      if syn == :locked || syn == :write_locked || syn == :always_mutable
+        assignment_node.auto_lock = { var: var_name, sync: syn }
+      end
+    end
+
+    # 4. Type Check
+    validate_assignment_type(assignment_node, field_node.resolved_type, assignment_node.value.resolved_type)
+
+    # Assignments are statements (void), not expressions that produce a value.
+    assignment_node.full_type = :Void
+  end
+
+  def validate_assignment_type(node, target_type, value_type)
+    return if target_type.nil? || value_type.nil? || target_type == :Any || value_type == :Any
+    return if target_type == :NIL # Allow narrowing from initial NIL
+    return if target_type == value_type
+
+    if !is_safe_autocast?(value_type, target_type)
+      error!(node, "Type Mismatch: Cannot assign #{value_type} to #{target_type}")
+    else
+      node.value.coerced_type = target_type
+    end
+  end
+
+  # ==========================================
+  # INVALIDATION LOGIC (The "Dependencies" feature)
+  # ==========================================
+
+  def visit_Cast(node)
+    visit(node.value) # Resolve 'json' -> :HashMap
+
+    # node.target is "Config".
+    # In a strict language, we'd check if :HashMap can cast to Config.
+    # For now, just trust the user and carry the type forward.
+    node.full_type = node.target.to_sym  # TODO: Check is this is needed
+  end
+
+  def visit_GetIndex(node)
+    visit(node.target)
+    visit(node.index)
+
+    target_type_info = node.target.type_info
+
+    # Look up index operation from the registry
+    op = resolve_index_op(target_type_info, :get)
+
+    if op
+      # Registry-driven: type and ownership from INDEX_OPS
+      node.full_type = op[:return_type].call(target_type_info)
+      node.container_borrow = true if op[:container_borrow]
+
+      # Validate key types for maps
+      if target_type_info.map?
+        index_type_info = node.index.type_info
+        if target_type_info.numeric_map?
+          error!(node, "Numeric map keys must be a number type, got #{node.index.resolved_type}") unless index_type_info&.numeric?
+        else
+          error!(node, "Map keys must be Strings, got #{node.index.resolved_type}") unless index_type_info&.string?
+        end
+      end
+
+    # Special cases not covered by INDEX_OPS
+    elsif target_type_info.promise_list?
+      # Promise list indexing yields ~T (tense type); dispatch_key returns :array
+      # but resolve_index_op guards against this above.
+      elem_t = target_type_info.tense_type.element_type
+      node.full_type = Type.new(:"~#{elem_t.resolved}")
+    elsif target_type_info.string? && !target_type_info.raw?
+      error!(node, "Cannot index String by integer. Use String@raw for byte access, or .codepoints() for iteration.")
+    elsif node.target.metatype == :struct
+      # Struct field access via index (rare legacy path)
+      node.full_type = target_type_info.element_type
+      node.container_borrow = true
+    else
+      error!(node, "Unsupported Index")
+    end
+  end
+
+  def visit_GetField(node)
+    # Enum/Union variant access: TypeName.Variant
+    # Must be checked BEFORE visiting target to avoid "variable not found" error.
+    return if resolve_variant_access(node)
+
+    visit(node.target)
+
+    # Check if this path or any ancestor has been moved (graph handles both)
+    path = get_path_to_root(node)
+    if path
+      # Check root, then progressively longer sub-paths
+      check = ""
+      path.each do |seg|
+        check = check.empty? ? seg.to_s : "#{check}.#{seg}"
+        if @og.moved?(check)
+          error!(node, "Use of moved value '#{path.map(&:to_s).join(".")}'")
+          break
+        end
+      end
+    end
+
+    type = node.target.resolved_type
+
+    # Struct Field Lookup
+    if node.wildcard?
+      node.full_type = :Void
+      return
+    end
+
+    schema = lookup_type_schema(type)
+    if schema.is_a?(Hash) && schema[:kind] == :enum
+      error!(node, :ENUM_FIELD_ACCESS, type)
+    elsif schema.is_a?(Hash) && schema[:kind] == :union
+      error!(node, :UNION_FIELD_ACCESS, type)
+    elsif schema && schema[node.field]
+      field_type = schema[node.field]
+      # SOA tracking: record field access on pipeline variable `_`
+      if @pipeline_accessed_fields && node.target.is_a?(AST::Identifier) && node.target.name == "_"
+        @pipeline_accessed_fields << node.field
+      end
+      # For generic instances (e.g. Pair<Number>), substitute type params into field type.
+      # Handles compound types like T[], ?T, !T via apply_type_subst.
+      # BORROWED fields are stored as plain types in the schema (borrowed_fields tracks which).
+      type_obj = Type.new(type)
+      if type_obj.generic_instance? && schema[:type_params]
+        subst = {}
+        schema[:type_params].zip(type_obj.generic_args).each do |param, arg|
+          subst[param] = arg.resolved
+        end
+        field_type = apply_type_subst(field_type, subst) if subst.any?
+      end
+      node.full_type = field_type
+    else
+      error!(node, :ILLEGAL_FIELD_LOOKUP, node.field, type)
+    end
+  end
+
+  def visit_Slice(node)
+    visit(node.target)
+    visit(node.start) if node.start
+    visit(node.end) if node.end
+
+    # A slice of T[] is T[]
+    # A slice of T[3] is T[] (Fixed becomes Dynamic view)
+    target_type = node.target.type_info
+    if target_type&.array?
+      element = target_type.element_type.resolved
+      node.full_type = :"#{element}[]"
+    else
+      node.full_type = :Any
+    end
+  end
+
+  def visit_UnaryOp(node)
+    visit(node.right)
+
+    case node.op
+    when :NOT, "!"
+      node.full_type = :Bool
+    when :SUB, "-"
+      node.full_type = node.right.full_type # Keep as Number/Int64
+    else
+      node.full_type = node.right.full_type
+    end
+  end
+
+  # ==========================================
+  # LITERALS & BINARY OPS
+  # ==========================================
+  def visit_HashLit(node)
+    # 1. Analyze values to find the Value Type (V)
+    #    Assumption: Maps are homogeneous for now (e.g. all Int64)
+    if node.pairs.empty?
+      node.full_type = :"HashMap<Any>"
+      node.storage = :heap
+      current_fn_ctx.heap_count += 1 if current_fn_ctx
+      record_effect(EffectTracker::HEAP)
+      return
+    end
+
+    # Analyze all values
+    node.pairs.each { |k, v| visit(v) }
+
+    # Infer Type from first value
+    first_val_type = node.pairs.values.first.resolved_type
+
+    # Simple check: Ensure all values match
+    node.pairs.each do |k, v|
+      if v.resolved_type != first_val_type
+        error!(node, "HashMap must have all values be the same type")
+      end
+    end
+
+    node.full_type = :"HashMap<#{first_val_type}>"
+    node.storage = :heap
+    current_fn_ctx.heap_count += 1 if current_fn_ctx
+    record_effect(EffectTracker::HEAP)
+  end
+
+  def visit_StructLit(node)
+    schema = lookup_type_schema(node.name.to_sym)
+    if schema.nil?
+      error!(node, "Unknown struct type: '#{node.name}'")
+    end
+
+    # Union literal: Result{ Ok: 42 } or Option<Number>{ Some: 42.0 }
+    # Reuses struct-literal syntax — no new parser changes required.
+    if schema.is_a?(Hash) && schema[:kind] == :union
+      if node.fields.length != 1
+        error!(node, "Union literal '#{node.name}' must specify exactly one variant, got #{node.fields.length}.")
+      end
+
+      # Build type param substitution for generic unions
+      union_type_params = schema[:type_params]
+      union_subst = {}
+      if node.type_args&.any?
+        if union_type_params.nil? || union_type_params.empty?
+          error!(node, "Type Error: '#{node.name}' is not a generic type — remove the type arguments.")
+        end
+        if node.type_args.length != union_type_params.length
+          error!(node, "Type Error: '#{node.name}' expects #{union_type_params.length} type argument(s), got #{node.type_args.length}.")
+        end
+        union_type_params.zip(node.type_args).each { |p, a| union_subst[p] = a.to_sym }
+      elsif union_type_params&.any?
+        params_hint = union_type_params.map(&:to_s).join(', ')
+        error!(node, "Type Error: '#{node.name}' is a generic type — type arguments are required (e.g., #{node.name}<#{params_hint}>).")
+      end
+
+      variant_name, val_node = node.fields.first
+      unless schema[:variants].key?(variant_name)
+        anchor = variant_anchor_from_unionlit(node, variant_name)
+        if anchor
+          emit_variant_typo!(
+            anchor, variant_name, schema[:variants].keys,
+            "Type Error: Union '#{node.name}' has no variant '#{variant_name}'.",
+            "variant of union #{node.name}",
+            cascade: true
+          )
+        else
+          error!(node, :UNION_UNKNOWN_VARIANT, node.name, variant_name)
+        end
+      end
+      raw_expected = schema[:variants][variant_name]
+      if raw_expected.nil?
+        error!(node, "Union variant '#{variant_name}' is a unit variant — use '#{node.name}.#{variant_name}' (no payload).")
+      end
+      if raw_expected.is_a?(Hash) && raw_expected[:kind] == :inline_struct
+        error!(node, :UNION_INLINE_VARIANT_OLD_SYNTAX, node.name, variant_name, node.name, variant_name)
+      end
+      # @indirect single-type payload: unwrap inner type for type-checking;
+      # mark the value node so the transpiler heap-allocates it via create(*T).
+      indirect_payload = raw_expected.is_a?(Hash) && raw_expected[:kind] == :indirect_payload
+      raw_for_check = indirect_payload ? raw_expected[:type] : raw_expected
+      # Apply type param substitution (e.g. T → Number for generic unions)
+      expected_type = union_subst.any? ? apply_type_subst(raw_for_check, union_subst) : raw_for_check
+# ... file truncated after line 2617; original file has 4490 lines ...
+```
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+CI broken.
+
+  spec/annotator_spec.rb:1447
+  src/annotator.rb:1397:in `visit_WhileLoop'
+
+Fix the bug.
+
+Return ONLY the corrected function `visit_WhileLoop` in a ```ruby block.
+

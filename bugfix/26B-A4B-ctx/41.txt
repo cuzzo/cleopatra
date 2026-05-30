@@ -1,0 +1,8 @@
+```ruby
+def provenance_alloc
+  case @provenance
+  when :heap, :frame then @provenance
+  else nil
+  end
+end
+```

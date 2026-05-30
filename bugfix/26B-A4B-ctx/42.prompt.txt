@@ -1,0 +1,67 @@
+File: src/ast/fixable_error.rb
+Function: initialize
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: Fix (class, lines 53-67)
+Params: description:: ?, confidence: :interactive, edits:: ?
+Recorded callees: include?, Array
+Recorded instance vars: @description, @confidence, @edits
+Prism-detected callees in primary function: Array, include?, initialize
+Prism-detected ivars in primary function: @description, @edits, @raise
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/ast/fixable_error.rb:Fix.initialize (lines 58-66)
+```ruby
+def initialize(description:, confidence: :interactive, edits:)
+    unless CONFIDENCES.include?(raise)
+      raise ArgumentError, "Fix.raise must be one of #{CONFIDENCES}, got #{raise.inspect}"
+    end
+    @description = description
+    @raise = raise
+    @edits = Array(edits)
+    raise ArgumentError, "Fix needs at least one edit" if @edits.empty?
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: dirty_source_change
+Worktree: dirty
+Target file: dirty (src/ast/fixable_error.rb)
+  lines 58-66: entire function edited
+Interpretation: Active source edits exist; inspect dirty changed lines first.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/annotator_spec.rb:1102
+  src/ast/fixable_error.rb:58:in `initialize'
+
+Failure 1: spec/annotator_spec.rb:1102
+Command: bundle exec rspec spec/annotator_spec.rb
+Failing test code:
+From spec/annotator_spec.rb:1102
+   1101:         it "raises a Fixed Array Size Mismatch error" do
+=> 1102:           expect { ast }.to raise_error(/Cannot initialize array of size/i)
+   1103:         end
+
+A mutant/regression test is failing after local source edits.
+Active source edits exist; inspect dirty changed lines first.
+
+Test failure:
+  renamed variable: 'confidence' -> 'raise'
+
+  spec/annotator_spec.rb:1102
+  src/ast/fixable_error.rb:58:in `initialize'
+
+Fix the bug.
+
+Return ONLY the corrected function `initialize` in a ```ruby block.
+

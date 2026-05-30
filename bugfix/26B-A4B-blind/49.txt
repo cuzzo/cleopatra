@@ -1,0 +1,19 @@
+```ruby
+  # Allow code to compare this object directly to symbols/strings
+  # e.g. if node.type == :Float64
+  def ==(other)
+    # fn_types must never compare equal to a plain symbol (resolved returns the return type,
+    # not a unique identity). Two fn_types are equal only when their raw hashes match.
+    if fn_type?
+      other_t = other.is_a?(Type) ? other : nil
+      return false unless other_t&.fn_type?
+      return @raw == other_t.raw
+    end
+
+    if other.is_a?(Symbol) || other.is_a?(String)
+      return resolved == other.to_sym && @raw == other.to_sym
+    end
+
+    resolved == other.resolved && @raw == other.raw
+  end
+```

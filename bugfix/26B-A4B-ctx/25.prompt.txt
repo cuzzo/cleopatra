@@ -1,0 +1,67 @@
+File: src/ast/type.rb
+Function: symbol?
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: Type (class, lines 4-1634)
+Params: (none recorded)
+Recorded callees: (none)
+Recorded instance vars: @sync
+Prism-detected callees in primary function: (none)
+Prism-detected ivars in primary function: @sync
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/ast/type.rb:Type.symbol? (lines 455-457)
+```ruby
+def symbol?
+    @sync == :symbol
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: dirty_source_change
+Worktree: dirty
+Target file: dirty (src/ast/type.rb)
+  lines 455-455: nearby edited line
+  lines 456-456: mutated bug line
+  lines 457-457: nearby edited line
+Interpretation: Active source edits exist; inspect dirty changed lines first.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/symbol_spec.rb:111
+  src/ast/type.rb:455:in `symbol?'
+
+Failure 1: spec/symbol_spec.rb:111
+Command: bundle exec rspec spec/symbol_spec.rb
+Failing test code:
+From spec/symbol_spec.rb:273
+    264:     it "emits != between symbols as negated pointer check" do
+    265:       zig = compile_symbol_src(<<~CLEAR)
+    266:         FN main() RETURNS Void ->
+    267:           a = :foo;
+    268:           b = :bar;
+    269:           _ = !(a == b);
+    270:           RETURN;
+    271:         END
+    272:       CLEAR
+=>  273:       expect(zig).to include(".ptr ==")
+    274:     end
+
+A mutant/regression test is failing after local source edits.
+Active source edits exist; inspect dirty changed lines first.
+
+Something wrong in `symbol?`. swapped comparison: '==' -> '!=' near '@sync == :symbol'
+
+Fix it.
+
+Return ONLY the corrected function `symbol?` in a ```ruby block.
+

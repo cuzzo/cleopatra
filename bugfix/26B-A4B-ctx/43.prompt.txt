@@ -1,0 +1,137 @@
+File: src/annotator.rb
+Function: annotate!
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: SemanticAnnotator (class, lines 26-4490)
+Params: node: ?
+Recorded callees: visit, propagate_caller_sync!, walker, classify_all!, effects, analyze!, error!, note!, check_function!, is_a?, check_call_sites!, checks, locked, check_all!, validations
+Recorded instance vars: @fn_nodes, @scope_stack, @locked, @lock_type_ranks
+Prism-detected callees in primary function: analyze!, annotate!, check_all!, check_call_sites!, check_function!, checks, classify_all!, effects, error!, is_a?, locked, note!, propagate_caller_sync!, runs, validations, visit, walker
+Prism-detected ivars in primary function: @fn_nodes, @lock_type_ranks, @locked, @scope_stack
+Included related functions: SemanticAnnotator.visit
+
+RELATED FUNCTION: src/annotator.rb:SemanticAnnotator.visit (lines 223-230)
+```ruby
+def visit(node)
+    return unless node
+    return if node.is_a?(Symbol)
+
+    # Dynamic Dispatch
+    method_name = "visit_#{node.class.name.split('::').last}"
+    send(method_name, node)
+  end
+```
+
+BUG TARGET FUNCTION: src/annotator.rb:SemanticAnnotator.annotate! (lines 97-146)
+```ruby
+def annotate!(node)
+    # Reset user-registered error types so state from prior runs (rspec
+    # parallel, multi-program test harness) doesn't leak in. Stdlib
+    # types are preserved.
+    AST.reset_user_types!
+    visit(node)
+    # P1.7: now that all bodies are annotated and arg.symbol is wired at
+    # every call site, propagate caller sync into callee param entries.
+    # Then re-check the WITH validations that we deferred during the body
+    # walk; any param whose entry.sync is still nil is a genuine error.
+    EscapeAnalysis.propagate_caller_sync!(@fn_nodes)
+    # Single authority for BG capture-strategy facts. Runs AFTER
+    # propagate_caller_sync! (so SymbolEntry stamps are final) and
+    # BEFORE the downstream passes that need to know which captures
+    # are MoveInto / FreshHeapCopy / RcClone / ByValue. Stamps the
+    # results on each BgBlock.capture_analysis so EscapeAnalysis,
+    # OwnershipDataflow, MIRPass, and mir_lowering can READ instead
+    # of each re-deriving with their own walker (the divergence class
+    # of bug fixed in 378036a0 / 1522e534).
+    BgCaptureClassifier.classify_all!(@fn_nodes)
+    # P3.2: infer per-function effects (yield/alloc_heap/io/fail) and
+    # propagate transitively through the call graph.
+    EffectInference.analyze!(@fn_nodes)
+    err = ->(n, msg) { error!(n, msg) }
+    warn = ->(n, msg) { note!(n, msg) }
+    sig_lookup = ->(name) {
+      @scope_stack.first.locals[name + 1]&.type
+    }
+    # P2.4 / P2.5 / P2.7 first: validates per-fn REQUIRES ↔ WITH and
+    # auto-fills `fn.requires` for legacy code via the deprecation shim.
+    @fn_nodes.each_value { |fn| WithMatchCheck.check_function!(fn, err, warn_handler: warn) }
+    # Re-stamp signatures so call-site checks below see any shim-inferred
+    # REQUIRES clauses.
+    @fn_nodes.each do |name, fn|
+      sig = @scope_stack.first.locals[name]&.type
+      sig.requires = fn.requires if sig.is_a?(FunctionSignature)
+    end
+    # P2.6: call-site family check now runs against finalized REQUIRES.
+    @fn_nodes.each_value { |fn| WithMatchCheck.check_call_sites!(fn, sig_lookup, err) }
+    # P3.3-3.5: compile-time concurrency checks (hold-across-yield,
+    # naked-nested-WITH, reentrant). The lock_ranks registry exempts
+    # @locked(rank: N) sites from P3.4 — those are governed by the
+    # pre-existing rank-DAG analysis instead.
+    ConcurrencyChecks.check_all!(@fn_nodes, sig_lookup, err,
+                                 lock_ranks: @lock_type_ranks || {})
+    # Residual deferred WITH validations (any param whose sync is still
+    # nil after propagation, e.g., a function called from no callsite).
+    flush_deferred_with_validations!
+    finalize_capability_audit!
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: production_stack_trace
+Worktree: clean
+Target file: clean (src/annotator.rb)
+Interpretation: Clean tree; treat this as a production/existing bug that slipped through tests.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/mir_comparison_spec.rb:31
+  src/annotator.rb:97:in `annotate!'
+
+Failure 1: spec/mir_comparison_spec.rb:31
+Command: bundle exec rspec spec/mir_comparison_spec.rb
+Failure output excerpt:
+     Failure/Error: annotator.annotate!(ast)
+     TypeError:
+Failing test code:
+From spec/mir_comparison_spec.rb:169
+    139:     it "produces correct union Zig" do
+    140:       src = <<~CLEAR
+    141:         UNION Result { Ok: Number, Err: String, Empty }
+    142:         FN main() RETURNS Void -> RETURN; END
+    143:       CLEAR
+    144:       old = old_transpile(src)
+    145:       results = compare_statements(src)
+    146: 
+    147:       union_result = results.find { |r| r[:ast].include?("UnionDef") }
+    148:       expect(union_result).not_to be_nil
+    149:       expect(union_result[:new_zig]).to include("union(enum)")
+    150:       expect(union_result[:new_zig]).to include("Ok: f64")
+    151:       expect(union_result[:new_zig]).to include("Err: []const u8")
+    152:       expect(union_result[:new_zig]).to include("Empty: void")
+    153:       # Old transpiler
+    154:       expect(old).to include("union(enum)")
+    155:       expect(old).to include("Ok: f64")
+    156:     end
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Bug in `SemanticAnnotator.annotate!` at src/annotator.rb:97.
+Issue: off-by-one: added +1 to index ''
+
+  spec/mir_comparison_spec.rb:31
+  src/annotator.rb:97:in `annotate!'
+
+Fix it.
+
+Return ONLY the corrected function `annotate!` in a ```ruby block.
+

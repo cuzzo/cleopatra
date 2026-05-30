@@ -1,0 +1,6 @@
+```ruby
+  # Get the node for a path.
+  def [](path)
+    @nodes[path]
+  end
+```

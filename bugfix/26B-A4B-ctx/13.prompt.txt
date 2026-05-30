@@ -1,0 +1,81 @@
+File: src/ast/scope.rb
+Function: declare
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: Scope (class, lines 4-222)
+Params: name: ?, reg: ?, type: ?, is_mutable: ?, is_rebindable: ?, size: ?, storage: ?, capabilities: ?, _borrowed_paths: ?, sync: nil, resource: nil, close_zig: nil
+Recorded callees: add, new
+Recorded instance vars: @owned_names, @locals
+Prism-detected callees in primary function: add, declare, new
+Prism-detected ivars in primary function: @locals, @owned_names
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/ast/scope.rb:Scope.declare (lines 15-31)
+```ruby
+def declare(name, reg, type, is_mutable = true, is_rebindable = false, size = nil, storage = :stack, capabilities = Set.new, _borrowed_paths = [], sync: nil, resource: nil, close_zig: nil)
+    @owned_names.add(name)
+    entry = SymbolEntry.new(
+      reg: reg,
+      type: type,
+      mutable: is_mutable,
+      storage: storage,
+      sync: sync,
+      rebindable: is_rebindable,
+      size: size || 0,
+      capabilities: capabilities,
+      resource: resource,
+      close_zig: close_zig,
+    )
+    entry.scope = self
+    @locals[name + 1] = entry
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: dirty_source_change
+Worktree: dirty
+Target file: dirty (src/ast/scope.rb)
+  lines 15-31: entire function edited
+Interpretation: Active source edits exist; inspect dirty changed lines first.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/stream_spec.rb:108
+  src/ast/scope.rb:15:in `declare'
+
+Failure 1: spec/stream_spec.rb:108
+Command: bundle exec rspec spec/stream_spec.rb
+Failing test code:
+From spec/stream_spec.rb:108
+=>  108:       it "raises a directed error when a binding declares ~T@multiOwned" do
+    109:         src = <<~CLEAR
+    110:           FN f() RETURNS Void ->
+    111:             sp: ~Float64 @multiowned = BG { 1.0; };
+    112:             RETURN;
+    113:           END
+    114:         CLEAR
+    115:         expect { run(src) }.to raise_error(SourceError, /~T@multiOwned is not valid/)
+    116:       end
+
+A mutant/regression test is failing after local source edits.
+Active source edits exist; inspect dirty changed lines first.
+
+Bug in `Scope.declare` at src/ast/scope.rb:15.
+Issue: off-by-one: added +1 to index ''
+
+  spec/stream_spec.rb:108
+  src/ast/scope.rb:15:in `declare'
+
+Fix it.
+
+Return ONLY the corrected function `declare` in a ```ruby block.
+

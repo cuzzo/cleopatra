@@ -1,0 +1,109 @@
+File: src/annotator.rb
+Function: visit_MethodCall
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: SemanticAnnotator (class, lines 26-4489)
+Params: node: ?
+Recorded callees: visit, dispatch, resolve_collection_method, is_a?, lookup_type_schema, key?, instance_variable_set, respond_to?, dig, record_effect, method, resolve_call
+Recorded instance vars: @extern_method
+Prism-detected callees in primary function: dig, dispatch, instance_variable_set, is_a?, key?, lookup_type_schema, method, record_effect, resolve_call, resolve_collection_method, visit, visit_MethodCall
+Prism-detected ivars in primary function: @extern_method
+Included related functions: SemanticAnnotator.visit
+
+RELATED FUNCTION: src/annotator.rb:SemanticAnnotator.visit (lines 223-230)
+```ruby
+def visit(node)
+    return unless node
+    return if node.is_a?(Symbol)
+
+    # Dynamic Dispatch
+    method_name = "visit_#{node.class.name.split('::').last}"
+    send(method_name, node)
+  end
+```
+
+BUG TARGET FUNCTION: src/annotator.rb:SemanticAnnotator.visit_MethodCall (lines 1885-1921)
+```ruby
+def visit_MethodCall(node)
+    visit(node.object)
+    node.args.each { |arg| visit(arg) }
+
+    # Collection method dispatch (Pool/HashMap) via declarative registry.
+    return if resolve_collection_method(node)
+
+    # EXTERN method dispatch: check if the object's type has EXTERN methods registered.
+    obj_type = node.object.type_info
+    if obj_type
+      resolved = obj_type.is_a?(Type) ? obj_type.resolved : obj_type.to_s.to_sym
+      # Check for generic instance: Parsed<MyDoc> → base type Parsed
+      base = obj_type.is_a?(Type) && obj_type.generic_instance? ? obj_type.generic_base : resolved
+      type_schema = lookup_type_schema(base)
+      if type_schema.is_a?(Hash) && type_schema[:methods]&.key?(node.name)
+        method_sig = type_schema[:methods][node.name]
+        node.extern_call = true
+        node.extern_effects = method_sig[:extern_effects] if method_sig[:extern_effects]
+        node.instance_variable_set(:@extern_method, true)
+        record_effect(EffectTracker::EXTERN)
+        # Track allocator usage for EFFECTS :alloc methods.
+        alloc_kind = method_sig[:extern_effects]&.dig(:alloc)
+        if alloc_kind && current_fn_ctx
+          if alloc_kind == :heap
+            current_fn_ctx.heap_count += 1
+          else
+            current_fn_ctx.frame_count += 1
+          end
+        end
+        return
+      end
+    end
+
+    # Fall through to UFCS: obj.method(args) → method(obj, args)
+    ufcs_args = [node.object] + node.args
+    resolve_call(node, ufcs_args)
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: new_unit_test
+Worktree: dirty
+Target file: clean (src/annotator.rb)
+Other dirty files:
+  added spec/generated/annotator_spec.rb (test)
+Interpretation: A new failing unit test was added; use it to understand expected behavior.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/annotator_spec.rb:1783
+  src/annotator.rb:1885:in `visit_MethodCall'
+
+Failure 1: spec/annotator_spec.rb:1783
+Command: bundle exec rspec spec/annotator_spec.rb
+Failing test code:
+From spec/annotator_spec.rb:1783
+   1776:         it "raises error even inside a function if no loop is present" do
+   1777:           expect { ast }.to raise_error(/BREAK must be used inside a loop/)
+   1778:         end
+   1779:       end
+
+A new unit test was added and is failing.
+A new failing unit test was added; use it to understand expected behavior.
+
+Test failure:
+  forgotten line: 'node.full_type = method_sig.respond_to?(:return_type) ? (method_sig.return_type || :Void) : (method_sig[:return]&.dig(:type) || :Void)'
+
+  spec/annotator_spec.rb:1783
+  src/annotator.rb:1885:in `visit_MethodCall'
+
+Fix the bug.
+
+Return ONLY the corrected function `visit_MethodCall` in a ```ruby block.
+

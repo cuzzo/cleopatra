@@ -69,6 +69,7 @@ models, `32B-ctx` and `405B-ctx` already use the cleaned full profile.
 | A1B active | Not run | 17/50 (0 errors) | 12/50 (6 errors) |
 | 3B | 17/50 (7 errors) | 23/50 (1 error) | 21/50 (1 error) |
 | 7B | 27/50 (0 errors) | 27/50 (1 error) | 28/50 (1 error) |
+| 26B-A4B | 41/50 (0 errors) | 35/50 (1 timeout) | 40/50 (0 errors) |
 | 32B | 34/50 (3 errors) | 30/50 (artifact incomplete) | 32/50 (0 errors) |
 | 405B | 35/50 (1 error) | 36/50 (artifact missing) | 39/50 (0 errors) |
 
@@ -77,10 +78,11 @@ Prompt sizes by profile:
 | Profile | Categories | Avg prompt bytes |
 |---|---|---:|
 | `-blind` local | `3B-blind`, `7B-blind` | 7,866 |
+| `-blind` 26B-A4B | `26B-A4B-blind` | 47,877 |
 | `-blind` 32B | `32B-blind` | 46,792 |
 | `-blind` 405B | `405B-blind` | 61,547 |
-| `-ctx-compact` | `A1B-ctx`, `3B-ctx`, `7B-ctx` | 4,189 |
-| `-ctx-full` | `A1B-full-ctx`, `3B-full-ctx`, `7B-full-ctx`, `32B-ctx`, `405B-ctx` | 5,185 |
+| `-ctx-compact` | `A1B-ctx`, `3B-ctx`, `7B-ctx`, `26B-A4B-ctx` | 4,189 |
+| `-ctx-full` | `A1B-full-ctx`, `3B-full-ctx`, `7B-full-ctx`, `26B-A4B-full-ctx`, `32B-ctx`, `405B-ctx` | 5,185 |
 
 For A1B and 3B, the cleaned full profile recovered some of the loss from the
 earlier noisy richer profile, but still underperformed compact. For 7B, cleaned
@@ -148,6 +150,8 @@ condition/boolean bugs where the constructor was incidental.
 - A1B cleaned full ctx: `/tmp/cleopatra-a1b-full-ctx-eval.jsonl`
 - 3B cleaned full ctx: `/tmp/cleopatra-3b-full-ctx-eval.jsonl`
 - 7B cleaned full ctx: `/tmp/cleopatra-7b-full-ctx-eval.jsonl`
+- 26B-A4B blind/compact ctx: `/tmp/cleopatra-26b-a4b-eval.jsonl`
+- 26B-A4B full ctx: `/tmp/cleopatra-26b-a4b-full-ctx-eval.jsonl`
 - Blind baseline recheck: `/tmp/cleopatra-blind-check.jsonl`
 - 3B/7B after richer ctx: `/tmp/cleopatra-3b-7b-newctx-eval.jsonl`
 - 32B/405B after richer ctx: `/tmp/cleopatra-32b-405b-newctx-eval.jsonl`

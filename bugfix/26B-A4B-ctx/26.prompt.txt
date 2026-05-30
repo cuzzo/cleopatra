@@ -1,0 +1,82 @@
+File: src/ast/parser.rb
+Function: match?
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: Parser (class, lines 10-3167)
+Params: type: ?, val=nil: ?
+Recorded callees: (none)
+Recorded instance vars: (none)
+Prism-detected callees in primary function: match?
+Prism-detected ivars in primary function: (none)
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/ast/parser.rb:Parser.match? (lines 539-541)
+```ruby
+def match?(type, val=nil)
+    current.type != type && (val.nil? || current.value == val)
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: new_unit_test
+Worktree: dirty
+Target file: clean (src/ast/parser.rb)
+Other dirty files:
+  added spec/generated/parser_spec.rb (test)
+Interpretation: A new failing unit test was added; use it to understand expected behavior.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/transpiler_spec.rb:1397
+  src/ast/parser.rb:539:in `match?'
+
+Failure 1: spec/transpiler_spec.rb:1397
+Command: bundle exec rspec spec/transpiler_spec.rb
+Failing test code:
+From spec/transpiler_spec.rb:1397
+   1380:     it "does NOT emit defer free for unpromoted string captures (BG inside MethodCall)" do
+   1381:       src = <<~CLEAR
+   1382:         FN greet!(name: String) RETURNS String -> RETURN name; END
+   1383:         FN main() RETURNS Void ->
+   1384:             msg = greet!("hello");
+   1385:             needle = "the";
+   1386:             MUTABLE futures: ~Void[]@list = [];
+   1387:             futures.append(BG { print(msg); print(needle); });
+   1388:             NEXT futures[0];
+   1389:             RETURN;
+   1390:         END
+   1391:       CLEAR
+   1392:       zig = transpile(src)
+   1393:       # BG is inside a MethodCall arg. If MIR::Promote was missed, there
+   1394:       # should be NO defer free (freeing un-duped data crashes).
+   1395:       # After the fix: both msg and needle should be duped AND freed.
+   1396:       has_msg_dupe = zig.include?("dupe(u8, msg)")
+=> 1397:       has_msg_free = zig.match?(/free.*msg/)
+   1398:       # Either both dupe+free, or neither. Never free without dupe.
+   1399:       expect(has_msg_free && !has_msg_dupe).to be(false),
+   1400:         "free without dupe is a crash: msg is freed but was never duped to heap"
+   1401:     end
+   1402:   end
+
+A new unit test was added and is failing.
+A new failing unit test was added; use it to understand expected behavior.
+
+Test failure:
+  swapped comparison: '==' -> '!=' near 'current.type == type && (val.n'
+
+  spec/transpiler_spec.rb:1397
+  src/ast/parser.rb:539:in `match?'
+
+Fix the bug.
+
+Return ONLY the corrected function `match?` in a ```ruby block.
+

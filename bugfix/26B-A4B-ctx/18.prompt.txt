@@ -1,0 +1,87 @@
+File: src/mir/ownership_graph.rb
+Function: declare
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: OwnershipGraph (class, lines 15-260)
+Params: path: ?, kind: :affine, type_info: nil, scope_depth: 0, line: 0
+Recorded callees: new, path, include?, rpartition, add
+Recorded instance vars: @nodes, @children
+Prism-detected callees in primary function: add, declare, include?, new, path, rpartition
+Prism-detected ivars in primary function: @children, @nodes
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/mir/ownership_graph.rb:OwnershipGraph.declare (lines 56-66)
+```ruby
+def declare(path, kind: :affine, type_info: nil, scope_depth: 0, line: 0)
+    @nodes[path] = Register.new(
+      path: path, kind: kind, state: :live,
+      type_info: type_info, scope_depth: scope_depth, line: line
+    )
+    # Register as child of parent path (e.g., "x.child" is child of "x")
+    if path.include?('.')
+      parent = path.rpartition('.').first
+      @children[parent].add(path)
+    end
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: production_stack_trace
+Worktree: clean
+Target file: clean (src/mir/ownership_graph.rb)
+Interpretation: Clean tree; treat this as a production/existing bug that slipped through tests.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/propagate_caller_sync_spec.rb:124
+  src/mir/ownership_graph.rb:56:in `declare'
+
+Failure 1: spec/propagate_caller_sync_spec.rb:124
+Command: bundle exec rspec spec/propagate_caller_sync_spec.rb
+Failure output excerpt:
+     Failure/Error: annotator.annotate!(ast)
+     NameError:
+     Failure/Error: annotator.annotate!(ast)
+     NameError:
+Failing test code:
+From spec/propagate_caller_sync_spec.rb:21
+     13: # transpile-tests/201_capability_passthrough.cht.disabled (enabled when
+     14: # P1.7 lands).
+     15: 
+     16: RSpec.describe "P1.4 caller-sync propagation" do
+     17:   def annotate(source)
+     18:     tokens = Lexer.new(source).tokenize
+     19:     ast = Parser.new(tokens, source).parse
+     20:     annotator = SemanticAnnotator.new
+=>   21:     annotator.annotate!(ast)
+     22:     [ast, annotator]
+     23:   end
+     24: 
+     25:   def fn_nodes_from(ast)
+     26:     fn_nodes = {}
+     27:     ast.statements.each { |s| fn_nodes[s.name] = s if s.is_a?(AST::FunctionDef) }
+     28:     fn_nodes
+     29:   end
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Test failure:
+  swapped constant: 'Node' -> 'Register'
+
+  spec/propagate_caller_sync_spec.rb:124
+  src/mir/ownership_graph.rb:56:in `declare'
+
+Fix the bug.
+
+Return ONLY the corrected function `declare` in a ```ruby block.
+

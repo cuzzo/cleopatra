@@ -1,0 +1,140 @@
+File: src/annotator-helpers/function_analysis.rb
+Function: verify_return
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: FunctionAnalysis (module, lines 3-789)
+Params: node: ?
+Recorded callees: return_is_borrow?, constructors, is_a?, lookup_type_schema, copyable?, implicitly_copyable?, include?, error!, tracing, split, map, get_path_to_root, join
+Recorded instance vars: (none)
+Prism-detected callees in primary function: constructors, copyable?, error!, get_path_to_root, implicitly_copyable?, include?, is_a?, join, lookup_type_schema, map, return_is_borrow?, split, tracing, verify_return
+Prism-detected ivars in primary function: (none)
+Included related functions: FunctionAnalysis.return_is_borrow?
+
+BUG TARGET FUNCTION: src/annotator-helpers/function_analysis.rb:FunctionAnalysis.verify_return (lines 676-723)
+```ruby
+def verify_return(node)
+    # A returned value is a borrow when it is a direct indexed/field access OR
+    # a variable that the ownership graph marked as :borrowed.
+    return true unless return_is_borrow?(node)
+
+    # Union variant constructors (Value.Nil, Shape.Point) create new values, not borrows.
+    if node.is_a?(AST::GetField) || node.target.is_a?(AST::Identifier)
+      schema = lookup_type_schema(node.target.name.to_sym) rescue nil
+      return true if schema.is_a?(Hash) && (schema[:kind] == :union || schema[:kind] == :enum)
+    end
+
+    lifetime_path = current_fn_ctx&.lifetime
+    type_info = node.type_object
+    has_lifetime = !lifetime_path.nil?
+    schema_resolver = ->(t) { lookup_type_schema(t) rescue nil }
+    is_copyable = (type_info&.copyable?(schema_resolver) || type_info&.implicitly_copyable?(schema_resolver))
+    fn_type_params = current_fn_ctx&.type_params || []
+    is_type_param = fn_type_params.include?(type_info&.resolved)
+
+    unless has_lifetime || is_copyable || is_type_param
+      error!(
+        node,
+        "Cannot return borrowed value without COPY or a lifetime annotation.\n" \
+        "Type '#{node.full_type}' is not implicitly copyable."
+      )
+    end
+
+    return true unless has_lifetime
+
+    # Lifetime path validation applies to direct field/index access only.
+    # Borrowed variables need source-tracing (future work).
+    return true if node.is_a?(AST::Identifier)
+
+    lifetime_path = lifetime_path.split(".").map(&:to_sym)
+    actual_path = get_path_to_root(node)
+    if actual_path.nil?
+      error!("Lifetime Error: Lifetime '#{lifetime_path}' specified on return, but returned value is not associated.")
+    end
+
+    if actual_path[0...lifetime_path.size] != lifetime_path
+      error!(
+        node,
+        "Lifetime Error:\n" \
+        "  Expected return derived from: #{lifetime_path.join('.')}\n" \
+        "  Actual return derived from:   #{actual_path.join('.')}"
+      )
+    end
+  end
+```
+
+RELATED FUNCTION: src/annotator-helpers/function_analysis.rb:FunctionAnalysis.return_is_borrow? (lines 725-738)
+```ruby
+def return_is_borrow?(node)
+    if node.is_a?(AST::Identifier)
+      return false unless @og[node.name]&.kind == :borrowed
+      # Parameters (reg=nil) and MATCH bindings (reg=nil) are safe to return —
+      # the caller controls their lifetime. Only flag variables explicitly assigned
+      # from a collection index borrow (BindExpr with container_borrow=true).
+      scope = lookup_scope_for(node.name)
+      reg = scope&.locals&.[](node.name)&.reg
+      return reg.respond_to?(:container_borrow) && reg.container_borrow == true
+    end
+    return true if node.is_a?(AST::GetIndex)
+    return true if node.is_a?(AST::GetField)
+    false
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: dirty_source_change
+Worktree: dirty
+Target file: dirty (src/annotator-helpers/function_analysis.rb)
+  lines 676-723: entire function edited
+Interpretation: Active source edits exist; inspect dirty changed lines first.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/lifetimes_spec.rb:353
+  src/annotator-helpers/function_analysis.rb:676:in `verify_return'
+
+Failure 1: spec/lifetimes_spec.rb:353
+Command: bundle exec rspec spec/lifetimes_spec.rb
+Failure output excerpt:
+     Failure/Error: expect { result }.to raise_error(/Cannot return borrowed/i)
+       expected Exception with message matching /Cannot return borrowed/i, got #<NoMethodError: undefined method `target' for #<struct AST::Identifier token=#<struct Lexer::Token type=:VAR_ID, value="v", line=6, column=10>, name="v">> with backtrace:
+Failing test code:
+From spec/lifetimes_spec.rb:14
+      6: require_relative "../src/backends/transpiler"
+      7: require_relative "../src/ast/ast"
+      8: 
+      9: RSpec.describe SemanticAnnotator do
+     10:   def run(source)
+     11:     tokens = Lexer.new(source).tokenize
+     12:     ast = Parser.new(tokens, source).parse
+     13:     annotator = SemanticAnnotator.new
+=>   14:     annotator.annotate!(ast)
+     15:     return ast
+     16:   end
+     17: 
+     18:   def get_last_type(source)
+     19:     run(source).statements.last.resolved_type
+     20:   end
+     21: 
+     22:   let(:ast) { run(code) }
+
+A mutant/regression test is failing after local source edits.
+Active source edits exist; inspect dirty changed lines first.
+
+CI broken.
+
+  spec/lifetimes_spec.rb:353
+  src/annotator-helpers/function_analysis.rb:676:in `verify_return'
+
+Fix the bug.
+
+Return ONLY the corrected function `verify_return` in a ```ruby block.
+

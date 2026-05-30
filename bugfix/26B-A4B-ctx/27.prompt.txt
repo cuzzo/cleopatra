@@ -1,0 +1,143 @@
+File: src/annotator.rb
+Function: visit_NextExpr
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: SemanticAnnotator (class, lines 26-4490)
+Params: node: ?
+Recorded callees: record_effect, visit, new, error!, value, next, is_a?, og_set_moved, T, node, respond_to?
+Recorded instance vars: @list, @shared, @split
+Prism-detected callees in primary function: T, error!, is_a?, new, next, node, og_set_moved, record_effect, respond_to?, value, visit, visit_NextExpr
+Prism-detected ivars in primary function: @list, @shared, @split
+Included related functions: SemanticAnnotator.visit, SemanticAnnotator.og_set_moved
+
+RELATED FUNCTION: src/annotator.rb:SemanticAnnotator.visit (lines 223-230)
+```ruby
+def visit(node)
+    return unless node
+    return if node.is_a?(Symbol)
+
+    # Dynamic Dispatch
+    method_name = "visit_#{node.class.name.split('::').last}"
+    send(method_name, node)
+  end
+```
+
+RELATED FUNCTION: src/annotator.rb:SemanticAnnotator.og_set_moved (lines 4435-4435)
+```ruby
+def og_set_moved(name) = (@og[name]&.state = :moved)
+```
+
+BUG TARGET FUNCTION: src/annotator.rb:SemanticAnnotator.visit_NextExpr (lines 3791-3856)
+```ruby
+def visit_NextExpr(node)
+    record_effect(EffectTracker::YIELD)
+    visit(node.expr)
+    promise_type = Type.new(node.expr.full_type || :Void)
+
+    unless promise_type.future?
+      error!(node, "NEXT requires a future value (~T), got #{node.expr.full_type}")
+    end
+
+    if !(promise_type.promise_list?)
+      # NEXT on ~T[]@list: await all promises, return T[]@list.
+      # The promise list is linearly consumed — each inner promise is freed by its next() call.
+      if node.expr.is_a?(AST::Identifier)
+        og_set_moved(node.expr.name)
+      end
+      elem_sym = promise_type.tense_type.element_type.to_sym
+      node.full_type = Type.new(:"#{elem_sym}[]", collection: :list)
+    elsif promise_type.dynamic_stream?
+      elem_sym = promise_type.tense_type.element_type.to_sym
+      node.full_type = :"?#{elem_sym}"
+    elsif promise_type.bounded_stream?
+      # NEXT on ~T[N]: returns T (the element type).
+      # Does NOT mark the stream as moved — the stream can be NEXT'd up to N times.
+      node.full_type = promise_type.stream_element_type.to_sym
+    elsif promise_type.shared_promise?
+      # NEXT on ~T@shared: returns T, idempotent — same handle can be NEXT'd again.
+      # Does NOT mark as moved; multiple consumers may hold their own handles.
+      node.full_type = promise_type.tense_type.to_sym
+    elsif promise_type.split_open_stream?
+      # NEXT on ~?T[]@split: returns ?T — each handle advances independently through
+      # the shared memoized sequence until exhaustion.
+      elem_sym = promise_type.open_stream_element_type.to_sym
+      node.full_type = :"?#{elem_sym}"
+    elsif promise_type.open_stream?
+      # NEXT on ~?T[]: returns ?T — null signals stream exhaustion.
+      # Does NOT mark as moved — stream is a resource cleaned up via deinit.
+      elem_sym = promise_type.open_stream_element_type.to_sym
+      node.full_type = :"?#{elem_sym}"
+    elsif promise_type.inf_stream?
+      # NEXT on ~T[INF]: returns T (never nil — stream is infinite, rendezvous-style).
+      # Does NOT mark as moved — stream is a resource cleaned up via deinit.
+      node.full_type = promise_type.inf_stream_element_type.to_sym
+    else
+      # NEXT on ~T: returns T, marks the promise as linearly consumed.
+      if node.expr.is_a?(AST::Identifier)
+        og_set_moved(node.expr.name)
+      end
+      node.full_type = promise_type.tense_type.to_sym
+    end
+
+    # Propagate heap provenance through NEXT: if the fiber's exit/yield value was
+    # frame-allocated and heap-duped, the NEXT caller owns that heap allocation
+    # and must free it.
+    if node.expr.is_a?(AST::Identifier)
+      sym = node.expr.symbol
+      decl_node = sym&.reg  # the declaration's AST node (BindExpr/VarDecl)
+      bg_value = decl_node.respond_to?(:value) ? decl_node.value : nil
+      needs_heap =
+        (bg_value.is_a?(AST::BgBlock) && bg_value.return_provenance == :heap) ||
+        (bg_value.is_a?(AST::BgStreamBlock) && bg_value.yields_frame_strings)
+      if needs_heap
+        ti = node.type_info
+        ti.provenance = :heap if ti.is_a?(Type)
+      end
+    end
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: production_stack_trace
+Worktree: clean
+Target file: clean (src/annotator.rb)
+Interpretation: Clean tree; treat this as a production/existing bug that slipped through tests.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/concurrency_spec.rb:1433
+  src/annotator.rb:3791:in `visit_NextExpr'
+
+Failure 1: spec/concurrency_spec.rb:1433
+Command: bundle exec rspec spec/concurrency_spec.rb
+Failing test code:
+From spec/concurrency_spec.rb:1433
+   1425:       it "wraps the last expression's type in ~ (Float64 literal body)" do
+   1426:         annotator = SemanticAnnotator.new
+   1427:         bg = make_bg_block([make_num_lit])
+   1428:         annotator.send(:visit_BgBlock, bg)
+   1429:         expect(bg.full_type).to eq(:"~Float64")
+   1430:       end
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Bug in `SemanticAnnotator.visit_NextExpr` at src/annotator.rb:3791.
+Issue: negated condition: 'promise_type.promise_list?'
+
+  spec/concurrency_spec.rb:1433
+  src/annotator.rb:3791:in `visit_NextExpr'
+
+Fix it.
+
+Return ONLY the corrected function `visit_NextExpr` in a ```ruby block.
+

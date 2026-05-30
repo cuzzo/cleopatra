@@ -1,0 +1,10 @@
+```ruby
+def check_program!(program, strict: false)
+  all_errors = []
+  program.items.each do |item|
+    next unless item.is_a?(MIR::FnDef)
+    all_errors.concat(MIRChecker.check_fn!(item, strict: strict))
+  end
+  all_errors
+end
+```

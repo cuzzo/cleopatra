@@ -1,0 +1,18 @@
+```ruby
+  # Collect identifiers moved by a binding RHS (VarDecl, BindExpr, Assignment, Return).
+  # Both explicit (was_moved) and implicit (non-Copy identifier = ownership transfer).
+  #
+  # Ownership-transferring positions (non-Copy = move):
+  #   - Direct RHS identifier: b = a
+  #   - Struct literal field value: S{ field: a }
+  #   - Union constructor payload: U.Variant(a)
+  #   - List literal items: [a, b]
+  #   - MoveNode: MOVE a
+  # All other positions: only was_moved (set by annotator for TAKES/GIVE).
+  def collect_binding_moves(node, state)
+    return [] unless node
+    consumed = Set.new
+    collect_ownership_transfers(node, state, consumed)
+    consumed.to_a
+  end
+```

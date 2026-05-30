@@ -1,0 +1,154 @@
+File: src/backends/pipeline_host.rb
+Function: initialize
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: PipelineHost (class, lines 16-3275)
+Params: lowering:: ?, emitter:: ?
+Recorded callees: state
+Recorded instance vars: @lowering, @emitter, @fn_sigs, @soa_rewrite_active, @soa_each_mode, @soa_needed_fields, @mir_mode, @u, @named_bindings
+Prism-detected callees in primary function: initialize, state
+Prism-detected ivars in primary function: @emitter, @fn_sigs, @mir_mode, @named_bindings, @soa_each_mode, @soa_needed_fields, @soa_rewrite_active, @u
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/backends/pipeline_host.rb:PipelineHost.initialize (lines 22-33)
+```ruby
+def initialize(lowering:, emitter:)
+    @emitter = emitter
+    @emitter = emitter
+    @fn_sigs = emitter.fn_sigs
+    # Pipeline context state (managed by with_pipeline_context)
+    @soa_rewrite_active = false
+    @soa_each_mode = false
+    @soa_needed_fields = Set.new
+    @mir_mode = false
+    # Named pipeline bindings: "@u" -> "__pipe_u" (persist across stages, cleared per-chain)
+    @named_bindings = {}
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: new_unit_test
+Worktree: dirty
+Target file: clean (src/backends/pipeline_host.rb)
+Other dirty files:
+  added spec/generated/pipeline_host_spec.rb (test)
+Interpretation: A new failing unit test was added; use it to understand expected behavior.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/higher_order_spec.rb:1631
+  src/backends/pipeline_host.rb:22:in `initialize'
+
+Failure 1: spec/higher_order_spec.rb:1631
+Command: bundle exec rspec spec/higher_order_spec.rb
+Failing test code:
+From spec/higher_order_spec.rb:1631
+=> 1631:       it "emits a result variable initialized to null for FIND in Zig" do
+   1632:         out = transpile_fn(<<~CLEAR)
+   1633:           FN f() RETURNS Void ->
+   1634:             nums: Float64[] = [1.0, 2.0];
+   1635:             result = nums s> FIND _ > 1.0;
+   1636:             RETURN;
+   1637:           END
+   1638:         CLEAR
+   1639:         expect(out).to include("null")
+   1640:         expect(out).to include("__res")
+   1641:         expect(out).to include("break")
+   1642:       end
+   1643: 
+   1644:       it "emits a for loop with break on match for FIND" do
+   1645:         out = transpile_fn(<<~CLEAR)
+   1646:           FN f() RETURNS Void ->
+   1647:             nums: Float64[] = [1.0];
+   1648:             result = nums s> FIND _ > 0.5;
+   1649:             RETURN;
+   1650:           END
+   1651:         CLEAR
+   1652:         expect(out).to include("__res")
+   1653:         expect(out).to include("break")
+   1654:       end
+   1655:     end
+   1656: 
+   1657:     # -------------------------------------------------------------------------
+   1658:     # ANY — returns Bool
+   1659:     # -------------------------------------------------------------------------
+   1660:     describe "ANY predicate operator" do
+   1661:       it "infers Bool for ANY on a Float64[]" do
+   1662:         tree = run(<<~CLEAR)
+   1663:           FN f() RETURNS Void ->
+   1664:             nums: Float64[] = [1.0, 2.0];
+   1665:             result = nums s> ANY _ > 1.0;
+   1666:             RETURN;
+   1667:           END
+   1668:         CLEAR
+   1669:         fn_node = tree.statements.find { |n| n.is_a?(AST::FunctionDef) && n.name == "f" }
+   1670:         bind = fn_node.body.find { |n| (n.is_a?(AST::BindExpr) || n.is_a?(AST::VarDecl)) && n.name == "result" }
+   1671:         expect(bind.resolved_type).to eq(:Bool)
+   1672:       end
+   1673: 
+   1674:       it "raises when ANY is applied to a non-array" do
+   1675:         expect {
+   1676:           run(<<~CLEAR)
+   1677:             FN f() RETURNS Void ->
+   1678:               x: Float64 = 1.0;
+   1679:               x s> ANY _ > 0.0;
+   1680:               RETURN;
+   1681:             END
+   1682:           CLEAR
+   1683:         }.to raise_error(CompilerError, /Cannot ANY non-list type/)
+   1684:       end
+   1685: 
+   1686:       it "raises when ANY predicate does not evaluate to Bool" do
+   1687:         expect {
+   1688:           run(<<~CLEAR)
+   1689:             FN f() RETURNS Void ->
+   1690:               nums: Float64[] = [1.0];
+   1691:               nums s> ANY _;
+   1692:               RETURN;
+   1693:             END
+   1694:           CLEAR
+   1695:         }.to raise_error(CompilerError, /ANY clause must evaluate to Bool/)
+   1696:       end
+   1697: 
+   1698:       it "emits a bool accumulator and short-circuit break in Zig" do
+   1699:         out = transpile_fn(<<~CLEAR)
+   1700:           FN f() RETURNS Void ->
+   1701:             nums: Float64[] = [1.0];
+   1702:             result = nums s> ANY _ > 0.0;
+   1703:             RETURN;
+   1704:           END
+   1705:         CLEAR
+   1706:         expect(out).to include("true")
+   1707:         expect(out).to include("break")
+   1708:       end
+   1709: 
+   1710:       it "emits a for loop over collection items" do
+   1711:         out = transpile_fn(<<~CLEAR)
+   1712:           FN f() RETURNS Void ->
+   1713:             nums: Float64[] = [1.0];
+   1714:             result = nums s> ANY _ > 0.0;
+   1715:             RETURN;
+   1716:           END
+   1717:         CLEAR
+   1718:         expect(out).to include("for (")
+   1719:         expect(out).to include("__res")
+   1720:       end
+
+A new unit test was added and is failing.
+A new failing unit test was added; use it to understand expected behavior.
+
+Something wrong in `initialize`. renamed variable: 'lowering' -> 'emitter'
+
+Fix it.
+
+Return ONLY the corrected function `initialize` in a ```ruby block.
+

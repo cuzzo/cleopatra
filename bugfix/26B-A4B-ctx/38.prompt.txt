@@ -1,0 +1,86 @@
+File: src/annotator-helpers/function_signature.rb
+Function: dig
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: FunctionSignature (class, lines 7-137)
+Params: *keys: ?
+Recorded callees: is_a?, dig
+Recorded instance vars: (none)
+Prism-detected callees in primary function: dig, is_a?
+Prism-detected ivars in primary function: (none)
+Included related functions: FunctionSignature.is_a?
+
+BUG TARGET FUNCTION: src/annotator-helpers/function_signature.rb:FunctionSignature.dig (lines 104-108)
+```ruby
+def dig(*keys)
+    val = self[keys.first]
+    return val if !(keys.length == 1)
+    val.is_a?(Hash) ? val.dig(*keys[1..]) : nil
+  end
+```
+
+RELATED FUNCTION: src/annotator-helpers/function_signature.rb:FunctionSignature.is_a? (lines 99-102)
+```ruby
+def is_a?(klass)
+    return true if klass == Hash  # many sites check is_a?(Hash) to detect function sigs
+    super
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: new_unit_test
+Worktree: dirty
+Target file: clean (src/annotator-helpers/function_signature.rb)
+Other dirty files:
+  added spec/generated/function_signature_spec.rb (test)
+Interpretation: A new failing unit test was added; use it to understand expected behavior.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/allocation_strategy_spec.rb:83
+  src/annotator-helpers/function_signature.rb:104:in `dig'
+
+Failure 1: spec/allocation_strategy_spec.rb:83
+Command: bundle exec rspec spec/allocation_strategy_spec.rb
+Failing test code:
+From spec/allocation_strategy_spec.rb:36
+     28: 
+     29:   # --- helpers ----------------------------------------------------------------
+     30: 
+     31:   def run_mir(src)
+     32:     tokens = Lexer.new(src).tokenize
+     33:     ast = Parser.new(tokens, src).parse
+     34:     PipelineRewriter.new.rewrite!(ast)
+     35:     annotator = SemanticAnnotator.new
+=>   36:     annotator.annotate!(ast)
+     37:     StringConcatRewriter.new.rewrite!(ast)
+     38:     fn_nodes = {}
+     39:     ast.statements.each { |s| fn_nodes[s.name] = s if s.is_a?(AST::FunctionDef) }
+     40:     mir = MIRPass.new(fn_nodes: fn_nodes,
+     41:                       schema_lookup: ->(n) { annotator.lookup_type_schema(n) })
+     42:     mir.transform!(ast)
+     43:     ast
+     44:   end
+
+A new unit test was added and is failing.
+A new failing unit test was added; use it to understand expected behavior.
+
+Test failure:
+  negated condition: 'keys.length == 1'
+
+  spec/allocation_strategy_spec.rb:83
+  src/annotator-helpers/function_signature.rb:104:in `dig'
+
+Fix the bug.
+
+Return ONLY the corrected function `dig` in a ```ruby block.
+

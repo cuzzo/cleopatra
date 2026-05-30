@@ -1,0 +1,105 @@
+File: src/mir/ownership_graph.rb
+Function: borrow
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: OwnershipGraph (class, lines 15-260)
+Params: borrower: ?, source: ?, mutable: false
+Recorded callees: borrows, find_borrow_conflict, add_edge, new, find_mutable_borrow
+Recorded instance vars: @nodes
+Prism-detected callees in primary function: add_edge, borrow, borrows, find_borrow_conflict, find_mutable_borrow, new
+Prism-detected ivars in primary function: @nodes
+Included related functions: OwnershipGraph.add_edge, OwnershipGraph.find_mutable_borrow
+
+RELATED FUNCTION: src/mir/ownership_graph.rb:OwnershipGraph.add_edge (lines 41-45)
+```ruby
+def add_edge(edge)
+    @edges << edge
+    @edges_by_target[edge.to] << edge
+    @edges_by_source[edge.from] << edge
+  end
+```
+
+RELATED FUNCTION: src/mir/ownership_graph.rb:OwnershipGraph.find_mutable_borrow (lines 255-259)
+```ruby
+def find_mutable_borrow(path)
+    b = @edges_by_target[path].find { |e| e.kind == :borrows_mut }
+    return nil unless b
+    "cannot borrow '#{path}': mutably borrowed by '#{b.from}'"
+  end
+```
+
+BUG TARGET FUNCTION: src/mir/ownership_graph.rb:OwnershipGraph.borrow (lines 90-107)
+```ruby
+def borrow(borrower, source, mutable: false)
+    source_node = @nodes[source + 1]
+    return "cannot borrow '#{source}': not declared" unless source_node
+    return "cannot borrow '#{source}': already moved" if source_node.moved?
+
+    if mutable
+      # Mutable borrow: no other borrows (mutable or immutable) may exist
+      conflict = find_borrow_conflict(source)
+      return conflict if conflict
+      add_edge(Edge.new(from: borrower, to: source, kind: :borrows_mut))
+    else
+      # Immutable borrow: no mutable borrows may exist
+      mut_conflict = find_mutable_borrow(source)
+      return mut_conflict if mut_conflict
+      add_edge(Edge.new(from: borrower, to: source, kind: :borrows))
+    end
+    nil
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: dirty_source_change
+Worktree: dirty
+Target file: dirty (src/mir/ownership_graph.rb)
+  lines 91-91: mutated bug line
+Interpretation: Active source edits exist; inspect dirty changed lines first.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/ownership_graph_spec.rb:48
+  src/mir/ownership_graph.rb:90:in `borrow'
+
+Failure 1: spec/ownership_graph_spec.rb:48
+Command: bundle exec rspec spec/ownership_graph_spec.rb
+Failure output excerpt:
+      Failure/Error: graph.borrow("y", "x", mutable: false)
+      TypeError:
+      Failure/Error: graph.borrow("y", "x", mutable: false)
+      TypeError:
+      Failure/Error: graph.borrow("y", "x", mutable: true)
+      TypeError:
+      Failure/Error: graph.borrow("y", "x", mutable: false)
+      TypeError:
+      Failure/Error: graph.borrow("y", "x", mutable: false)
+      TypeError:
+Failing test code:
+From spec/ownership_graph_spec.rb:117
+    115:     it "allows new mutable borrow after release" do
+    116:       graph.declare("x")
+=>  117:       graph.borrow("y", "x", mutable: false)
+    118:       graph.release_borrow("y")
+    119:       err = graph.borrow("z", "x", mutable: true)
+    120:       expect(err).to be_nil
+    121:     end
+
+A mutant/regression test is failing after local source edits.
+Active source edits exist; inspect dirty changed lines first.
+
+Something wrong in `borrow`. off-by-one: added +1 to index ''
+
+Fix it.
+
+Return ONLY the corrected function `borrow` in a ```ruby block.
+

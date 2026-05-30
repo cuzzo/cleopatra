@@ -1,0 +1,9 @@
+```ruby
+    def ==(other)
+      case other
+      when OwnerEntry then state == other.state
+      when Symbol then state == other
+      else false
+      end
+    end
+```

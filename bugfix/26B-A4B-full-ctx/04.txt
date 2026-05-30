@@ -1,0 +1,27 @@
+```ruby
+def consume(type, value=nil)
+  # 1. Capture the current token BEFORE moving the pointer
+  current = current
+
+  # 2. Validate it matches what we expect
+  # The bug was in the logic: (current.type == type) || (value && current.value == value)
+  # If value is provided, BOTH type and value must match.
+  # If value is NOT provided, only type must match.
+  matches_type = (current.type == type)
+  matches_value = value.nil? || (current.value == value)
+
+  if matches_type && matches_value
+    if value && current.value != value
+      emit_consume_error_with_fix(current, type, value)
+    end
+
+    # 3. Advance the pointer
+    @pos += 1
+
+    # 4. RETURN THE CAPTURED TOKEN
+    current
+  else
+    emit_consume_error_with_fix(current, type, value)
+  end
+end
+```

@@ -22,6 +22,7 @@ MODEL_PATH_7B = File.join(ROOT, 'data/models/qwen2.5-coder-7b-instruct.gguf')
 MODEL_PATH_A1B = File.join(ROOT, 'data/models/LFM2.5-8B-A1B-Q4_K_M.gguf')
 MODEL_32B = 'qwen/qwen3-32b'
 MODEL_405B = 'nousresearch/hermes-3-llama-3.1-405b'
+MODEL_26B_A4B = 'google/gemma-4-26b-a4b-it'
 SYSTEM_PROMPT = 'You are a senior Ruby developer. Fix the bug in the code shown below. Return ONLY the corrected Ruby code in a ```ruby block.'
 LOCAL_CONTEXT_TOKENS = 16_384
 OPENROUTER_32B_CONTEXT_TOKENS = 40_960
@@ -140,6 +141,8 @@ end
 def prompt_context_chars_for_category(cat)
   if cat.start_with?('3B') || cat.start_with?('7B')
     local_context_chars
+  elsif cat.start_with?('26B-A4B')
+    openrouter_32b_context_chars
   elsif cat.start_with?('32B')
     openrouter_32b_context_chars
   elsif cat.start_with?('405B')
@@ -1068,7 +1071,7 @@ puts "Sample: #{sample.length} bugs"
 puts
 
 cats = opts[:cats].empty? ? %w[3B-blind 3B-ctx 7B-blind 32B-blind 405B-blind] : opts[:cats].split(',').map(&:strip)
-if cats.any? { |cat| cat.start_with?('32B') || cat.start_with?('405B') } &&
+if cats.any? { |cat| cat.start_with?('26B-A4B') || cat.start_with?('32B') || cat.start_with?('405B') } &&
    !opts[:dry_run_prompts] &&
    !ENV['OPENROUTER_API_KEY']
   abort 'OPENROUTER_API_KEY is required for OpenRouter-backed categories; refusing to overwrite responses with skipped markers.'
@@ -1107,6 +1110,8 @@ cats.each do |cat|
         query_gguf(MODEL_PATH_7B, prompts[index])
       elsif cat.start_with?('A1B')
         query_lfm(MODEL_PATH_A1B, prompts[index])
+      elsif cat.start_with?('26B-A4B')
+        query_openrouter(MODEL_26B_A4B, prompts[index])
       elsif cat.start_with?('32B')
         query_openrouter(MODEL_32B, prompts[index])
       elsif cat.start_with?('405B')

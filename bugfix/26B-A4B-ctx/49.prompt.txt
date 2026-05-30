@@ -1,0 +1,82 @@
+File: src/ast/type.rb
+Function: ==
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: Type (class, lines 4-1634)
+Params: (none recorded)
+Recorded callees: is_a?
+Recorded instance vars: @raw
+Prism-detected callees in primary function: is_a?, symbol
+Prism-detected ivars in primary function: @raw
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/ast/type.rb:Type.== (lines 216-225)
+```ruby
+def ==(other)
+    # fn_types must never compare equal to a plain symbol (resolved returns the return type,
+    # not a unique identity). Two fn_types are equal only when their raw hashes match.
+    if fn_type?
+      other_t = other.is_a?(Type) ? other : nil
+      return false unless other_t&.fn_type?
+      return @raw == other_t.raw
+    end
+    resolved == other.to_sym && @raw == other
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: production_stack_trace
+Worktree: clean
+Target file: clean (src/ast/type.rb)
+Interpretation: Clean tree; treat this as a production/existing bug that slipped through tests.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/affine_ownership_spec.rb:365
+  src/ast/type.rb:216:in `=='
+
+Failure 1: spec/affine_ownership_spec.rb:365
+Command: bundle exec rspec spec/affine_ownership_spec.rb
+Failure output excerpt:
+tion expected to return 'Value', but returned 'Value' (Line 3)
+Failing test code:
+From spec/affine_ownership_spec.rb:14
+      6: require_relative "../src/backends/transpiler"
+      7: require_relative "../src/ast/ast"
+      8: 
+      9: RSpec.describe SemanticAnnotator do
+     10:   def run(source)
+     11:     tokens = Lexer.new(source).tokenize
+     12:     ast = Parser.new(tokens, source).parse
+     13:     annotator = SemanticAnnotator.new
+=>   14:     annotator.annotate!(ast)
+     15:     return ast
+     16:   end
+     17: 
+     18:   def get_last_type(source)
+     19:     run(source).statements.last.resolved_type
+     20:   end
+     21: 
+     22:   let(:ast) { run(code) }
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+CI failing spec/affine_ownership_spec.rb:365.
+
+  spec/affine_ownership_spec.rb:365
+  src/ast/type.rb:216:in `=='
+
+Fix the code.
+
+Return ONLY the corrected function `==` in a ```ruby block.
+

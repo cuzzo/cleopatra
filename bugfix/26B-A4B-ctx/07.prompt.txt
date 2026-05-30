@@ -1,0 +1,123 @@
+File: src/annotator.rb
+Function: resolve_catch_clause!
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: SemanticAnnotator (class, lines 26-4490)
+Params: clause: ?
+Recorded callees: error_kind?, emit_registry_mismatch!, join, error_type?, error!, WITH, visit
+Recorded instance vars: (none)
+Prism-detected callees in primary function: WITH, emit_registry_mismatch!, error!, error_kind?, error_type?, join, resolve_catch_clause!, visit
+Prism-detected ivars in primary function: (none)
+Included related functions: SemanticAnnotator.visit
+
+BUG TARGET FUNCTION: src/annotator.rb:SemanticAnnotator.resolve_catch_clause! (lines 687-737)
+```ruby
+def resolve_catch_clause!(clause)
+    kinds = []
+    types = []
+    (clause[:items] || []).each do |item|
+      if item[:form] != :kind
+        kind_sym = item[:name].to_sym
+        unless AST.error_kind?(kind_sym)
+          emit_registry_mismatch!(
+            item[:token], item[:name], AST::ERROR_KINDS,
+            "Unknown error kind '#{item[:name]}'. Expected one of: #{AST::ERROR_KINDS.join(', ')}",
+            "closest known kind"
+          )
+        end
+        kinds << kind_sym if AST.error_kind?(kind_sym)
+      else
+        type_sym = item[:name].to_sym
+        unless AST.error_type?(type_sym)
+          emit_registry_mismatch!(
+            item[:token], item[:name], AST::ERROR_TYPES.keys,
+            "CATCH #{item[:name]}: error type '#{item[:name]}' is not registered. A type " \
+            "must be registered via RAISE/OR EXIT before it can be CATCHed.",
+            "closest registered type"
+          )
+        end
+        types << item[:name] if AST.error_type?(type_sym)
+      end
+    end
+    clause[:kinds] = kinds.uniq
+    clause[:types] = types.uniq
+
+    filter_types    = []
+    filter_messages = []
+    (clause[:filters] || []).each do |f|
+      case f[:form]
+      when :type
+        type_sym = f[:value].to_sym
+        unless AST.error_type?(type_sym)
+          error!(f[:token],
+                 "CATCH ... WITH(#{f[:value]}): error type '#{f[:value]}' is not registered.")
+        end
+        filter_types << f[:value]
+      when :message
+        # value is the parsed STRING expression. Visit so the string
+        # literal gets its Type stamped for downstream lowering.
+        visit(f[:value])
+        filter_messages << f[:value]
+      end
+    end
+    clause[:filter_types]    = filter_types.uniq
+    clause[:filter_messages] = filter_messages
+  end
+```
+
+RELATED FUNCTION: src/annotator.rb:SemanticAnnotator.visit (lines 223-230)
+```ruby
+def visit(node)
+    return unless node
+    return if node.is_a?(Symbol)
+
+    # Dynamic Dispatch
+    method_name = "visit_#{node.class.name.split('::').last}"
+    send(method_name, node)
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: production_stack_trace
+Worktree: clean
+Target file: clean (src/annotator.rb)
+Interpretation: Clean tree; treat this as a production/existing bug that slipped through tests.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/capabilities_spec.rb:2120
+  src/annotator.rb:687:in `resolve_catch_clause!'
+
+Failure 1: spec/capabilities_spec.rb:2120
+Command: bundle exec rspec spec/capabilities_spec.rb
+Failing test code:
+From spec/capabilities_spec.rb:2120
+   2104:     it "accepts re-using a stdlib type name with its stdlib kind (no-op)" do
+   2105:       src = <<~FLUX
+   2106:         FN a() RETURNS !Void -> RAISE Transient, LockTimeout, "bad"; END
+   2107:       FLUX
+   2108:       expect { run(src) }.not_to raise_error
+   2109:     end
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Test failure:
+  swapped comparison: '==' -> '!=' near 'if item[:form] == :kind'
+
+  spec/capabilities_spec.rb:2120
+  src/annotator.rb:687:in `resolve_catch_clause!'
+
+Fix the bug.
+
+Return ONLY the corrected function `resolve_catch_clause!` in a ```ruby block.
+

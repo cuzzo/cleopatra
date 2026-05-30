@@ -1,0 +1,80 @@
+File: src/mir/control_flow.rb
+Function: ==
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: OwnershipDataflow (class, lines 279-875)
+Params: (none recorded)
+Recorded callees: (none)
+Recorded instance vars: (none)
+Prism-detected callees in primary function: (none)
+Prism-detected ivars in primary function: (none)
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/mir/control_flow.rb:OwnershipDataflow.== (lines 289-295)
+```ruby
+def ==(other)
+      case other
+      when Symbol then state == other.state
+      when Symbol     then state == other  # backward compat with raw symbols
+      else false
+      end
+    end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: production_stack_trace
+Worktree: clean
+Target file: clean (src/mir/control_flow.rb)
+Interpretation: Clean tree; treat this as a production/existing bug that slipped through tests.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/loop_frame_analysis_spec.rb:38
+  src/mir/control_flow.rb:289:in `=='
+
+Failure 1: spec/loop_frame_analysis_spec.rb:38
+Command: bundle exec rspec spec/loop_frame_analysis_spec.rb
+Failure output excerpt:
+TIMEOUT after 45s: bundle exec rspec spec/loop_frame_analysis_spec.rb
+Failing test code:
+From spec/loop_frame_analysis_spec.rb:38
+     30:     ast
+     31:   end
+     32: 
+     33:   def transpile(src)
+     34:     ZigTranspiler.new.transpile(src)
+     35:   end
+     36: 
+     37:   def main_fn(ast)
+=>   38:     ast.statements.find { |s| s.is_a?(AST::FunctionDef) && s.name == "main" } ||
+     39:       ast.statements.find { |s| s.is_a?(AST::FunctionDef) }
+     40:   end
+     41: 
+     42:   # ===========================================================================
+     43:   # Group A: mark_per_iter = true
+     44:   # ===========================================================================
+     45:   describe "Group A: mark_per_iter = true for loop-local frame collections" do
+     46: 
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Suspect bug in `==` at src/mir/control_flow.rb:289.
+Issue: swapped constant: 'OwnerEntry' -> 'Symbol'
+
+  spec/loop_frame_analysis_spec.rb:38
+  src/mir/control_flow.rb:289:in `=='
+
+Fix it.
+
+Return ONLY the corrected function `==` in a ```ruby block.
+

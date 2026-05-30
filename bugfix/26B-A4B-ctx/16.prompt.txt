@@ -1,0 +1,141 @@
+File: src/mir/mir_checker.rb
+Function: check_program!
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: MIRChecker (class, lines 54-685)
+Params: program: ?, strict: false
+Recorded callees: is_a?, concat, check_fn!
+Recorded instance vars: (none)
+Prism-detected callees in primary function: check_program!, is_a?
+Prism-detected ivars in primary function: (none)
+Included related functions: MIRChecker.check_fn!
+
+BUG TARGET FUNCTION: src/mir/mir_checker.rb:MIRChecker.check_program! (lines 125-131)
+```ruby
+def check_program!(program, strict: false)
+    all_errors = []
+    program.items.each do |item|
+      next unless item.is_a?(MIR::FnDef)
+    end
+    all_errors
+  end
+```
+
+RELATED FUNCTION: src/mir/mir_checker.rb:MIRChecker.check_fn! (lines 68-123)
+```ruby
+def check_fn!(fn_def, strict: false)
+    @fn_name = fn_def.name
+    @errors = []
+
+    allocs = {}
+    cleanups = {}
+    errdefer_destroy_names = Set.new
+    hpt_leaks = []
+    inline_alloc_nodes = []
+    all_zig_nodes = []  # InlineZig + RawZig -- both scanned for CheatLib contracts
+
+    walk_mir(fn_def.body) do |node|
+      case node
+      when MIR::AllocMark
+        (allocs[node.name] ||= []) << node
+      when MIR::Cleanup, MIR::ErrCleanup
+        (cleanups[node.name] ||= []) << node
+      when MIR::ErrDeferStmt
+        # @indirect field temps use ErrDeferStmt(DestroyPtr) instead of ErrCleanup.
+        # Track their names so ALLOC_WITHOUT_CLEANUP does not false-positive on them.
+        if node.body.is_a?(MIR::DestroyPtr) && node.body.ptr.is_a?(MIR::Ident)
+          errdefer_destroy_names << node.body.ptr.name
+        end
+      when MIR::Let
+        all_zig_nodes << node.init if node.init.is_a?(MIR::InlineZig)
+      when MIR::ExprStmt
+        scan_expr_for_hpt_leak!(node.expr, hpt_leaks)
+        if node.expr.is_a?(MIR::InlineZig) && node.expr.allocs
+          inline_alloc_nodes << node.expr
+        end
+        all_zig_nodes << node.expr if node.expr.is_a?(MIR::InlineZig)
+      when MIR::InlineZig
+        if node.allocs && !inline_alloc_nodes.include?(node)
+          inline_alloc_nodes << node
+        end
+        all_zig_nodes << node unless all_zig_nodes.include?(node)
+      when MIR::RawZig
+        all_zig_nodes << node unless all_zig_nodes.include?(node)
+      when MIR::LambdaExpr
+        if node.fn_def
+          sub = MIRChecker.new
+          @errors.concat(sub.check_fn!(node.fn_def, strict: strict))
+        end
+      end
+    end
+
+    hpt_leaks.each { |e| @errors << e }
+    verify_inline_alloc_contracts!(inline_alloc_nodes, allocs)
+    verify_alloc_cleanup_match!(allocs, cleanups, errdefer_destroy_names)
+    verify_zig_contracts!(all_zig_nodes)
+    verify_raw_justified!(all_zig_nodes)
+    verify_frame_rewind!(fn_def.body)
+    verify_unhoisted_allocs!(fn_def.body) if strict
+
+    @errors
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: production_stack_trace
+Worktree: clean
+Target file: clean (src/mir/mir_checker.rb)
+Interpretation: Clean tree; treat this as a production/existing bug that slipped through tests.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/mir_checker_spec.rb:612
+  src/mir/mir_checker.rb:125:in `check_program!'
+
+Failure 1: spec/mir_checker_spec.rb:612
+Command: bundle exec rspec spec/mir_checker_spec.rb
+Failure output excerpt:
+     Failure/Error: expect(errors.length).to eq(1)
+       expected: 1
+Failing test code:
+From spec/mir_checker_spec.rb:629
+    616:     it "collects errors across multiple functions" do
+    617:       call1 = MIR::Call.new("makeList", [MIR::Ident.new("rt")], false, true)
+    618:       fn1 = fn_def("good", [
+    619:         MIR::Let.new("x", call1, false, nil, nil),
+    620:       ])
+    621: 
+    622:       call2 = MIR::Call.new("makeList", [MIR::Ident.new("rt")], false, true)
+    623:       fn2 = fn_def("bad", [
+    624:         MIR::ExprStmt.new(call2, true),
+    625:       ])
+    626: 
+    627:       program = MIR::Program.new([fn1, fn2])
+    628:       errors = checker.check_program!(program)
+=>  629:       expect(errors.length).to eq(1)
+    630:       expect(errors.first).to include("bad")
+    631:       expect(errors.first).to include("HPT_LEAK")
+    632:     end
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Suspect bug in `check_program!` at src/mir/mir_checker.rb:125.
+Issue: forgotten line: 'all_errors.concat(check_fn!(item, strict: strict))'
+
+  spec/mir_checker_spec.rb:612
+  src/mir/mir_checker.rb:125:in `check_program!'
+
+Fix it.
+
+Return ONLY the corrected function `check_program!` in a ```ruby block.
+

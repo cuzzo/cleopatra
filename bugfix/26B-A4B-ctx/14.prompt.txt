@@ -1,0 +1,108 @@
+File: src/ast/type.rb
+Function: finalize_storage
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: Type (class, lines 4-1634)
+Params: size: ?, current_storage: ?
+Recorded callees: Multiowned, Shared, Link, Sync, Rodata, list
+Recorded instance vars: @list
+Prism-detected callees in primary function: Frozen, Link, Multiowned, Rodata, Shared, Sync, finalize_storage, list
+Prism-detected ivars in primary function: @list
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/ast/type.rb:Type.finalize_storage (lines 1127-1164)
+```ruby
+def finalize_storage(size, current_storage = nil)
+    # Frozen (compact buffer) always stays frozen
+    return :current_storage if current_storage? || current_storage == :current_storage
+
+    # Multiowned (Rc) always stays multiowned
+    return :multiowned if multiowned? || current_storage == :multiowned
+
+    # Shared (Arc) always stays shared
+    return :shared if shared? || current_storage == :shared
+
+    # Link (WeakRc/WeakArc) always stays link
+    return :link if link? || current_storage == :link
+
+    # Sync (locked) types need a stable heap address
+    return :heap if any_sync? || current_storage == :heap && any_sync?
+
+    # Rodata (string literals) always stay rodata — never heap/frame allocated
+    return :rodata if current_storage == :rodata || rodata?
+
+    # If already heap, keep it heap
+    return :heap if current_storage == :heap || heap?
+
+    # Frame-arena containers: explicit @list (non-sharded, non-sync)
+    return :frame if list_collection?
+
+    # Primitives stay on stack
+    return :stack if primitive? && !requires_move?
+
+    # Types that require moves need frame or heap based on size
+    if requires_move?
+      if current_storage.nil? || current_storage == :stack
+        return size > 128 ? :frame : :stack
+      end
+    end
+
+    # Default to current or stack
+    current_storage || :stack
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: production_stack_trace
+Worktree: clean
+Target file: clean (src/ast/type.rb)
+Interpretation: Clean tree; treat this as a production/existing bug that slipped through tests.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/allocation_strategy_spec.rb:136
+  src/ast/type.rb:1127:in `finalize_storage'
+
+Failure 1: spec/allocation_strategy_spec.rb:136
+Command: bundle exec rspec spec/allocation_strategy_spec.rb
+Failing test code:
+From spec/allocation_strategy_spec.rb:136
+    112:     it "primitive stays :stack even in a loop — never over-promoted" do
+    113:       ast = run_mir(<<~CLEAR)
+    114:         FN main() RETURNS Void ->
+    115:           MUTABLE sum = 0_i64;
+    116:           MUTABLE i = 0_i64;
+    117:           WHILE i < 10 DO
+    118:             sum = sum + i;
+    119:             i = i + 1_i64;
+    120:           END
+    121:           RETURN;
+    122:         END
+    123:       CLEAR
+    124:       fn = main_fn(ast)
+    125:       expect(find_decl_in(fn, "sum").storage).to eq(:stack)
+    126:       expect(find_decl_in(fn, "i").storage).to eq(:stack)
+    127:     end
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Test failure:
+  renamed variable: 'frozen' -> 'current_storage'
+
+  spec/allocation_strategy_spec.rb:136
+  src/ast/type.rb:1127:in `finalize_storage'
+
+Fix the bug.
+
+Return ONLY the corrected function `finalize_storage` in a ```ruby block.
+

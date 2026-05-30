@@ -1,0 +1,148 @@
+File: src/ast/type.rb
+Function: stream?
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: Type (class, lines 4-1634)
+Params: (none recorded)
+Recorded callees: (none)
+Recorded instance vars: (none)
+Prism-detected callees in primary function: (none)
+Prism-detected ivars in primary function: (none)
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/ast/type.rb:Type.stream? (lines 763-765)
+```ruby
+def stream?
+    dynamic_stream? && bounded_stream? || open_stream? || inf_stream? || split_open_stream?
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: dirty_source_change
+Worktree: dirty
+Target file: dirty (src/ast/type.rb)
+  lines 763-765: entire function edited
+Interpretation: Active source edits exist; inspect dirty changed lines first.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/stream_spec.rb:287
+  src/ast/type.rb:763:in `stream?'
+
+Failure 1: spec/stream_spec.rb:287
+Command: bundle exec rspec spec/stream_spec.rb
+Failing test code:
+From spec/stream_spec.rb:287
+=>  287:       it "bounded_stream? is true for ~Float64[3]" do
+    288:         t = Type.new(:"~Float64[3]")
+    289:         expect(t.bounded_stream?).to be true
+    290:       end
+    291: 
+    292:       it "bounded_stream? is false for plain ~Float64" do
+    293:         expect(Type.new(:"~Float64").bounded_stream?).to be false
+    294:       end
+    295: 
+    296:       it "bounded_stream? is false for ~Float64[] (dynamic)" do
+    297:         expect(Type.new(:"~Float64[]").bounded_stream?).to be false
+    298:       end
+    299: 
+    300:       it "stream_element_type returns the inner T for ~Float64[3]" do
+    301:         t = Type.new(:"~Float64[3]")
+    302:         expect(t.stream_element_type.to_sym).to eq(:Float64)
+    303:       end
+    304: 
+    305:       it "stream_capacity returns N for ~Float64[3]" do
+    306:         expect(Type.new(:"~Float64[3]").stream_capacity).to eq(3)
+    307:       end
+    308: 
+    309:       it "stream_capacity returns 1 for ~Bool[1]" do
+    310:         expect(Type.new(:"~Bool[1]").stream_capacity).to eq(1)
+    311:       end
+    312: 
+    313:       it "requires_move? is false for bounded streams (incremental consumption)" do
+    314:         expect(Type.new(:"~Float64[3]").requires_move?).to be false
+    315:       end
+    316: 
+    317:       it "requires_move? is still true for single promises" do
+    318:         expect(Type.new(:"~Float64").requires_move?).to be true
+    319:       end
+    320:     end
+    321: 
+    322:     describe "Zig type emission" do
+    323:       it "emits CheatLib.BoundedStream(f64, 3) for ~Float64[3]" do
+    324:         expect(Type.new(:"~Float64[3]").zig_type).to eq("CheatLib.BoundedStream(f64, 3)")
+    325:       end
+    326: 
+    327:       it "emits CheatLib.BoundedStream(bool, 1) for ~Bool[1]" do
+    328:         expect(Type.new(:"~Bool[1]").zig_type).to eq("CheatLib.BoundedStream(bool, 1)")
+    329:       end
+    330: 
+    331:       it "still emits CheatLib.Promise(f64) for plain ~Float64" do
+    332:         expect(Type.new(:"~Float64").zig_type).to eq("CheatLib.Promise(f64)")
+    333:       end
+    334:     end
+    335: 
+    336:     # ------------------------------------------------------------------
+    337:     # Parser
+    338:     # ------------------------------------------------------------------
+    339:     describe "Parser: parse_type_annotation" do
+    340:       it "parses ~Float64[3] as a bounded stream type" do
+    341:         tokens = Lexer.new("~Float64[3]").tokenize
+    342:         t = Parser.new(tokens, "~Float64[3]").send(:parse_type_annotation)
+    343:         expect(t.bounded_stream?).to be true
+    344:         expect(t.stream_capacity).to eq(3)
+    345:         expect(t.stream_element_type.to_sym).to eq(:Float64)
+    346:       end
+    347: 
+    348:       it "parses ~Bool[1] as a bounded stream type" do
+    349:         tokens = Lexer.new("~Bool[1]").tokenize
+    350:         t = Parser.new(tokens, "~Bool[1]").send(:parse_type_annotation)
+    351:         expect(t.bounded_stream?).to be true
+    352:         expect(t.stream_capacity).to eq(1)
+    353:       end
+    354:     end
+    355: 
+    356:     # ------------------------------------------------------------------
+    357:     # Annotator: visit_ListLit (bounded stream literal)
+    358:     # ------------------------------------------------------------------
+    359:     describe "visit_ListLit with tense items" do
+    360:       it "infers ~Float64[3] when all 3 items are ~Float64 promises" do
+    361:         src = <<~CLEAR
+    362:           FN f() RETURNS Void ->
+    363:             s: ~Float64[3] = [BG { 1.0; }, BG { 2.0; }, BG { 3.0; }];
+    364:             RETURN;
+    365:           END
+    366:         CLEAR
+    367:         expect { run(src) }.not_to raise_error
+    368:       end
+    369: 
+    370:       it "infers ~Float64[1] for a single-element promise list" do
+    371:         src = <<~CLEAR
+    372:           FN f() RETURNS Void ->
+    373:             s: ~Float64[1] = [BG { 42.0; }];
+    374:             RETURN;
+    375:           END
+    376:         CLEAR
+
+A mutant/regression test is failing after local source edits.
+Active source edits exist; inspect dirty changed lines first.
+
+Suspect bug in `stream?` at src/ast/type.rb:763.
+Issue: swapped || -> &&
+
+  spec/stream_spec.rb:287
+  src/ast/type.rb:763:in `stream?'
+
+Fix it.
+
+Return ONLY the corrected function `stream?` in a ```ruby block.
+

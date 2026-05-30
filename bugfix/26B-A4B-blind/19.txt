@@ -1,0 +1,11 @@
+```ruby
+  # The element type T in ~T[N], or ?T in ~?T[N].
+  def stream_element_type
+    return nil unless bounded_stream?
+    if optional_stream_shape_type&.fixed?
+      tense_type.element_type
+    else
+      Type.new(:"?#{optional_stream_shape_type.element_type.to_sym}")
+    end
+  end
+```

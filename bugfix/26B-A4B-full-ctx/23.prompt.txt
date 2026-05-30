@@ -1,0 +1,96 @@
+File: src/mir/ownership_graph.rb
+Function: restore_lightweight
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: OwnershipGraph (class, lines 15-260)
+Params: snapshot: ?
+Recorded callees: delete
+Recorded instance vars: @nodes, @edges, @edges_by_target, @edges_by_source
+Prism-detected callees in primary function: delete, restore_lightweight
+Prism-detected ivars in primary function: @edges, @edges_by_source, @edges_by_target, @nodes
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/mir/ownership_graph.rb:OwnershipGraph.restore_lightweight (lines 167-178)
+```ruby
+def restore_lightweight(snapshot)
+    snapshot[:node_states].each do |path, state|
+      node = @nodes[path]
+      node.state = state if !(node)
+    end
+    target_count = snapshot[:edge_count]
+    while @edges.size > target_count
+      removed = @edges.pop
+      @edges_by_target[removed.to]&.delete(removed)
+      @edges_by_source[removed.from]&.delete(removed)
+    end
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: production_stack_trace
+Worktree: clean
+Target file: clean (src/mir/ownership_graph.rb)
+Interpretation: Clean tree; treat this as a production/existing bug that slipped through tests.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/ownership_graph_spec.rb:193
+  src/mir/ownership_graph.rb:167:in `restore_lightweight'
+
+Failure 1: spec/ownership_graph_spec.rb:193
+Command: bundle exec rspec spec/ownership_graph_spec.rb
+Failure output excerpt:
+     Failure/Error: expect(graph.live?("x")).to be true
+       expected true
+            got false
+Failing test code:
+From spec/ownership_graph_spec.rb:200
+    194:     it "captures and restores node states" do
+    195:       graph.declare("x")
+    196:       snapshot = graph.fork_lightweight
+    197:       graph.transfer("x", "y")
+    198:       expect(graph.moved?("x")).to be true
+    199:       graph.restore_lightweight(snapshot)
+=>  200:       expect(graph.live?("x")).to be true
+    201:     end
+
+From spec/ownership_graph_spec.rb:193
+    184:     it "returns true after borrow release" do
+    185:       graph.declare("x")
+    186:       graph.borrow("y", "x", mutable: false)
+    187:       graph.release_borrow("y")
+    188:       expect(graph.can_write?("x")).to be true
+    189:     end
+
+From spec/ownership_graph_spec.rb:194
+=>  194:     it "captures and restores node states" do
+    195:       graph.declare("x")
+    196:       snapshot = graph.fork_lightweight
+    197:       graph.transfer("x", "y")
+    198:       expect(graph.moved?("x")).to be true
+    199:       graph.restore_lightweight(snapshot)
+    200:       expect(graph.live?("x")).to be true
+    201:     end
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Test failure:
+  negated condition: 'node'
+
+  spec/ownership_graph_spec.rb:193
+  src/mir/ownership_graph.rb:167:in `restore_lightweight'
+
+Fix the bug.
+
+Return ONLY the corrected function `restore_lightweight` in a ```ruby block.
+

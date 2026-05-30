@@ -1,0 +1,150 @@
+File: src/ast/type.rb
+Function: any_rc?
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: Type (class, lines 4-1634)
+Params: (none recorded)
+Recorded callees: (none)
+Recorded instance vars: (none)
+Prism-detected callees in primary function: (none)
+Prism-detected ivars in primary function: (none)
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/ast/type.rb:Type.any_rc? (lines 492-496)
+```ruby
+def any_rc?
+    # SharedPromise uses its own ref-counting internally — it is NOT an Rc/Arc wrapper.
+    return false if shared_promise? && split_open_stream?
+    multiowned? || shared?
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: new_unit_test
+Worktree: dirty
+Target file: clean (src/ast/type.rb)
+Other dirty files:
+  added spec/generated/type_spec.rb (test)
+Interpretation: A new failing unit test was added; use it to understand expected behavior.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/stream_spec.rb:67
+  src/ast/type.rb:492:in `any_rc?'
+
+Failure 1: spec/stream_spec.rb:67
+Command: bundle exec rspec spec/stream_spec.rb
+Failing test code:
+From spec/stream_spec.rb:67
+=>   67:       it "any_rc? is false for shared promises (SharedPromise is not Rc/Arc)" do
+     68:         tokens = Lexer.new("~Float64 @shared").tokenize
+     69:         t = Parser.new(tokens, "~Float64 @shared").send(:parse_type_annotation)
+     70:         expect(t.any_rc?).to be false
+     71:       end
+     72: 
+     73:       it "any_rc? is still true for plain Float64@shared (Arc wrapper)" do
+     74:         tokens = Lexer.new("Float64 @shared").tokenize
+     75:         t = Parser.new(tokens, "Float64 @shared").send(:parse_type_annotation)
+     76:         expect(t.any_rc?).to be true
+     77:       end
+     78:     end
+     79: 
+     80:     describe "Zig type emission" do
+     81:       it "emits CheatLib.SharedPromise(f64) for ~Float64@shared" do
+     82:         tokens = Lexer.new("~Float64 @shared").tokenize
+     83:         t = Parser.new(tokens, "~Float64 @shared").send(:parse_type_annotation)
+     84:         expect(t.zig_type).to eq("CheatLib.SharedPromise(f64)")
+     85:       end
+     86: 
+     87:       it "emits CheatLib.SharedPromise(bool) for ~Bool@shared" do
+     88:         tokens = Lexer.new("~Bool @shared").tokenize
+     89:         t = Parser.new(tokens, "~Bool @shared").send(:parse_type_annotation)
+     90:         expect(t.zig_type).to eq("CheatLib.SharedPromise(bool)")
+     91:       end
+     92: 
+     93:       it "still emits CheatLib.Promise(f64) for plain ~Float64" do
+     94:         expect(Type.new(:"~Float64").zig_type).to eq("CheatLib.Promise(f64)")
+     95:       end
+     96: 
+     97:       it "still emits CheatLib.Rc(f64) for Float64@multiOwned" do
+     98:         tokens = Lexer.new("Float64 @multiowned").tokenize
+     99:         t = Parser.new(tokens, "Float64 @multiowned").send(:parse_type_annotation)
+    100:         expect(t.zig_type).to eq("CheatLib.Rc(f64)")
+    101:       end
+    102:     end
+    103: 
+    104:     # ------------------------------------------------------------------
+    105:     # Compiler error: ~T@multiOwned is invalid
+    106:     # ------------------------------------------------------------------
+    107:     describe "~T@multiOwned compiler error" do
+    108:       it "raises a directed error when a binding declares ~T@multiOwned" do
+    109:         src = <<~CLEAR
+    110:           FN f() RETURNS Void ->
+    111:             sp: ~Float64 @multiowned = BG { 1.0; };
+    112:             RETURN;
+    113:           END
+    114:         CLEAR
+    115:         expect { run(src) }.to raise_error(SourceError, /~T@multiOwned is not valid/)
+    116:       end
+    117:     end
+    118: 
+    119:     # ------------------------------------------------------------------
+    120:     # Annotator: BgBlock type propagation
+    121:     # ------------------------------------------------------------------
+    122:     describe "BgBlock full_type propagation" do
+    123:       it "annotates the BgBlock as shared when the declared type is ~T@shared" do
+    124:         src = <<~CLEAR
+    125:           FN f() RETURNS Void ->
+    126:             sp: ~Float64 @shared = BG { 42.0; };
+    127:             RETURN;
+    128:           END
+    129:         CLEAR
+    130:         ast = run(src)
+    131:         fn_node = ast.statements.first
+    132:         bind = fn_node.body.first
+    133:         bg = bind.value
+    134:         bg_type = Type.new(bg.full_type)
+    135:         expect(bg_type.tense?).to be true
+    136:         expect(bg_type.shared_promise?).to be true
+    137:       end
+    138: 
+    139:       it "does not mark a plain ~T BgBlock as shared" do
+    140:         src = <<~CLEAR
+    141:           FN f() RETURNS Void ->
+    142:             p: ~Float64 = BG { 1.0; };
+    143:             r: Float64 = NEXT p;
+    144:             RETURN;
+    145:           END
+    146:         CLEAR
+    147:         ast = run(src)
+    148:         fn_node = ast.statements.first
+    149:         bind = fn_node.body.first
+    150:         bg = bind.value
+    151:         bg_type = Type.new(bg.full_type)
+    152:         expect(bg_type.shared_promise?).to be false
+    153:       end
+    154:     end
+    155: 
+    156:     # ------------------------------------------------------------------
+
+A new unit test was added and is failing.
+A new failing unit test was added; use it to understand expected behavior.
+
+CI failing spec/stream_spec.rb:67.
+
+  spec/stream_spec.rb:67
+  src/ast/type.rb:492:in `any_rc?'
+
+Fix the code.
+
+Return ONLY the corrected function `any_rc?` in a ```ruby block.
+

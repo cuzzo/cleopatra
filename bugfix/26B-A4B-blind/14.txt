@@ -1,0 +1,40 @@
+```ruby
+  def finalize_storage(size, current_storage = nil)
+    # Frozen (compact buffer) always stays frozen
+    return :frozen if frozen? || current_storage == :frozen
+
+    # Multiowned (Rc) always stays multiowned
+    return :multiowned if multiowned? || current_storage == :multiowned
+
+    # Shared (Arc) always stays shared
+    return :shared if shared? || current_storage == :shared
+
+    # Link (WeakRc/WeakArc) always stays link
+    return :link if link? || current_storage == :link
+
+    # Sync (locked) types need a stable heap address
+    return :heap if any_sync? || current_storage == :heap && any_sync?
+
+    # Rodata (string literals) always stay rodata — never heap/frame allocated
+    return :rodata if current_storage == :rodata || rodata?
+
+    # If already heap, keep it heap
+    return :heap if current_storage == :heap || heap?
+
+    # Frame-arena containers: explicit @list (non-sharded, non-sync)
+    return :frame if list_collection?
+
+    # Primitives stay on stack
+    return :stack if primitive? && !requires_move?
+
+    # Types that require moves need frame or heap based on size
+    if requires_move?
+      if current_storage.nil? || current_storage == :stack
+        return size > 128 ? :frame : :stack
+      end
+    end
+
+    # Default to current or stack
+    current_storage || :stack
+  end
+```

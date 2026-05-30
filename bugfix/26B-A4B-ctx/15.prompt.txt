@@ -1,0 +1,159 @@
+File: src/annotator-helpers/function_signature.rb
+Function: []
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: FunctionSignature (class, lines 7-136)
+Params: (none recorded)
+Recorded callees: key?, send
+Recorded instance vars: @return_type, @return_lifetime
+Prism-detected callees in primary function: send
+Prism-detected ivars in primary function: @return_lifetime, @return_type
+Included related functions: FunctionSignature.key?
+
+RELATED FUNCTION: src/annotator-helpers/function_signature.rb:FunctionSignature.key? (lines 94-96)
+```ruby
+def key?(key)
+    FIELD_MAP.key?(key)
+  end
+```
+
+BUG TARGET FUNCTION: src/annotator-helpers/function_signature.rb:FunctionSignature.[] (lines 74-79)
+```ruby
+def [](key)
+    if key == :return
+      { type: @return_type, lifetime: @return_lifetime }
+      send(FIELD_MAP[key])
+    end
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: new_unit_test
+Worktree: dirty
+Target file: clean (src/annotator-helpers/function_signature.rb)
+Other dirty files:
+  added spec/generated/function_signature_spec.rb (test)
+Interpretation: A new failing unit test was added; use it to understand expected behavior.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/generics_spec.rb:268
+  src/annotator-helpers/function_signature.rb:74:in `[]'
+
+Failure 1: spec/generics_spec.rb:268
+Command: bundle exec rspec spec/generics_spec.rb
+Failing test code:
+From spec/generics_spec.rb:268
+=>  268:       it "emits Map([]const u8, f64) for Map<String, Float64>" do
+    269:         src = <<~CLEAR
+    270:           STRUCT Map<K, V> { key: K, value: V }
+    271:           FN use(m: Map<String, Float64>) RETURNS Float64 ->
+    272:             RETURN 0.0;
+    273:           END
+    274:           FN main() RETURNS Void -> PASS END
+    275:         CLEAR
+    276:         out = ZigTranspiler.new.transpile(src)
+    277:         expect(out).to include("Map([]const u8, f64)")
+    278:       end
+    279: 
+    280:       it "emits Pair(f64) as the Zig return type for RETURNS Pair<Float64>" do
+    281:         src = <<~CLEAR
+    282:           STRUCT Pair<T> { first: T, second: T }
+    283:           FN make() RETURNS Pair<Float64> ->
+    284:             PASS
+    285:           END
+    286:           FN main() RETURNS Void -> PASS END
+    287:         CLEAR
+    288:         out = ZigTranspiler.new.transpile(src)
+    289:         expect(out).to include("Pair(f64)")
+    290:       end
+    291: 
+    292:       it "emits Pair(bool) for Pair<Bool>" do
+    293:         src = <<~CLEAR
+    294:           STRUCT Pair<T> { first: T, second: T }
+    295:           FN use(p: Pair<Bool>) RETURNS Float64 ->
+    296:             RETURN 0.0;
+    297:           END
+    298:           FN main() RETURNS Void -> PASS END
+    299:         CLEAR
+    300:         out = ZigTranspiler.new.transpile(src)
+    301:         expect(out).to include("Pair(bool)")
+    302:       end
+    303: 
+    304:       it "emits Pair(User) for Pair<User> where User is a plain struct" do
+    305:         src = <<~CLEAR
+    306:           STRUCT User { id: Float64 }
+    307:           STRUCT Pair<T> { first: T, second: T }
+    308:           FN use(p: Pair<User>) RETURNS Float64 ->
+    309:             RETURN 0.0;
+    310:           END
+    311:           FN main() RETURNS Void -> PASS END
+    312:         CLEAR
+    313:         out = ZigTranspiler.new.transpile(src)
+    314:         expect(out).to include("Pair(User)")
+    315:       end
+    316: 
+    317:       it "emits ?Pair(f64) for an optional generic param" do
+    318:         src = <<~CLEAR
+    319:           STRUCT Pair<T> { first: T, second: T }
+    320:           FN use(p: ?Pair<Float64>) RETURNS Float64 ->
+    321:             RETURN 0.0;
+    322:           END
+    323:           FN main() RETURNS Void -> PASS END
+    324:         CLEAR
+    325:         out = ZigTranspiler.new.transpile(src)
+    326:         expect(out).to include("?Pair(f64)")
+    327:       end
+    328:     end
+    329: 
+    330:     describe "Zig code generation" do
+    331:       it "emits a comptime function for a single-param generic struct" do
+    332:         out = ZigTranspiler.new.transpile("STRUCT Pair<T> { first: T, second: T }\nFN main() RETURNS Void -> PASS END")
+    333:         expect(out).to include("fn Pair(comptime T: type) type")
+    334:         expect(out).to include("first: T")
+    335:         expect(out).to include("second: T")
+    336:       end
+    337: 
+    338:       it "emits multiple comptime params for a multi-param generic struct" do
+    339:         out = ZigTranspiler.new.transpile("STRUCT Map<K, V> { key: K, value: V }\nFN main() RETURNS Void -> PASS END")
+    340:         expect(out).to include("fn Map(comptime K: type, comptime V: type) type")
+    341:       end
+    342: 
+    343:       it "emits a plain const struct for a non-generic struct" do
+    344:         out = ZigTranspiler.new.transpile("STRUCT User { id: Float64 }\nFN main() RETURNS Void -> PASS END")
+    345:         expect(out).to include("const User = struct")
+    346:         expect(out).not_to include("comptime")
+    347:       end
+    348: 
+    349:       it "correctly emits field types that are type parameters" do
+    350:         out = ZigTranspiler.new.transpile("STRUCT Wrapper<T> { value: T }\nFN main() RETURNS Void -> PASS END")
+    351:         expect(out).to include("value: T")
+    352:       end
+    353: 
+    354:       it "emits three comptime params for a triple-param struct" do
+    355:         out = ZigTranspiler.new.transpile("STRUCT Triple<A, B, C> { a: A, b: B, c: C }\nFN main() RETURNS Void -> PASS END")
+    356:         expect(out).to include("fn Triple(comptime A: type, comptime B: type, comptime C: type) type")
+    357:       end
+
+A new unit test was added and is failing.
+A new failing unit test was added; use it to understand expected behavior.
+
+Test failure:
+  forgotten line: 'elsif FIELD_MAP.key?(key)'
+
+  spec/generics_spec.rb:268
+  src/annotator-helpers/function_signature.rb:74:in `[]'
+
+Fix the bug.
+
+Return ONLY the corrected function `[]` in a ```ruby block.
+

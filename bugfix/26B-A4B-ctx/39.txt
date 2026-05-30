@@ -1,0 +1,21 @@
+```ruby
+def stream?
+  dynamic_stream? && bounded_stream? || open_stream? || inf_stream? || split_open_stream?
+end
+```
+
+Wait, looking at the logic: `dynamic_stream? && bounded_stream?` is likely the error. A bounded stream is usually a specific type of stream, but the logic `dynamic_stream? && bounded_stream?` implies it must be both dynamic AND bounded to be a stream (which is contradictory in many type systems, or at least highly specific). 
+
+However, the prompt says "Issue: swapped || -> &&". This implies the current code has an `&&` where it should have an `||`.
+
+If the current code is:
+`dynamic_stream? && bounded_stream? || open_stream? || inf_stream? || split_open_stream?`
+
+And the issue is a swapped operator, it should be:
+`dynamic_stream? || bounded_stream? || open_stream? || inf_stream? || split_open_stream?`
+
+```ruby
+def stream?
+  dynamic_stream? || bounded_stream? || open_stream? || inf_stream? || split_open_stream?
+end
+```

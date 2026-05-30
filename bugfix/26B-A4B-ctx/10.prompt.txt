@@ -1,0 +1,72 @@
+File: src/ast/error_registry.rb
+Function: enum_entries
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: AST (module, lines 1-130)
+Params: (none recorded)
+Recorded callees: sort_by
+Recorded instance vars: (none)
+Prism-detected callees in primary function: sort_by
+Prism-detected ivars in primary function: (none)
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/ast/error_registry.rb:AST.enum_entries (lines 121-123)
+```ruby
+def self.enum_entries
+    [[:None, ERROR_TYPES]] + ERROR_TYPES.map { |sym, meta| [sym, meta[:id]] }.sort_by(&:last)
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: new_unit_test
+Worktree: dirty
+Target file: clean (src/ast/error_registry.rb)
+Other dirty files:
+  added spec/generated/error_registry_spec.rb (test)
+Interpretation: A new failing unit test was added; use it to understand expected behavior.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/error_registry_spec.rb:123
+  src/ast/error_registry.rb:121:in `enum_entries'
+
+Failure 1: spec/error_registry_spec.rb:123
+Command: bundle exec rspec spec/error_registry_spec.rb
+Failure output excerpt:
+     Failure/Error: expect(entries.first).to eq([:None, 0])
+       expected: [:None, 0]
+            got: [:None, {:Deadlock=>{:first_site=>nil, :id=>3, :kind=>:System, :zig_name=>"Deadlock"}, :LockCycle=>{:...LockCycle"}, :LockTimeout=>{:first_site=>nil, :id=>1, :kind=>:Transient, :zig_name=>"LockTimeout"}}]
+     Failure/Error: expect(ids).to eq(ids.sort)
+     ArgumentError:
+Failing test code:
+From spec/error_registry_spec.rb:132
+    130:     it "produces (:Name, id) pairs including the None=0 sentinel and stdlib at 1..3" do
+    131:       entries = AST.enum_entries
+=>  132:       expect(entries.first).to eq([:None, 0])
+    133:       expect(entries).to include([:LockTimeout, 1])
+    134:       expect(entries).to include([:LockCycle, 2])
+    135:       expect(entries).to include([:Deadlock, 3])
+    136:     end
+
+A new unit test was added and is failing.
+A new failing unit test was added; use it to understand expected behavior.
+
+Suspect bug in `enum_entries` at src/ast/error_registry.rb:121.
+Issue: swapped constant: 'ERROR_NAME_NONE' -> 'ERROR_TYPES'
+
+  spec/error_registry_spec.rb:123
+  src/ast/error_registry.rb:121:in `enum_entries'
+
+Fix it.
+
+Return ONLY the corrected function `enum_entries` in a ```ruby block.
+

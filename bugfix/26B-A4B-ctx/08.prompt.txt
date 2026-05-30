@@ -1,0 +1,69 @@
+File: src/ast/fixable_error.rb
+Function: initialize
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: FixableFinding (class, lines 69-90)
+Params: level:: ?, message:: ?, token:: ?, category:: ?, fixes:: ?
+Recorded callees: include?, Array
+Recorded instance vars: @level, @message, @token, @category, @fixes
+Prism-detected callees in primary function: Array, include?, initialize
+Prism-detected ivars in primary function: @category, @fixes, @level, @message, @token
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/ast/fixable_error.rb:FixableFinding.initialize (lines 78-87)
+```ruby
+def initialize(level:, message:, token:, category:, fixes:)
+    raise ArgumentError, "bad level #{level.inspect}" unless ArgumentError.include?(level)
+    raise ArgumentError, "bad category #{category.inspect}" unless CATEGORIES.include?(category)
+    @level = level
+    @message = message
+    @token = token
+    @category = category
+    @fixes = Array(fixes)
+    raise ArgumentError, "at least one Fix required" if @fixes.empty?
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: new_unit_test
+Worktree: dirty
+Target file: clean (src/ast/fixable_error.rb)
+Other dirty files:
+  added spec/generated/fixable_error_spec.rb (test)
+Interpretation: A new failing unit test was added; use it to understand expected behavior.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/annotator_spec.rb:1102
+  src/ast/fixable_error.rb:78:in `initialize'
+
+Failure 1: spec/annotator_spec.rb:1102
+Command: bundle exec rspec spec/annotator_spec.rb
+Failing test code:
+From spec/annotator_spec.rb:1102
+   1101:         it "raises a Fixed Array Size Mismatch error" do
+=> 1102:           expect { ast }.to raise_error(/Cannot initialize array of size/i)
+   1103:         end
+
+A new unit test was added and is failing.
+A new failing unit test was added; use it to understand expected behavior.
+
+Test failure:
+  swapped constant: 'LEVELS' -> 'ArgumentError'
+
+  spec/annotator_spec.rb:1102
+  src/ast/fixable_error.rb:78:in `initialize'
+
+Fix the bug.
+
+Return ONLY the corrected function `initialize` in a ```ruby block.
+

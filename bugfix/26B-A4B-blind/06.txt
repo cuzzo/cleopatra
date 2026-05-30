@@ -1,0 +1,14 @@
+```ruby
+  def initialize(lowering:, emitter:)
+    @lowering = lowering
+    @emitter = emitter
+    @fn_sigs = emitter.fn_sigs
+    # Pipeline context state (managed by with_pipeline_context)
+    @soa_rewrite_active = false
+    @soa_each_mode = false
+    @soa_needed_fields = Set.new
+    @mir_mode = false
+    # Named pipeline bindings: "@u" -> "__pipe_u" (persist across stages, cleared per-chain)
+    @named_bindings = {}
+  end
+```

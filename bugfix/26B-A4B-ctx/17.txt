@@ -1,0 +1,9 @@
+```ruby
+def ==(other)
+  case other
+  when OwnershipDataflow then state == other.state
+  when Symbol then state == other  # backward compat with raw symbols
+  else false
+  end
+end
+```

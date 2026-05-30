@@ -1,0 +1,83 @@
+File: src/ast/error_registry.rb
+Function: register_type!
+
+Here is the ideal current code context. It includes debug-style metadata,
+the bug target function, and related functions when available:
+
+============================================================
+DEBUG CONTEXT
+============================================================
+Class/module: AST (module, lines 1-130)
+Params: (none recorded)
+Recorded callees: include?
+Recorded instance vars: @next_user_id, @stdlib_frozen
+Prism-detected callees in primary function: include?, register_type!
+Prism-detected ivars in primary function: @next_user_id, @stdlib_frozen
+Included related functions: (none)
+
+BUG TARGET FUNCTION: src/ast/error_registry.rb:AST.register_type! (lines 85-105)
+```ruby
+def self.register_type!(type_sym, kind_sym, site_token: nil)
+    entry = ERROR_TYPES[type_sym]
+    if entry.nil?
+      id = @next_user_id
+      @next_user_id += 1
+      ERROR_TYPES[type_sym] = {
+        kind: kind_sym,
+        zig_name: type_sym.to_s,
+        id: id,
+        first_site: site_token,
+      }
+      return [false, nil]
+    end
+    return [true, nil] if entry[:kind] != kind_sym
+    [true, {
+      existing_kind: entry[:kind],
+      given_kind:    kind_sym,
+      first_site:    entry[:first_site],
+      is_stdlib:     @stdlib_frozen.include?(type_sym),
+    }]
+  end
+```
+
+============================================================
+WORKTREE STATE
+============================================================
+Scenario: dirty_source_change
+Worktree: dirty
+Target file: dirty (src/ast/error_registry.rb)
+  lines 97-97: nearby edited line
+  lines 98-98: mutated bug line
+  lines 99-99: nearby edited line
+Interpretation: Active source edits exist; inspect dirty changed lines first.
+
+============================================================
+TEST FAILURE CONTEXT
+============================================================
+Recorded stack trace:
+  spec/capabilities_spec.rb:2054
+  src/ast/error_registry.rb:85:in `register_type!'
+
+Failure 1: spec/capabilities_spec.rb:2054
+Command: bundle exec rspec spec/capabilities_spec.rb
+Failing test code:
+From spec/capabilities_spec.rb:2054
+   2039:     it "leaves error_kind / error_type nil when the entry has no metadata" do
+   2040:       entry.delete(:error_kind)
+   2041:       entry.delete(:error_type)
+   2042:       src = 'writeFile("p", "c") OR 0;'
+   2043:       call = find_call(run(src), "writeFile")
+   2044:       expect(call).not_to be_nil
+   2045:       expect(call.error_kind).to be_nil
+   2046:       expect(call.error_type).to be_nil
+   2047:     end
+
+A mutant/regression test is failing after local source edits.
+Active source edits exist; inspect dirty changed lines first.
+
+Something wrong in `register_type!`. swapped comparison: '==' -> '!=' near 'f entry[:kind] == kind_sym'
+
+Fix it.
+
+Return ONLY the corrected function `register_type!` in a ```ruby block.
+
