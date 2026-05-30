@@ -64,26 +64,29 @@ These are the current cleaned full-context ablations. For local small models,
 `*-ctx` is compact and `*-full-ctx` uses the cleaned full profile. For larger
 models, `32B-ctx` and `405B-ctx` already use the cleaned full profile.
 
-| Model size | Category | Context profile | Avg prompt bytes | Test pass | Parse/app errors |
-|---|---|---|---:|---:|---:|
-| 3B | `3B-blind` | centered file excerpt | 7,866 | 17/50 | 7 |
-| 7B | `7B-blind` | centered file excerpt | 7,866 | 27/50 | 0 |
-| 32B | `32B-blind` | centered file excerpt | 46,792 | 34/50 | 3 |
-| 405B | `405B-blind` | centered file excerpt | 61,547 | 35/50 | 1 |
-| A1B active | `A1B-ctx` | compact | 4,189 | 17/50 | 0 |
-| A1B active | `A1B-full-ctx` | full | 5,185 | 12/50 | 6 |
-| 3B | `3B-ctx` | compact | 4,189 | 23/50 | 1 |
-| 3B | `3B-full-ctx` | full | 5,185 | 21/50 | 1 |
-| 7B | `7B-ctx` | compact | 4,189 | 27/50 | 1 |
-| 7B | `7B-full-ctx` | full | 5,185 | 28/50 | 1 |
-| 32B | `32B-ctx` | full | 5,185 | 32/50 | 0 |
-| 405B | `405B-ctx` | full | 5,185 | 39/50 | 0 |
+| Model | `-blind` | `-ctx-compact` | `-ctx-full` |
+|---|---:|---:|---:|
+| A1B active | Not run | 17/50 (0 errors) | 12/50 (6 errors) |
+| 3B | 17/50 (7 errors) | 23/50 (1 error) | 21/50 (1 error) |
+| 7B | 27/50 (0 errors) | 27/50 (1 error) | 28/50 (1 error) |
+| 32B | 34/50 (3 errors) | 30/50 (artifact incomplete) | 32/50 (0 errors) |
+| 405B | 35/50 (1 error) | 36/50 (artifact missing) | 39/50 (0 errors) |
+
+Prompt sizes by profile:
+
+| Profile | Categories | Avg prompt bytes |
+|---|---|---:|
+| `-blind` local | `3B-blind`, `7B-blind` | 7,866 |
+| `-blind` 32B | `32B-blind` | 46,792 |
+| `-blind` 405B | `405B-blind` | 61,547 |
+| `-ctx-compact` | `A1B-ctx`, `3B-ctx`, `7B-ctx` | 4,189 |
+| `-ctx-full` | `A1B-full-ctx`, `3B-full-ctx`, `7B-full-ctx`, `32B-ctx`, `405B-ctx` | 5,185 |
 
 For A1B and 3B, the cleaned full profile recovered some of the loss from the
 earlier noisy richer profile, but still underperformed compact. For 7B, cleaned
 full context slightly improved performance.
 
-The blind rows use the current saved blind response directories and were
+The blind scores use the current saved blind response directories and were
 rechecked with `src/synthetic-bugs/evaluate.rb` on May 30, 2026. They are not
 directly comparable to `A1B`, since the A1B experiment has no saved blind run.
 
