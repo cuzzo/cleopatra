@@ -66,6 +66,10 @@ models, `32B-ctx` and `405B-ctx` already use the cleaned full profile.
 
 | Model size | Category | Context profile | Avg prompt bytes | Test pass | Parse/app errors |
 |---|---|---|---:|---:|---:|
+| 3B | `3B-blind` | centered file excerpt | 7,866 | 17/50 | 7 |
+| 7B | `7B-blind` | centered file excerpt | 7,866 | 27/50 | 0 |
+| 32B | `32B-blind` | centered file excerpt | 46,792 | 34/50 | 3 |
+| 405B | `405B-blind` | centered file excerpt | 61,547 | 35/50 | 1 |
 | A1B active | `A1B-ctx` | compact | 4,189 | 17/50 | 0 |
 | A1B active | `A1B-full-ctx` | full | 5,185 | 12/50 | 6 |
 | 3B | `3B-ctx` | compact | 4,189 | 23/50 | 1 |
@@ -78,6 +82,10 @@ models, `32B-ctx` and `405B-ctx` already use the cleaned full profile.
 For A1B and 3B, the cleaned full profile recovered some of the loss from the
 earlier noisy richer profile, but still underperformed compact. For 7B, cleaned
 full context slightly improved performance.
+
+The blind rows use the current saved blind response directories and were
+rechecked with `src/synthetic-bugs/evaluate.rb` on May 30, 2026. They are not
+directly comparable to `A1B`, since the A1B experiment has no saved blind run.
 
 The compact/before-richer scores for 32B and 405B are recorded in the earlier
 results table, but the artifact status is uneven:
@@ -137,6 +145,7 @@ condition/boolean bugs where the constructor was incidental.
 - A1B cleaned full ctx: `/tmp/cleopatra-a1b-full-ctx-eval.jsonl`
 - 3B cleaned full ctx: `/tmp/cleopatra-3b-full-ctx-eval.jsonl`
 - 7B cleaned full ctx: `/tmp/cleopatra-7b-full-ctx-eval.jsonl`
+- Blind baseline recheck: `/tmp/cleopatra-blind-check.jsonl`
 - 3B/7B after richer ctx: `/tmp/cleopatra-3b-7b-newctx-eval.jsonl`
 - 32B/405B after richer ctx: `/tmp/cleopatra-32b-405b-newctx-eval.jsonl`
 - Earlier 7B/32B/405B ctx run: `/tmp/cleopatra-param-ctx-eval.jsonl`
