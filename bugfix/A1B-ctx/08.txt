@@ -1,0 +1,10 @@
+```ruby
+def parse(response)
+  return nil unless response.is_a?(String) && response.any?
+  begin
+    JSON.parse(response)
+  rescue ArgumentError
+    nil
+  end
+end
+```

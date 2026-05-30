@@ -1,0 +1,5 @@
+```ruby
+def parse_html(html)
+  Nokogiri::HTML(html)
+end
+```

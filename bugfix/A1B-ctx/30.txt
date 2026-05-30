@@ -1,0 +1,10 @@
+```ruby
+def parse_response(response)
+  raise ArgumentError, "empty response" if response.nil? || response.empty?
+  parsed = JSON.parse(response)
+  unless parsed.is_a?(Hash) && parsed.key?('status') && parsed['status'] == 'success'
+    raise RuntimeError, "Invalid response format"
+  end
+  parsed
+end
+```

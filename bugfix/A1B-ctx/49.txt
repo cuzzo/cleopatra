@@ -1,0 +1,12 @@
+```ruby
+def ==(other)
+  if other.is_a?(Type)
+    other_t = other
+    return false unless other_t.respond_to?(:raw) && other_t.raw == @raw
+  elsif other.is_a?(Symbol)
+    return @raw == other
+  else
+    return false
+  end
+end
+```

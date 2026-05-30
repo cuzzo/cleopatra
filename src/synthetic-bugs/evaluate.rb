@@ -358,7 +358,9 @@ categories.each do |cat|
       record_failure(opts, cat, i + 1, bug, fp, txt, status, result[:test_output].to_s)
     else
       err += 1
-      record_failure(opts, cat, i + 1, bug, fp, txt, status, result[:error].to_s + result[:test_output].to_s)
+      detail = result[:error] || result['error']
+      test_output = result[:test_output] || result['test_output']
+      record_failure(opts, cat, i + 1, bug, fp, txt, status, detail.to_s + test_output.to_s)
     end
   end
 

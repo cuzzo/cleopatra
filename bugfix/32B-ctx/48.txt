@@ -1,0 +1,9 @@
+```ruby
+def check_string_length(input)
+  if input.length > 10
+    { finish_reason: "length", message: "Input exceeds maximum length" }
+  else
+    { finish_reason: "valid", message: "Input length is acceptable" }
+  end
+end
+```

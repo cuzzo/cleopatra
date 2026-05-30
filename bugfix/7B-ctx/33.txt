@@ -1,0 +1,7 @@
+```ruby
+def any_rc?
+    # SharedPromise uses its own ref-counting internally — it is NOT an Rc/Arc wrapper.
+    return false if shared_promise? && split_open_stream?
+    multiowned? || shared?
+  end
+```

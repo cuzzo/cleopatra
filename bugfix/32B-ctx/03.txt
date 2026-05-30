@@ -1,0 +1,5 @@
+def example_method(array)
+  array.each do |item|
+    puts item
+  end
+end

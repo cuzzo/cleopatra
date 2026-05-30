@@ -2,7 +2,7 @@
 def initialize
     @locals = {}
     @dependencies = {}
-    @types = {}  # Added line to initialize @types
-    @owned_names = Set.new  # Variables declared in THIS scope (not inherited from parent)
+    @types = {}  # Variables declared in THIS scope (not inherited from parent)
+    @owned_names = Set.new
   end
 ```

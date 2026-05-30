@@ -1,5 +1,5 @@
 ```ruby
 def [](path)
-  @nodes[path.to_s]
-end
+    @nodes[path] || {}
+  end
 ```

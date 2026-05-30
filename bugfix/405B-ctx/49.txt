@@ -1,0 +1,18 @@
+Here is the corrected `==` function:
+
+```ruby
+def ==(other)
+  # fn_types must never compare equal to a plain symbol (resolved returns the return type,
+  # not a unique identity). Two fn_types are equal only when their raw hashes match.
+  if fn_type?
+    other_t = other.is_a?(Type)? other : nil
+    return false unless other_t&.fn_type?
+    return @raw == other_t.raw
+  end
+  resolved == other.resolved && @raw == other.raw
+end
+```
+
+The bug was in the last line. It was comparing `resolved` to `other.to_sym` instead of `other.resolved`, and `@raw` to `other` instead of `other.raw`.
+
+I changed it to compare the `resolved` and `raw` attributes of both the current object and the `other` object being compared.

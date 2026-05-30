@@ -8,30 +8,38 @@ require 'open3'
 require 'optparse'
 require 'prism'
 require 'tempfile'
+require 'timeout'
 require 'uri'
 
 ROOT = File.expand_path('../..', __dir__)
 BUGS_FILE = File.join(ROOT, 'bugs.jsonl')
 OUT = File.join(ROOT, 'bugfix')
 VENV_PY = File.join(ROOT, '.venv/bin/python3')
+LLAMA_CLI = ENV.fetch('LLAMA_CLI', '/tmp/llama.cpp/build/bin/llama-cli')
+LFM_SERVER_URL = ENV.fetch('LFM_SERVER_URL', 'http://127.0.0.1:18081')
 MODEL_PATH_3B = File.join(ROOT, 'data/models/qwen2.5-coder-3b-instruct.gguf')
 MODEL_PATH_7B = File.join(ROOT, 'data/models/qwen2.5-coder-7b-instruct.gguf')
-MODEL_32B = 'qwen/qwen-2.5-coder-32b-instruct'
+MODEL_PATH_A1B = File.join(ROOT, 'data/models/LFM2.5-8B-A1B-Q4_K_M.gguf')
+MODEL_32B = 'qwen/qwen3-32b'
 MODEL_405B = 'nousresearch/hermes-3-llama-3.1-405b'
 SYSTEM_PROMPT = 'You are a senior Ruby developer. Fix the bug in the code shown below. Return ONLY the corrected Ruby code in a ```ruby block.'
 LOCAL_CONTEXT_TOKENS = 16_384
-OPENROUTER_32B_CONTEXT_TOKENS = 32_768
+OPENROUTER_32B_CONTEXT_TOKENS = 40_960
 OPENROUTER_405B_CONTEXT_TOKENS = 131_072
-OUTPUT_TOKENS = 1500
+OUTPUT_TOKENS = 8_192
+OPENROUTER_32B_OUTPUT_TOKENS = 2_048
 CHARS_PER_TOKEN_BUDGET = 3
 MAX_CTX_FUNCTIONS = 3
+OPENROUTER_RETRIES = 8
+OPENROUTER_32B_PROVIDERS = %w[DeepInfra Nebius Alibaba].freeze
 
-opts = { count: 50, cats: '', dry_run_prompts: false }
+opts = { count: 50, cats: '', dry_run_prompts: false, responses_only: false }
 OptionParser.new do |o|
   o.banner = 'Usage: ruby src/synthetic-bugs/run-bugs.rb [options]'
   o.on('--count N', Integer) { |v| opts[:count] = v }
   o.on('--cats LIST') { |v| opts[:cats] = v }
   o.on('--dry-run-prompts') { opts[:dry_run_prompts] = true }
+  o.on('--responses-only') { opts[:responses_only] = true }
 end.parse!
 
 def repo_path_for(bug)
@@ -180,6 +188,7 @@ end
 
 FunctionDef = Struct.new(:name, :short_name, :start_line, :end_line, :slice, :ivars, :callees, keyword_init: true)
 ClassInfo = Struct.new(:name, :type, :start_line, :end_line, keyword_init: true)
+ConstantInfo = Struct.new(:name, :start_line, :end_line, :slice, keyword_init: true)
 
 def walk_function_defs(node, defs, nesting = '')
   return unless node.respond_to?(:child_nodes)
@@ -243,6 +252,37 @@ def parse_class_infos(source)
   classes
 end
 
+def ruby_structural_delta(line)
+  stripped = line.sub(/#.*/, '')
+  opens = stripped.count('({[')
+  closes = stripped.count(')}]')
+  opens - closes
+end
+
+def parse_constant_infos(source)
+  lines = source.lines(chomp: true)
+  constants = []
+  lines.each_with_index do |line, index|
+    next unless line =~ /^\s*([A-Z]\w*)\s*=/
+
+    start_idx = index
+    end_idx = index
+    depth = ruby_structural_delta(line)
+    while depth.positive? && end_idx < lines.length - 1 && (end_idx - start_idx) < 40
+      end_idx += 1
+      depth += ruby_structural_delta(lines[end_idx])
+    end
+
+    constants << ConstantInfo.new(
+      name: Regexp.last_match(1),
+      start_line: start_idx + 1,
+      end_line: end_idx + 1,
+      slice: lines[start_idx..end_idx].join("\n")
+    )
+  end
+  constants
+end
+
 def find_function_def(defs, key)
   if key.is_a?(Integer)
     return defs.find { |fn| fn.start_line <= key && fn.end_line >= key }
@@ -300,6 +340,97 @@ def enclosing_class_for(fn, classes)
   classes
     .select { |klass| klass.start_line <= fn.start_line && klass.end_line >= fn.end_line }
     .min_by { |klass| klass.end_line - klass.start_line }
+end
+
+def constants_for_class(constants, klass)
+  return [] unless klass
+
+  constants.select { |const| klass.start_line <= const.start_line && klass.end_line >= const.end_line }
+end
+
+def referenced_constant_names(slice)
+  slice.to_s.scan(/\b[A-Z]\w*\b/).flatten.uniq.sort
+end
+
+def constructor_names(slice)
+  slice.to_s.scan(/\b([A-Z]\w*(?:::[A-Z]\w*)*)\.new\b/).flatten.map { |name| name.split('::').last }.uniq
+end
+
+def constructor_index_for_repo(repo)
+  @constructor_index_for_repo ||= {}
+  @constructor_index_for_repo[repo] ||= begin
+    index = Hash.new { |hash, key| hash[key] = [] }
+    Dir[File.join(repo, 'src/**/*.rb')].sort.each do |path|
+      rel = path.delete_prefix("#{repo}/")
+      src = File.read(path).tr("\r", '')
+      file_defs = parse_function_defs(src)
+      file_classes = parse_class_infos(src)
+      file_classes.each do |klass|
+        init = file_defs.find do |fn|
+          klass.start_line <= fn.start_line &&
+            klass.end_line >= fn.end_line &&
+            fn.short_name == 'initialize'
+        end
+        next unless init
+
+        index[klass.name.split('::').last] << { file_rel: rel, klass: klass, init: init }
+      end
+    rescue StandardError
+      next
+    end
+    index
+  end
+end
+
+def same_file_constructor_entry(name, defs, classes, file_rel)
+  klass = classes.find { |candidate| candidate.name.split('::').last == name }
+  return nil unless klass
+
+  init = defs.find do |fn|
+    klass.start_line <= fn.start_line &&
+      klass.end_line >= fn.end_line &&
+      fn.short_name == 'initialize'
+  end
+  return nil unless init
+
+  { file_rel: file_rel, klass: klass, init: init }
+end
+
+def constructor_context_entries(primary, defs, classes, bug, file_rel)
+  return [] unless primary
+
+  names = constructor_names(primary.slice)
+  return [] if names.empty?
+
+  repo = repo_path_for(bug)
+  names.flat_map do |name|
+    entries = []
+    same_file = same_file_constructor_entry(name, defs, classes, file_rel)
+    entries << same_file if same_file
+    entries.concat(constructor_index_for_repo(repo)[name])
+    entries.compact.uniq { |entry| [entry[:file_rel], entry[:klass].name, entry[:init].start_line] }.first(2)
+  end.map do |entry|
+    init = entry[:init]
+    "CONSTRUCTOR SIGNATURE: #{entry[:file_rel]}:#{entry[:klass].name} (lines #{init.start_line}-#{init.end_line})\n```ruby\n#{init.slice.rstrip}\n```"
+  end
+end
+
+def constant_context_entries(primary, constants, klass, bug)
+  return [] unless primary && klass
+
+  refs = referenced_constant_names(primary.slice)
+  class_constants = constants_for_class(constants, klass)
+  return [] if class_constants.empty?
+
+  if bug['mutation'].to_s.include?('constant')
+    wanted = class_constants
+  else
+    wanted = class_constants.select { |const| refs.include?(const.name) }
+  end
+
+  wanted.first(12).map do |const|
+    "CLASS CONSTANT: #{klass.name}::#{const.name} (lines #{const.start_line}-#{const.end_line})\n```ruby\n#{const.slice.rstrip}\n```"
+  end
 end
 
 def missing_method_names(bug)
@@ -363,6 +494,7 @@ def build_functions_with_context(bug, max_chars: local_context_chars)
   source = build_buggy_source_file(bug)
   defs = parse_function_defs(source)
   classes = parse_class_infos(source)
+  constants = parse_constant_infos(source)
   chosen = []
 
   ideal_context_function_keys(bug).each do |key|
@@ -370,7 +502,7 @@ def build_functions_with_context(bug, max_chars: local_context_chars)
     next unless fn
     next if chosen.any? { |entry| entry[:file_rel] == target_file && entry[:fn].name == fn.name }
 
-    chosen << { file_rel: target_file, fn: fn, defs: defs, classes: classes }
+    chosen << { file_rel: target_file, fn: fn, defs: defs, classes: classes, constants: constants }
   end
 
   stack_frame_refs(bug).each do |rel, line|
@@ -379,11 +511,12 @@ def build_functions_with_context(bug, max_chars: local_context_chars)
 
     frame_defs = rel == target_file ? defs : parse_function_defs(src)
     frame_classes = rel == target_file ? classes : parse_class_infos(src)
+    frame_constants = rel == target_file ? constants : parse_constant_infos(src)
     fn = find_function_def(frame_defs, line)
     next unless fn
     next if chosen.any? { |entry| entry[:file_rel] == rel && entry[:fn].name == fn.name }
 
-    chosen << { file_rel: rel, fn: fn, defs: frame_defs, classes: frame_classes }
+    chosen << { file_rel: rel, fn: fn, defs: frame_defs, classes: frame_classes, constants: frame_constants }
   end
 
   primary_entry = chosen.first
@@ -396,6 +529,10 @@ def build_functions_with_context(bug, max_chars: local_context_chars)
 
   primary_entry = chosen.first
   primary = primary_entry[:fn]
+  primary_class = enclosing_class_for(primary, primary_entry[:classes])
+  dependency_chunks =
+    constructor_context_entries(primary, primary_entry[:defs], primary_entry[:classes], bug, primary_entry[:file_rel]) +
+    constant_context_entries(primary, primary_entry[:constants], primary_class, bug)
   chunks = [debug_context_for_function(bug, primary, chosen.map { |entry| entry[:fn] }, primary_entry[:defs], primary_entry[:classes])]
   omitted = []
   used_chars = chunks.join("\n\n").length
@@ -419,7 +556,17 @@ def build_functions_with_context(bug, max_chars: local_context_chars)
     used_chars += chunk.length
   end
 
-  chunks << "Omitted same-file related functions due to context budget: #{omitted.join(', ')}" if omitted.any?
+  dependency_chunks.each do |chunk|
+    if used_chars + chunk.length > max_chars
+      omitted << chunk.lines.first.to_s.sub(/: .*/, '').strip
+      next
+    end
+
+    chunks << chunk
+    used_chars += chunk.length
+  end
+
+  chunks << "Omitted related context due to context budget: #{omitted.join(', ')}" if omitted.any?
   chunks.join("\n\n")
 rescue StandardError
   "```ruby\n#{bug['mutated_body']}\n```"
@@ -511,6 +658,7 @@ def new_unit_test_context(bug)
   new_test = bug.dig('discovery', 'new_test') || {}
   content = new_test['content'].to_s.strip
   return nil if content.empty?
+  return nil if content.include?('flunk "Regression for')
 
   file_rel = new_test['file_rel'] || (bug.dig('discovery', 'dirty_files') || []).find { |f| f['role'] == 'test' }&.dig('file_rel')
   [
@@ -564,7 +712,7 @@ def test_diagnostics_context(bug)
       end
     end
 
-    windows = failure_lines_for(failure).first(1).filter_map { |line| test_source_block(bug, failure, line) }
+    windows = failure_lines_for(failure).first(3).filter_map { |line| test_source_block(bug, failure, line) }
     next if windows.empty?
 
     lines << 'Failing test code:'
@@ -617,34 +765,232 @@ def query_gguf(model_path, prompt)
     raise err unless status.success?
 
     "```ruby\n#{out.strip}\n```"
+end
+rescue StandardError => e
+  "[[ERROR: #{e.message}]]"
+end
+
+def lfm_system_prompt
+  "#{SYSTEM_PROMPT} Return only method definitions that should be inserted; no module/class wrappers, no comments, no prose."
+end
+
+def lfm_prompt(prompt)
+  <<~PROMPT
+    Think only as much as needed, then final answer must be exactly one ```ruby fenced code block.
+    Do not include prose outside the code block.
+    Do not include module/class wrappers unless the target function itself is a class method.
+
+    #{prompt}
+  PROMPT
+end
+
+def query_lfm(model_path, prompt)
+  query_lfm_server(prompt)
+rescue StandardError
+  query_lfm_cli(model_path, prompt)
+end
+
+def query_lfm_server(prompt)
+  errors = []
+  last_response = nil
+  3.times do |attempt|
+    effective_prompt =
+      if attempt.zero?
+        lfm_prompt(prompt)
+      else
+        retry_prompt_for_invalid_response(errors.last, last_response)
+      end
+    result = query_lfm_server_once(effective_prompt, max_tokens: attempt.zero? ? 1_536 : 768)
+    validation = validate_response_code(result)
+    return result if validation[:ok]
+
+    last_response = result
+    errors << "attempt #{attempt + 1}: #{validation[:error]}"
+    warn "LFM invalid response: #{errors.last}"
+  end
+
+  "[[ERROR: invalid LFM response after retries: #{errors.join('; ')}]]"
+end
+
+def query_lfm_server_once(prompt, max_tokens:)
+  uri = URI("#{LFM_SERVER_URL}/v1/chat/completions")
+  req = Net::HTTP::Post.new(uri)
+  req['Content-Type'] = 'application/json'
+  req.body = JSON.generate(
+    model: 'lfm',
+    messages: [
+      { role: 'system', content: lfm_system_prompt },
+      { role: 'user', content: prompt }
+    ],
+    max_tokens: max_tokens,
+    temperature: 0.1,
+    stream: false
+  )
+  resp = Net::HTTP.start(uri.hostname, uri.port, read_timeout: 240) { |http| http.request(req) }
+  data = JSON.parse(resp.body)
+  raise "LFM server error: #{data['error']}" if data['error']
+  finish_reason = data.dig('choices', 0, 'finish_reason')
+  raise "LFM finish_reason=#{finish_reason}" if finish_reason && finish_reason != 'stop'
+
+  out = data.dig('choices', 0, 'message', 'content').to_s
+  out = clean_lfm_response(out)
+  out.include?('```') ? out : "```ruby\n#{out}\n```"
+end
+
+def query_lfm_cli(model_path, prompt)
+  Tempfile.create(['cleopatra-lfm-', '.prompt.txt']) do |prompt_file|
+    prompt_file.write(lfm_prompt(prompt))
+    prompt_file.close
+    cmd = [
+      LLAMA_CLI,
+      '-m', model_path,
+      '-sys', lfm_system_prompt,
+      '-f', prompt_file.path,
+      '-n', '1536',
+      '-t', '32',
+      '-c', LOCAL_CONTEXT_TOKENS.to_s,
+      '--temp', '0.1',
+      '--no-display-prompt',
+      '--single-turn',
+      '--reasoning', 'on',
+      '--reasoning-budget', '256',
+      '--reasoning-format', 'deepseek',
+      '--log-disable'
+    ]
+    out = err = status = nil
+    Timeout.timeout(180) do
+      out, err, status = Open3.capture3(*cmd)
+    end
+    raise err unless status.success?
+
+    out = clean_lfm_cli_output(out)
+    out.include?('```') ? out : "```ruby\n#{out}\n```"
   end
 rescue StandardError => e
   "[[ERROR: #{e.message}]]"
 end
 
+def clean_lfm_cli_output(text)
+  text = text.delete("\b\r")
+  if text.include?('</think>')
+    text = text.split('</think>').last.to_s
+  else
+    raise 'LFM output did not contain </think>; refusing to parse prompt echo as response'
+  end
+  text = text.sub(/\n\[ Prompt:.*\z/m, '')
+  text = text.gsub(/\n?Exiting\.\.\.\s*\z/, '')
+  clean_lfm_response(text)
+end
+
+def clean_lfm_response(text)
+  text.gsub(%r{<think>.*?</think>}m, '').strip
+end
+
 def query_openrouter(model, prompt)
   return '[[SKIPPED: API key not set]]' unless ENV['OPENROUTER_API_KEY']
 
+  errors = []
+  last_response = nil
+  OPENROUTER_RETRIES.times do |attempt|
+    effective_prompt = attempt.zero? ? prompt : retry_prompt_for_invalid_response(errors.last, last_response)
+    system_prompt = attempt.zero? ? SYSTEM_PROMPT : 'You write complete parseable Ruby functions.'
+    token_limit =
+      if attempt.zero? && model == MODEL_32B
+        OPENROUTER_32B_OUTPUT_TOKENS
+      elsif attempt.zero?
+        OUTPUT_TOKENS
+      else
+        1_000
+      end
+    result = query_openrouter_once(model, effective_prompt, system_prompt: system_prompt, max_tokens: token_limit)
+    validation = validate_response_code(result)
+    return result if validation[:ok]
+
+    last_response = result
+    errors << "attempt #{attempt + 1}: #{validation[:error]}"
+    warn "OpenRouter invalid response for #{model}: #{errors.last}"
+  end
+
+  "[[ERROR: invalid OpenRouter response after #{OPENROUTER_RETRIES} attempts: #{errors.join('; ')}]]"
+end
+
+def retry_prompt_for_invalid_response(last_error, last_response)
+  <<~PROMPT
+    The following Ruby function is incomplete and does not parse:
+    #{last_response}
+
+    Parser error: #{last_error}
+
+    Return the complete parseable corrected Ruby function only.
+  PROMPT
+end
+
+def openrouter_body_for(model, prompt, system_prompt, max_tokens)
+  body = {
+    model: model,
+    messages: [
+      { role: 'system', content: system_prompt },
+      { role: 'user', content: prompt }
+    ],
+    max_tokens: max_tokens,
+    temperature: 0.1
+  }
+
+  if model == MODEL_32B
+    body[:provider] = { order: OPENROUTER_32B_PROVIDERS, allow_fallbacks: true }
+    body[:reasoning] = { effort: 'none', exclude: true }
+  end
+
+  body
+end
+
+def query_openrouter_once(model, prompt, system_prompt: SYSTEM_PROMPT, max_tokens: OUTPUT_TOKENS)
   uri = URI('https://openrouter.ai/api/v1/chat/completions')
   req = Net::HTTP::Post.new(uri)
   req['Authorization'] = "Bearer #{ENV['OPENROUTER_API_KEY']}"
   req['Content-Type'] = 'application/json'
-  req.body = JSON.generate(
-    model: model,
-    messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: prompt }
-    ],
-    max_tokens: 1500,
-    temperature: 0.1
-  )
-  resp = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |http| http.request(req) }
+  req.body = JSON.generate(openrouter_body_for(model, prompt, system_prompt, max_tokens))
+  resp = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 15, read_timeout: 120) { |http| http.request(req) }
   data = JSON.parse(resp.body)
   raise "API error: #{data['error']}" if data['error']
 
-  data.dig('choices', 0, 'message', 'content').to_s.strip
+  choice = data.fetch('choices', []).first || {}
+  finish_reason = choice['finish_reason']
+  return "[[ERROR: OpenRouter choice error=#{choice['error']}]]" if choice['error']
+  return "[[ERROR: OpenRouter missing finish_reason]]" unless finish_reason
+  return "[[ERROR: OpenRouter finish_reason=#{finish_reason}]]" if finish_reason != 'stop'
+
+  choice.dig('message', 'content').to_s.strip
 rescue StandardError => e
   "[[ERROR: #{e.message}]]"
+end
+
+def extract_response_code(text)
+  if text =~ /```ruby\s*\n(.*?)```/m
+    Regexp.last_match(1).strip
+  elsif text =~ /```\s*\n?(.*?)```/m
+    Regexp.last_match(1).strip
+  elsif text =~ /```ruby\s*\n(.*)\z/m
+    Regexp.last_match(1).strip
+  elsif text =~ /```\s*\n?(.*)\z/m
+    Regexp.last_match(1).strip
+  else
+    text.strip
+  end
+end
+
+def validate_response_code(text)
+  return { ok: false, error: text } if text.start_with?('[[ERROR:', '[[SKIPPED:', '[[UNKNOWN')
+
+  code = extract_response_code(text)
+  return { ok: false, error: 'empty response' } if code.empty?
+  return { ok: false, error: 'no Ruby def in response' } unless code.match?(/(^|\n)\s*def\s+/)
+
+  parsed = Prism.parse(code)
+  return { ok: true } if parsed.success?
+
+  message = parsed.errors.first&.message || 'Prism parse failed'
+  { ok: false, error: message }
 end
 
 bugs = File.readlines(BUGS_FILE, chomp: true).filter_map { |line| JSON.parse(line) unless line.empty? }
@@ -666,6 +1012,11 @@ puts "Sample: #{sample.length} bugs"
 puts
 
 cats = opts[:cats].empty? ? %w[3B-blind 3B-ctx 7B-blind 32B-blind 405B-blind] : opts[:cats].split(',').map(&:strip)
+if cats.any? { |cat| cat.start_with?('32B') || cat.start_with?('405B') } &&
+   !opts[:dry_run_prompts] &&
+   !ENV['OPENROUTER_API_KEY']
+  abort 'OPENROUTER_API_KEY is required for OpenRouter-backed categories; refusing to overwrite responses with skipped markers.'
+end
 ctxs = sample.map { |bug| prompt_with_context(bug) }
 
 cats.each do |cat|
@@ -678,7 +1029,15 @@ cats.each do |cat|
     ppath = File.join(dir, format('%02d.prompt.txt', index + 1))
     label = "[#{cat}] bug #{index + 1}/#{sample.length}"
     puts "  #{label}"
-    File.write(ppath, "#{prompts[index]}\n")
+    if opts[:responses_only]
+      unless File.file?(ppath)
+        warn "Missing prompt for responses-only run: #{ppath}"
+        next
+      end
+      prompts[index] = File.read(ppath)
+    else
+      File.write(ppath, "#{prompts[index]}\n")
+    end
     next if opts[:dry_run_prompts]
 
     result =
@@ -686,6 +1045,8 @@ cats.each do |cat|
         query_gguf(MODEL_PATH_3B, prompts[index])
       elsif cat.start_with?('7B')
         query_gguf(MODEL_PATH_7B, prompts[index])
+      elsif cat.start_with?('A1B')
+        query_lfm(MODEL_PATH_A1B, prompts[index])
       elsif cat.start_with?('32B')
         query_openrouter(MODEL_32B, prompts[index])
       elsif cat.start_with?('405B')

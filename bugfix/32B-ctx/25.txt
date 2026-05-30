@@ -1,0 +1,9 @@
+def process_response(response)
+  if response[:status] == "success"
+    puts "Data processed successfully: #{response[:data]}"
+  else
+    puts "Error processing data: #{response[:error]}"
+  end
+rescue StandardError => e
+  puts "An unexpected error occurred: #{e.message}"
+end

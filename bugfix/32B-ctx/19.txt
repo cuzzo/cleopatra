@@ -1,0 +1,5 @@
+```ruby
+def process_data(data)
+  data.select(&:even?).sum
+end
+```

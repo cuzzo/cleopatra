@@ -1,0 +1,36 @@
+```ruby
+def process_api_response(prompt, max_length: 1000, retries: 3)
+  attempts = 0
+  begin
+    response = fetch_api_response(prompt, max_length: max_length)
+    
+    if response[:finish_reason] == "length"
+      if attempts < retries
+        attempts += 1
+        max_length = max_length - 100
+        return process_api_response(prompt, max_length: max_length, retries: retries)
+      else
+        raise "Max retries reached with incomplete response"
+      end
+    end
+    
+    parse_response(response[:content])
+  rescue => e
+    puts "Error: #{e.message}"
+    nil
+  end
+end
+
+def fetch_api_response(prompt, max_length:)
+  # Simulated API call with OpenRouter-like response structure
+  {
+    content: "Processed: #{prompt[0...max_length]}",
+    finish_reason: (prompt.length > max_length ? "length" : "stop")
+  }
+end
+
+def parse_response(content)
+  # Actual parsing logic here
+  content
+end
+```

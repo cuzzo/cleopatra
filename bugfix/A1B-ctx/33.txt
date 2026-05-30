@@ -1,0 +1,5 @@
+```ruby
+def any_rc?
+  shared_promise? && split_open_stream? ? false : multiowned? || shared?
+end
+```

@@ -1,4 +1,5 @@
 ```ruby
-def dig(*keys)
-  val = self[keys.first]
-  return val if keys.length ==
+def example_function
+  puts "This is a complete Ruby function."
+end
+```

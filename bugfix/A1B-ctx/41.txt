@@ -1,0 +1,5 @@
+```ruby
+def provenance_alloc
+  @provenance
+end
+```

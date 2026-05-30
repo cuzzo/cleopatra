@@ -1,0 +1,9 @@
+```ruby
+def [](key)
+  if key == :return
+    { type: @return_type, lifetime: @return_lifetime }
+  else
+    send(FIELD_MAP[key])
+  end
+end
+```

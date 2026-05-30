@@ -1,0 +1,6 @@
+```ruby
+def payload_type
+  return nil unless error_union?
+  @payload_type_obj &&= Type.new(@payload_type_raw || :Any)
+end
+```

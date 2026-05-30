@@ -1,0 +1,20 @@
+```ruby
+def borrow(borrower, source, mutable: false)
+    source_node = @nodes[source]
+    return "cannot borrow '#{source}': not declared" unless source_node
+    return "cannot borrow '#{source}': already moved" if source_node.moved?
+
+    if mutable
+      # Mutable borrow: no other borrows (mutable or immutable) may exist
+      conflict = find_borrow_conflict(source)
+      return conflict if conflict
+      add_edge(Edge.new(from: borrower, to: source, kind: :borrows_mut))
+    else
+      # Immutable borrow: no mutable borrows may exist
+      mut_conflict = find_mutable_borrow(source)
+      return mut_conflict if mut_conflict
+      add_edge(Edge.new(from: borrower, to: source, kind: :borrows))
+    end
+    nil
+  end
+```

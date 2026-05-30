@@ -1,0 +1,8 @@
+```ruby
+def initialize
+  @locals = {}
+  @dependencies = {}
+  @owned_names = Set.new
+  @types = {}
+end
+```

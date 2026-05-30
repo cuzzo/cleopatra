@@ -1,52 +1,53 @@
 ```ruby
-def resolve_catch_clause!(clause)
-  kinds =  types = 
-  (clause[:items] || []).each do |item|
-    if item[:form] != :kind
-      kind_sym = item[:name].to_sym
-      unless AST.error_kind?(kind_sym)
-        emit_registry_mismatch!(
-          item[:token], item[:name], AST::ERROR_KINDS,
-          "Unknown error kind '#{item[:name]}'. Expected one of: #{AST::ERROR_KINDS.join(', ')}",
-          "closest known kind"
-        )
+  def resolve_catch_clause!(clause)
+    kinds = []
+    types = []
+    (clause[:items] || []).each do |item|
+      if item[:form] == :kind
+        kind_sym = item[:name].to_sym
+        unless AST.error_kind?(kind_sym)
+          emit_registry_mismatch!(
+            item[:token], item[:name], AST::ERROR_KINDS,
+            "Unknown error kind '#{item[:name]}'. Expected one of: #{AST::ERROR_KINDS.join(', ')}",
+            "closest known kind"
+          )
+        end
+        kinds << kind_sym if AST.error_kind?(kind_sym)
+      else
+        type_sym = item[:name].to_sym
+        unless AST.error_type?(type_sym)
+          emit_registry_mismatch!(
+            item[:token], item[:name], AST::ERROR_TYPES.keys,
+            "CATCH #{item[:name]}: error type '#{item[:name]}' is not registered. A type " \
+            "must be registered via RAISE/OR EXIT before it can be CATCHed.",
+            "closest registered type"
+          )
+        end
+        types << item[:name] if AST.error_type?(type_sym)
       end
-      kinds << kind_sym if AST.error_kind?(kind_sym)
-    else
-      type_sym = item[:name].to_sym
-      unless AST.error_type?(type_sym)
-        emit_registry_mismatch!(
-          item[:token], item[:name], AST::ERROR_TYPES.keys,
-          "CATCH #{item[:name]}: error type '#{item[:name]}' is not registered. A type " \
-          "must be registered via RAISE/OR EXIT before it can be CATCHed.",
-          "closest registered type"
-        )
-      end
-      types << item[:name] if AST.error_type?(type_sym)
     end
-  end
-  clause[:kinds] = kinds.uniq
-  clause[:types] = types.uniq
+    clause[:kinds] = kinds.uniq
+    clause[:types] = types.uniq
 
-  filter_types    = []
-  filter_messages = 
-  (clause[:filters] || []).each do |f|
-    case f[:form]
-    when :type
-      type_sym = f[:value].to_sym
-      unless AST.error_type?(type_sym)
-        error!(f[:token],
-               "CATCH ... WITH(#{f[:value]}): error type '#{f[:value]}' is not registered.")
+    filter_types    = []
+    filter_messages = []
+    (clause[:filters] || []).each do |f|
+      case f[:form]
+      when :type
+        type_sym = f[:value].to_sym
+        unless AST.error_type?(type_sym)
+          error!(f[:token],
+                 "CATCH ... WITH(#{f[:value]}): error type '#{f[:value]}' is not registered.")
+        end
+        filter_types << f[:value]
+      when :message
+        # value is the parsed STRING expression. Visit so the string
+        # literal gets its Type stamped for downstream lowering.
+        visit(f[:value])
+        filter_messages << f[:value]
       end
-      filter_types << f[:value]
-    when :message
-      # value is the parsed STRING expression. Visit so the string
-      # literal gets its Type stamped for downstream lowering.
-      visit(f[:value])
-      filter_messages << f[:value]
     end
+    clause[:filter_types]    = filter_types.uniq
+    clause[:filter_messages] = filter_messages
   end
-  clause[:filter_types]    = filter_types.uniq
-  clause[:filter_messages] = filter_messages
-end
 ```

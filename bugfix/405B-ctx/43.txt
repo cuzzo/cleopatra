@@ -1,0 +1,24 @@
+```ruby
+def annotate!(node)
+  AST.reset_user_types!
+  visit(node)
+  EscapeAnalysis.propagate_caller_sync!(@fn_nodes)
+  BgCaptureClassifier.classify_all!(@fn_nodes)
+  EffectInference.analyze!(@fn_nodes)
+  err = ->(n, msg) { error!(n, msg) }
+  warn = ->(n, msg) { note!(n, msg) }
+  sig_lookup = ->(name) {
+    @scope_stack.first.locals[name]&.type
+  }
+  @fn_nodes.each_value { |fn| WithMatchCheck.check_function!(fn, err, warn_handler: warn) }
+  @fn_nodes.each do |name, fn|
+    sig = @scope_stack.first.locals[name]&.type
+    sig.requires = fn.requires if sig.is_a?(FunctionSignature)
+  end
+  @fn_nodes.each_value { |fn| WithMatchCheck.check_call_sites!(fn, sig_lookup, err) }
+  ConcurrencyChecks.check_all!(@fn_nodes, sig_lookup, err,
+                               lock_ranks: @lock_type_ranks || {})
+  flush_deferred_with_validations!
+  finalize_capability_audit!
+end
+```

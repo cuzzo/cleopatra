@@ -1,0 +1,6 @@
+```ruby
+def release_borrow(borrower)
+    to_remove = @edges_by_source[borrower]&.select { |e| e.kind == :borrows || e.kind == :borrows_mut } || []
+    to_remove.each { |e| remove_edge(e) }
+end
+```

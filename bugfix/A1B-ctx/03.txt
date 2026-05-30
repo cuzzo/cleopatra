@@ -1,0 +1,6 @@
+```ruby
+def parse(response)
+  raise ArgumentError, "empty response" if response.nil? || response.empty?
+  JSON.parse(response)
+end
+```

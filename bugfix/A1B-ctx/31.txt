@@ -1,0 +1,8 @@
+```ruby
+def collect_binding_moves(node, state)
+  return [] unless consumed
+  consumed = Set.new
+  collect_ownership_transfers(consumed, state, consumed)
+  consumed.to_a
+end
+```

@@ -1,0 +1,5 @@
+```ruby
+def release_borrow(borrower)
+  @edges_by_source[borrower].compact
+end
+```

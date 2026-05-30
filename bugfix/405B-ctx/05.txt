@@ -1,0 +1,11 @@
+Here is the corrected `initialize` function with the missing line added:
+
+```ruby
+def initialize
+    @nodes = {}           # path => Node
+    @edges = []           # Array of Edge
+    @edges_by_source = Hash.new { |h, k| h[k] = [] }  # source_path => [Edge]
+    @edges_by_target = Hash.new { |h, k| h[k] = [] }  # target_path => [Edge]
+    @children = Hash.new { |h, k| h[k] = Set.new }    # parent_path => Set of child paths
+  end
+```

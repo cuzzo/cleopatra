@@ -1,23 +1,34 @@
 ```ruby
-def parse_fn_type_annotation
-  consume(:KEYWORD, 'FN')
-  consume(:CHAR, '(')
-  param_types = []
-  until match?(:CHAR, ')')
-    # Allow optional name annotation: `name: Type` or just `Type`
-    if match?(:VAR_ID) && peek.type == :CHAR && peek.value == ':'
-      consume(:VAR_ID)   # name is for documentation only
-      consume(:CHAR, ':')
+  def parse_fn_type_annotation
+    consume(:KEYWORD, 'FN')
+    consume(:CHAR, '(')
+    param_types = []
+    until match?(:CHAR, ')')
+      # Allow optional name annotation: `name: Type` or just `Type`
+      if match?(:VAR_ID) && peek.type == :CHAR && peek.value == ':'
+        consume(:VAR_ID)   # name is for documentation only
+        consume(:CHAR, ':')
+      end
+      param_types << parse_type_annotation
+      break unless match!(:CHAR, ',')
     end
-    param_types << parse_type_annotation
-    break unless match!(:CHAR, ',')
+    consume(:CHAR, ')')
+    consume(:ARROW, '->')
+    return_type = parse_type_annotation
+    # Parse optional @reentrant capability on fn-type annotations.
+    # FN(Int64) -> Bool @reentrant means the parameter accepts @reentrant functions.
+    allows_reentrant = false
+    if match?(:VAR_ID) && current.value == '@reentrant'
+      consume(:VAR_ID)
+      allows_reentrant = true
+    end
+    Type.new({
+      params: param_types.each_with_index.map { |t, i|
+        { name: "arg#{i}", type: t, required: true, mutable: false, takes: false }
+      },
+      return: { type: return_type },
+      fn_type: true,
+      reentrant: allows_reentrant
+    })
   end
-  consume(:CHAR, ')')
-  consume(:ARROW, '->')
-  return_type = parse_type_annotation
-  # Parse optional @reentrant capability on fn-type annotations.
-  # FN(Int64) -> Bool @reentrant means the parameter accepts @reentrant functions.
-  allows_reentrant = false
-  if match?(:VAR_ID) && current.value == '@reentrant'
-    consume(:VAR_ID)
-    allows_reentrant =
+```

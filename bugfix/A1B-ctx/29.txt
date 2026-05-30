@@ -1,0 +1,6 @@
+```ruby
+def [](path)
+  @nodes[path]
+end
+```
+```

@@ -1,0 +1,7 @@
+```ruby
+def collect_binding_moves(node, state)
+  return [] unless node
+  consumed = Set.new
+  consumed.to_a
+end
+```

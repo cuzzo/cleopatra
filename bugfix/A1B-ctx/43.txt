@@ -1,0 +1,9 @@
+```ruby
+def incomplete_function
+  # placeholder implementation
+  result = []
+  result << "item1"
+  result << "item2"
+  result
+end
+```

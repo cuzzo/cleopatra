@@ -1,0 +1,11 @@
+Here is the corrected `any_rc?` function:
+
+```ruby
+def any_rc?
+  # SharedPromise uses its own ref-counting internally — it is NOT an Rc/Arc wrapper.
+  return false if shared_promise? && split_open_stream?
+  multiowned? || (shared? &&!split_open_stream?)
+end
+```
+
+The key change is to the last line. Instead of just checking `shared?`, it now checks `shared? &&!split_open_stream?`. This ensures that `any_rc?` will return false for shared promises (which use their own internal ref-counting and are not Rc/Arc wrappers), while still returning true for plain `@shared` types (which are Arc wrappers).

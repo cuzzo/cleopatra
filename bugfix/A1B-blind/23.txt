@@ -1,0 +1,14 @@
+```ruby
+def restore_lightweight(snapshot)
+  snapshot[:node_states].each do |path, state|
+    node = @nodes[path]
+    node.state = state if !(node)
+  end
+  target_count = snapshot[:edge_count]
+  while @edges.size > target_count
+    removed = @edges.pop
+    @edges_by_target[removed.to]&.delete(removed)
+    @edges_by_source[removed.from]&.delete(removed)
+  end
+end
+```

@@ -1,5 +1,5 @@
 ```ruby
 def match?(type, val=nil)
-    current.type != type || (val.nil? && current.value != val)
-  end
+    current.type != type && (val.nil? || current.value == val)
+end
 ```

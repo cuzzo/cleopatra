@@ -1,0 +1,8 @@
+```ruby
+def scc_is_cyclic?(nodes, adj)
+  return true if nodes.size > 1
+  nodes.first.traversable_each do |node|
+    adj[node].include?(node)
+  end
+end
+```

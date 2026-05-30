@@ -1,0 +1,1302 @@
+File: src/ast/parser.rb
+Function: consume
+
+Source file excerpt centered around `Parser.consume`:
+```ruby
+# ... file truncated before line 1; centered around Parser.consume lines 447-465 ...
+require_relative "./ast"
+require_relative "./lexer"
+require_relative "./error_registry"
+require_relative "./source_error"
+require_relative "./fixable_error"
+
+# ==========================================
+# PARSER
+# ==========================================
+class Parser
+  include ErrorHelper
+
+  @@stmt_rules = {}
+  @@primary_rules = {}
+  @@suffix_rules = {}
+
+  def self.stmt(type, value, node_class = nil, pattern = nil, inject: [], &block)
+    if pattern
+      # If pattern provided, create a block that runs the engine
+      @@stmt_rules[[type, value]] = lambda do
+        start_token = current
+        args = process_pattern(pattern)
+        args.concat(inject)
+        node_class.new(start_token, *args)
+      end
+    else
+      @@stmt_rules[[type, value]] = block
+    end
+  end
+
+  def self.primary(type, value=nil, node_class = nil, pattern = nil,  &block)
+    if pattern
+      # If pattern provided, create a block that runs the engine
+      @@primary_rules[[type, value]] = lambda do
+        start_token = current
+        args = process_pattern(pattern)
+        node_class.new(start_token, *args)
+      end
+    else
+      @@primary_rules[[type, value]] = block
+    end
+  end
+
+  def self.suffix(type, value, &block)
+    @@suffix_rules[[type, value]] = block
+  end
+
+  def initialize(tokens, source_code = "")
+    @tokens = tokens
+    @pos = 0
+    @source_code = source_code
+  end
+
+  def parse
+    stmts = []
+    stmts << parse_statement() while current.type != :EOF
+    AST::Program.new(current, stmts)
+  end
+
+  private
+
+  def peek
+    @tokens[@pos + 1] || Token.new(:EOF, "", current.line, current.column)
+  end
+
+  def peek_at(n)
+    @tokens[@pos + n]
+  end
+
+  # COMMANDS
+  stmt(:KEYWORD, 'REQUIRE') { parse_require }
+  stmt(:KEYWORD, 'EXTERN')  { parse_extern_decl }
+  stmt(:KEYWORD, 'MUTABLE', AST::VarDecl, ['MUTABLE', :VAR_ID, {':' => :type_annotation}, '=', :expression, ';'], inject: [true])
+  stmt(:KEYWORD, 'FN')      { parse_function_def }
+  stmt(:KEYWORD, 'PUB')     { parse_visibility_decl(:pub) }
+  stmt(:KEYWORD, 'PRIVATE') { parse_visibility_decl(:private) }
+  stmt(:KEYWORD, 'IF') { parse_if_statement }
+  stmt(:KEYWORD, 'STRUCT') { parse_struct_def }
+  stmt(:KEYWORD, 'ENUM')   { parse_enum_def }
+  stmt(:KEYWORD, 'UNION')  { parse_union_def }
+  stmt(:KEYWORD, 'WHILE') { parse_while_loop }
+  stmt(:KEYWORD, 'FOR') { parse_for_range }
+  stmt(:KEYWORD, 'TIGHT') { parse_tight_stmt }
+  stmt(:KEYWORD, 'RETURN') { parse_return }
+  stmt(:KEYWORD, 'ASSERT', AST::Assert, ['ASSERT', :expression, {',' => :STRING}, ';'])
+  stmt(:KEYWORD, 'ASSERT_RAISES') { parse_assert_raises }
+  stmt(:KEYWORD, 'TEST') { parse_test_block }
+  stmt(:KEYWORD, 'STUB') { parse_stub }
+  stmt(:KEYWORD, 'BENCHMARK') { parse_benchmark_stmt }
+  stmt(:KEYWORD, 'SMASH') { parse_smash_stmt }
+  stmt(:KEYWORD, 'PROFILE') { parse_profile_stmt }
+  stmt(:KEYWORD, 'RAISE') { parse_raise_stmt }
+  stmt(:KEYWORD, 'EXIT') { parse_exit }
+  stmt(:KEYWORD, 'DIE') { parse_die }
+  stmt(:KEYWORD, 'BREAK', AST::BreakNode, ['BREAK', ';'])
+  stmt(:KEYWORD, 'CONTINUE', AST::ContinueNode, ['CONTINUE', ';'])
+  stmt(:KEYWORD, 'WITH') { parse_with_capability }
+  stmt(:KEYWORD, 'DO')   { parse_do_block }
+  stmt(:KEYWORD, 'BG')   { parse_bg_block }
+  stmt(:KEYWORD, 'YIELD') { parse_yield_expr }
+  stmt(:KEYWORD, 'MATCH') { parse_match_statement }
+  stmt(:KEYWORD, 'PASS') do
+    tok = consume(:KEYWORD, 'PASS')
+    match!(:CHAR, ';')  # optional semicolon — PASS may appear bare before a ','
+    AST::PassStmt.new(tok)
+  end
+
+
+  # IF and MATCH as expressions: x = IF cond THEN a ELSE b END
+  primary(:KEYWORD, 'IF')    { parse_if_expr }
+  primary(:KEYWORD, 'MATCH') { parse_match_expr }
+
+  # Primaries
+  primary(:NUMBER) { parse_literal(:NUMBER, :stack) }
+  primary(:INT64) { parse_literal(:INT64, :stack) }
+  primary(:STRING) { parse_literal(:STRING, :stack) }
+  # Symbol literal: :identifier — only valid in expression position.
+  # The ':' char is already consumed by the time the primary body runs.
+  primary(:CHAR, ':') do
+    colon_tok = consume(:CHAR, ':')
+    error!(colon_tok, "Expected a symbol name (lowercase identifier) after ':'") unless match?(:VAR_ID)
+    ident_tok = consume(:VAR_ID)
+    AST::Literal.new(colon_tok, :SYMBOL, ident_tok.value, :stack)
+  end
+  primary(:BYTE) { parse_literal(:BYTE, :stack) }
+  primary(:PREFIXED_INT) { parse_literal(:PREFIXED_INT, :stack) }
+  primary(:INT8)    { parse_literal(:INT8,    :stack) }
+  primary(:INT16)   { parse_literal(:INT16,   :stack) }
+  primary(:INT32)   { parse_literal(:INT32,   :stack) }
+  primary(:UINT16)  { parse_literal(:UINT16,  :stack) }
+  primary(:UINT32)  { parse_literal(:UINT32,  :stack) }
+  primary(:UINT64)  { parse_literal(:UINT64,  :stack) }
+  primary(:FLOAT32) { parse_literal(:FLOAT32, :stack) }
+  primary(:VAR_ID) { parse_var_id }
+
+  primary(:KEYWORD, 'TRUE') { t = consume(:KEYWORD); AST::Literal.new(t, :BOOLEAN, true) }
+  primary(:KEYWORD, 'FALSE') { t = consume(:KEYWORD); AST::Literal.new(t, :BOOLEAN, false) }
+  primary(:KEYWORD, 'NIL') { t = consume(:KEYWORD); AST::Literal.new(t, :NIL, nil) }
+  primary(:KEYWORD, 'DEFAULT') { t = consume(:KEYWORD, 'DEFAULT'); AST::DefaultLit.new(t) }
+  primary(:KEYWORD, 'CAST', AST::Cast, ['CAST', '(', :expression, 'AS', :type_annotation, ')'])
+  primary(:KEYWORD, 'COPY', AST::Copy, ['COPY', :expression])
+  primary(:KEYWORD, 'MOVE', AST::MoveNode, ['MOVE', :expression])
+  primary(:KEYWORD, 'GIVE', AST::MoveNode, ['GIVE', :expression])
+  primary(:KEYWORD, 'COPY', AST::CopyNode, ['COPY', :expression])
+  primary(:KEYWORD, 'CLONE', AST::CloneNode, ['CLONE', :expression])
+  primary(:KEYWORD, 'LINK', AST::LinkNode, ['LINK', :expression])
+  primary(:KEYWORD, 'RESOLVE', AST::ResolveNode, ['RESOLVE', :expression])
+  primary(:KEYWORD, 'FREEZE', AST::FreezeNode, ['FREEZE', :expression])
+  primary(:KEYWORD, 'BG')   { parse_bg_block }
+  primary(:KEYWORD, 'NEXT') { parse_next_expr }
+  primary(:PERCENT, '%') { parse_sigil_construct }
+  primary(:KEYWORD, 'REQUIRE', AST::Require, ['REQUIRE', :STRING])
+
+  # Pipeline operators use :pipe_expression (min precedence 2) so their
+  # body expression stops before `s>` (precedence 1), enabling chaining:
+  #   list s> SELECT _ * 2.0 s> WHERE _ > 5.0
+  primary(:KEYWORD, 'SELECT', AST::SelectOp, ['SELECT', :pipe_expression])
+  primary(:KEYWORD, 'WHERE', AST::WhereOp, ['WHERE', :pipe_expression])
+  primary(:KEYWORD, 'INDEX', AST::IndexOp, ['INDEX', :pipe_expression])
+  primary(:KEYWORD, 'REDUCE') { parse_reduce_op }
+  primary(:KEYWORD, 'ORDER_BY', AST::OrderByOp, ['ORDER_BY', :pipe_expression])
+  primary(:KEYWORD, 'LIMIT', AST::LimitOp, ['LIMIT', :pipe_expression])
+  primary(:KEYWORD, 'SKIP', AST::SkipOp, ['SKIP', :pipe_expression])
+  primary(:KEYWORD, 'UNNEST', AST::UnnestOp, ['UNNEST', :pipe_expression])
+  primary(:KEYWORD, 'DISTINCT', AST::DistinctOp, ['DISTINCT', :pipe_expression])
+  primary(:KEYWORD, 'EACH')  { parse_each_op }
+  primary(:KEYWORD, 'TAP')   { parse_tap_op }
+  primary(:KEYWORD, 'FIND',    AST::FindOp,    ['FIND',    :pipe_expression])
+  primary(:KEYWORD, 'ANY',     AST::AnyOp,     ['ANY',     :pipe_expression])
+  primary(:KEYWORD, 'ALL',     AST::AllOp,     ['ALL',     :pipe_expression])
+  primary(:KEYWORD, 'COUNT',   AST::CountOp,   ['COUNT',   :pipe_expression])
+  primary(:KEYWORD, 'SUM',     AST::SumOp,     ['SUM',     :pipe_expression])
+  primary(:KEYWORD, 'AVERAGE', AST::AverageOp, ['AVERAGE', :pipe_expression])
+  primary(:KEYWORD, 'MIN',     AST::MinOp,     ['MIN',     :pipe_expression])
+  primary(:KEYWORD, 'MAX',     AST::MaxOp,     ['MAX',     :pipe_expression])
+  primary(:KEYWORD, 'TAKE_WHILE', AST::TakeWhileOp, ['TAKE_WHILE', :pipe_expression])
+  primary(:KEYWORD, 'RECOVER') { parse_recover_op }
+  primary(:KEYWORD, 'WINDOW') { parse_window_op }
+  primary(:KEYWORD, 'JOIN') { parse_join_op }
+  primary(:KEYWORD, 'SHARD') { parse_shard_op }
+  primary(:KEYWORD, 'CONCURRENT') { parse_concurrent_op }
+
+  # Expression Grouping
+  primary(:CHAR, '(') do
+    consume(:CHAR, '(')
+    expr = parse_expression
+    # (expr AS name): optional binding group used in IF (expr AS name) && ...
+    # parse_expression stops at AS (guard blocks non-@-prefixed tokens), so check explicitly.
+    if match?(:KEYWORD, 'AS')
+      consume(:KEYWORD, 'AS')
+      name_tok = consume(:VAR_ID)
+      consume(:CHAR, ')')
+      bind = AST::BinaryOp.new(name_tok, expr, :BIND_VAR,
+               AST::Identifier.new(name_tok, name_tok.value))
+      bind.paren_bind = true
+      next parse_suffixes(bind)
+    end
+    consume(:CHAR, ')')
+    parse_suffixes(expr)
+  end
+
+  # Array Indexing: arr[index]
+  suffix(:CHAR, '[') do |lhs|
+    start_token = consume(:CHAR, '[')
+    first = parse_expression
+    if first.is_a?(AST::RangeLit)
+      # parse_expression consumed the range operator: 0..<3 → RangeLit(0, 3, false)
+      consume(:CHAR, ']')
+      node = AST::Slice.new(first.token, lhs, first.start, first.finish)
+      node.instance_variable_set(:@exclusive, !first.inclusive)
+      node
+    elsif match?(:RANGE, '..')
+      # SLICE: list[0..3] (inclusive end)
+      range_token = consume(:RANGE, '..')
+      last = parse_expression
+      consume(:CHAR, ']')
+      node = AST::Slice.new(range_token, lhs, first, last)
+      node.instance_variable_set(:@exclusive, false)
+      node
+    else
+      # INDEX: list[0]
+      # INDEX: hash["OK"]
+      consume(:CHAR, ']')
+      AST::GetIndex.new(start_token, lhs, first)
+    end
+  end
+
+  # Static Call: TypeName::method(args)
+  suffix(:DOUBLE_COLON, '::') do |lhs|
+    colon_token = consume(:DOUBLE_COLON, '::')
+    method_token = consume(:VAR_ID)
+    _, args = parse_comma_seq(:CHAR, '(', ')') { parse_expression }
+    AST::StaticCall.new(colon_token, lhs, method_token.value, args)
+  end
+
+  # Dot Access: obj.field OR obj.method() OR EnumType.Variant
+  suffix(:CHAR, '.') do |lhs|
+    dot_token = consume(:CHAR, '.')
+
+    if match?(:CHAR, '*')
+      star_token = consume(:CHAR, '*')
+      AST::GetField.new(star_token, lhs, '*')
+    else
+      name_token = current.type == :TYPE_ID ? consume(:TYPE_ID) : consume(:VAR_ID)
+      name = name_token.value
+
+      # Predicate suffix: name? followed by ( → method call with ? suffix
+      if match?(:CHAR, '?') && peek_at(1)&.value == '('
+        consume(:CHAR, '?')
+        name = "#{name}?"
+      end
+
+      if match?(:CHAR, '(')
+        # Method Call
+        _, args = parse_comma_seq(:CHAR, '(', ')') { parse_expression }
+        AST::MethodCall.new(name_token, lhs, name, args)
+      else
+        # Field Access
+        AST::GetField.new(name_token, lhs, name)
+      end
+    end
+  end
+
+  # Functor/Call: myVar()
+  suffix(:CHAR, '(') do |lhs|
+    start_token, args = parse_comma_seq(:CHAR, '(', ')') { parse_expression }
+    # FIX: Pass 'lhs' (the node), not 'lhs.name'
+    AST::FuncCall.new(start_token, lhs, args)
+  end
+
+  # Optional Unwrap: maybe_value?
+  suffix(:CHAR, '?') do |lhs|
+    q_token = consume(:CHAR, '?')
+    AST::OptionalUnwrap.new(q_token, lhs)
+  end
+
+  # Capability Wraps: expr @multiowned -> Rc(T), expr @shared -> Arc(T), expr @locked -> *Locked(T)
+  # Supports `:` join: expr @shared:locked, expr @locked:multiowned (order-independent).
+  # Three orthogonal dimensions:
+  #   ownership: :multiowned | :shared         (who keeps it alive)
+  #   sync:      :locked | :write_locked | :local  (how it's synchronized)
+  #   layout:    :indirect                      (where it lives — heap pointer)
+  CAP_SIGIL_ATTRS = {
+    '@multiowned'     => { dim: :ownership, val: :multiowned  },
+    '@shared'         => { dim: :ownership, val: :shared      },
+    '@locked'         => { dim: :sync,      val: :locked      },
+    '@writeLocked'    => { dim: :sync,      val: :write_locked },
+    '@local'          => { dim: :sync,      val: :local       },
+    '@indirect'       => { dim: :layout,    val: :indirect    },
+    '@alwaysMutable'  => { dim: :sync,      val: :always_mutable },
+  }.freeze
+
+  suffix(:VAR_ID, '@multiowned') do |lhs|
+    token = consume(:VAR_ID)
+    ownership, sync, layout, lock_rank = parse_cap_join(token, CAP_SIGIL_ATTRS[token.value])
+    cw = AST::CapabilityWrap.new(token, lhs, ownership, sync, layout)
+    cw.lock_rank = lock_rank
+    cw
+  end
+
+  suffix(:VAR_ID, '@shared') do |lhs|
+    token = consume(:VAR_ID)
+    ownership, sync, layout, lock_rank = parse_cap_join(token, CAP_SIGIL_ATTRS[token.value])
+    cw = AST::CapabilityWrap.new(token, lhs, ownership, sync, layout)
+    cw.lock_rank = lock_rank
+    cw
+  end
+
+  suffix(:VAR_ID, '@locked') do |lhs|
+    token = consume(:VAR_ID)
+    ownership, sync, layout, lock_rank = parse_cap_join(token, CAP_SIGIL_ATTRS[token.value])
+    cw = AST::CapabilityWrap.new(token, lhs, ownership, sync, layout)
+    cw.lock_rank = lock_rank
+    cw
+  end
+
+  suffix(:VAR_ID, '@writeLocked') do |lhs|
+    token = consume(:VAR_ID)
+    ownership, sync, layout, lock_rank = parse_cap_join(token, CAP_SIGIL_ATTRS[token.value])
+    cw = AST::CapabilityWrap.new(token, lhs, ownership, sync, layout)
+    cw.lock_rank = lock_rank
+    cw
+  end
+
+  suffix(:VAR_ID, '@local') do |lhs|
+    token = consume(:VAR_ID)
+    ownership, sync, layout, _ = parse_cap_join(token, CAP_SIGIL_ATTRS[token.value])
+    AST::CapabilityWrap.new(token, lhs, ownership, sync, layout)
+  end
+
+  suffix(:VAR_ID, '@alwaysMutable') do |lhs|
+    token = consume(:VAR_ID)
+    ownership, sync, layout, _ = parse_cap_join(token, CAP_SIGIL_ATTRS[token.value])
+    AST::CapabilityWrap.new(token, lhs, ownership, sync, layout)
+  end
+
+  suffix(:VAR_ID, '@indirect') do |lhs|
+    token = consume(:VAR_ID)
+    ownership, sync, layout, _ = parse_cap_join(token, CAP_SIGIL_ATTRS[token.value])
+    AST::CapabilityWrap.new(token, lhs, ownership, sync, layout)
+  end
+
+  # Inline union variant constructor: TypeName.VariantName{ field: val, ... }
+  # Only fires when lhs is a GetField whose target is a TYPE_ID (uppercase) identifier.
+  # Returns SUFFIX_DECLINE (without consuming '{') for any other lhs, so callers
+  # like parse_with_capability that legitimately follow an expression with '{' are unaffected.
+  suffix(:CHAR, '{') do |lhs|
+    if !@suppress_struct_lit && lhs.is_a?(AST::GetField) && lhs.target.is_a?(AST::Identifier) &&
+        lhs.target.name[0] =~ /[A-Z]/
+      tok = current
+      _, field_pairs = parse_comma_seq(:CHAR, '{', '}') do
+        k = (current.type == :TYPE_ID ? consume(:TYPE_ID) : consume(:VAR_ID)).value
+        consume(:CHAR, ':')
+        v = parse_expression
+        [k, v]
+      end
+      AST::UnionVariantLit.new(tok, lhs.target.name, lhs.field, field_pairs.to_h, :stack)
+    else
+      SUFFIX_DECLINE
+    end
+  end
+
+  def parse_literal(type, storage)
+    token = consume(type)
+    node = AST::Literal.new(token, type, token.value, storage)
+    parse_suffixes(node)
+  end
+
+  ## START PATTERN DSL
+  def process_pattern(pattern)
+    captures = []
+
+    pattern.each do |item|
+      case item
+      # RULE 1: String Literal -> Match & Ignore
+      # Example: '=', ';'
+      when String
+        consume_literal(item)
+
+      # RULE 2: Hash -> Optional
+      # Example: { ':' => :type_annotation }
+      when Hash
+        trigger, action = item.first # Get key/value pair
+
+        if match_literal!(trigger)
+          captures << run_action(action)
+        else
+          captures << :Any
+        end
+
+      # RULE 3: Symbol -> Capture Token or Run Method
+      when Symbol
+        captures << run_action(item)
+      end
+    end
+
+    captures
+  end
+
+  def run_action(item)
+    # Convention: :UPPER_CASE is a Token Type to eat
+    return consume(item).value if item == item.upcase
+    # :pipe_expression → parse_expression with min precedence = s> (1)
+    # Excludes s> (prec 1, since 1 > 1 is false) but includes OR (prec 2).
+    return parse_expression(1) if item == :pipe_expression
+    # :down_case => parse function to run
+    return send("parse_#{item}")
+  end
+
+  # Helpers for the literals (Keywords or Chars)
+  def consume_literal(val)
+    if val == '_'
+      consume(:UNDERSCORE)
+    elsif val.match?(/[a-zA-Z]/)
+      consume(:KEYWORD, val)
+    else
+      consume(:CHAR, val)
+    end
+  end
+
+  def match_literal!(val)
+    type = val.match?(/[a-zA-Z]/) ? :KEYWORD : :CHAR
+    match!(type, val)
+  end
+  ## END PATTERN DSL
+
+
+  def current
+    @tokens[@pos]
+  end
+
+  def previous
+    @tokens[@pos-1]
+  end
+
+  # Consume a numeric literal (either :NUMBER float or :INT64 integer).
+  def consume_number
+    if current.type == :NUMBER || current.type == :INT64
+      tok = current
+      @pos += 1
+      tok
+    else
+      error!(current, "Expected a number, got #{current.value} (#{current.type})")
+    end
+  end
+
+  def consume(type, value=nil)
+    # 1. Capture the current token BEFORE moving the pointer
+    current = current
+
+    # 2. Validate it matches what we expect
+    if (current.type == type) || (value && current.value == value)
+      if value && current.value != value
+         emit_consume_error_with_fix(current, type, value)
+      end
+
+      # 3. Advance the pointer
+      @pos += 1
+
+      # 4. RETURN THE CAPTURED TOKEN (Not 'current', which is now the next one!)
+      current
+    else
+      emit_consume_error_with_fix(current, type, value)
+    end
+  end
+
+  # Intercepts consume-failures with pattern-specific fixable findings
+  # where they're safe. Every helper ultimately calls `error!` (directly
+  # or via `fixable!` with `raise_in_collector: true`) so a parser error
+  # still halts parsing at the first unrecoverable site — callers of
+  # `clear fix` see the one finding in the collector and can apply the
+  # suggested edit, then re-run.
+  #
+  # Two insertion strategies:
+  #   end-of-prev-line — used when the missing token belongs after what
+  #     the user wrote on the previous line (`;` after a statement,
+  #     `THEN`/`DO`/`->` after a condition/signature that finished on
+  #     the previous line).
+  #   before-current   — used when the missing token belongs on the
+  #     same line as the unexpected token (`THEN`/`DO` directly before
+  #     an inline body on the same line as the condition).
+  SYNTAX_TOKENS_AT_STATEMENT_END = %w[; THEN DO ->].freeze
+
+  def emit_consume_error_with_fix(token, expected_type, expected_value)
+    prev_tok = @pos > 0 ? @tokens[@pos - 1] : nil
+
+    if expected_value && SYNTAX_TOKENS_AT_STATEMENT_END.include?(expected_value) && prev_tok
+      if prev_tok.line < token.line
+        return emit_syntax_insert_end_of_line!(prev_tok, token, expected_value)
+      end
+      if %w[THEN DO ->].include?(expected_value) && prev_tok.line == token.line
+        return emit_syntax_insert_before_token!(token, expected_value)
+      end
+    end
+
+    error!(token, "Expected #{expected_value || expected_type}, got #{token.value} (#{token.type}) line #{token.line}")
+  end
+
+  # Insert `<expected>` at the end of the previous source line (right
+  # after its last non-whitespace character, so canonical formatting is
+  # preserved). Works uniformly for `;`, `THEN`, `DO`, `->`.
+  def emit_syntax_insert_end_of_line!(prev_tok, next_tok, expected_value)
+    line_text  = @source_code.lines[prev_tok.line - 1] || ''
+    insert_col = line_text.rstrip.length + 1
+    leader     = (expected_value == ';') ? '' : ' '
+
+    fix = Fix.new(
+      description: "Insert `#{expected_value}` at end of line #{prev_tok.line}.",
+      confidence: :auto,
+      edits: [Edit.new(
+        span: Span.new(file: nil, line: prev_tok.line, col: insert_col, length: 0),
+        replacement: "#{leader}#{expected_value}"
+      )]
+    )
+
+    message = "Expected `#{expected_value}` at end of line #{prev_tok.line}; got '#{next_tok.value}' on line #{next_tok.line}."
+    fixable!(next_tok, message: message, category: :type, level: :error,
+             fixes: [fix], raise_in_collector: true)
+  end
+
+  # Insert `<expected>` just before the unexpected token (same-line
+  # missing-keyword shape, e.g., `IF x RETURN 1` needs `THEN` before
+  # `RETURN`).
+  def emit_syntax_insert_before_token!(token, expected_value)
+    fix = Fix.new(
+      description: "Insert `#{expected_value}` before '#{token.value}' at line #{token.line}.",
+      confidence: :auto,
+      edits: [Edit.new(
+        span: Span.new(file: nil, line: token.line, col: token.column, length: 0),
+        replacement: "#{expected_value} "
+      )]
+    )
+    fixable!(token,
+      message: "Expected `#{expected_value}`, got '#{token.value}' (line #{token.line}).",
+      category: :type, level: :error,
+      fixes: [fix], raise_in_collector: true)
+  end
+
+  def match?(type, val=nil)
+    current.type == type && (val.nil? || current.value == val)
+  end
+
+  # Match and immediately eat
+  def match!(type, value=nil)
+    if match?(type, value)
+      consume(type) # We already know it matches, so this is safe
+    else
+      false
+    end
+  end
+
+  def parse_statement
+    # Keywordless bind/assign: x = ..., x: Type = ..., x.field = ..., x[0] = ...
+    if current.type == :VAR_ID
+      result = try_parse_bind_or_assign
+      return result if result
+    end
+
+    rule = @@stmt_rules[[current.type, current.value]]
+    return instance_exec(&rule) if rule
+    expr = parse_expression
+    consume(:CHAR, ';')
+    expr
+  end
+
+  # Speculatively parse `target [: Type] = expression ;` as a BindExpr or Assignment.
+  # Returns nil (and backtracks) if no `=` follows the target, so we fall through to
+  # expression-statement parsing (e.g. method calls like `foo();`).
+  def try_parse_bind_or_assign
+    saved_pos = @pos
+    target_token = current
+    target = parse_var_id  # handles x, x.field, x[0]
+
+    # Optional type annotation for simple identifiers: x: Type = ...
+    opt_type = nil
+    if target.is_a?(AST::Identifier) && match?(:CHAR, ':')
+      consume(:CHAR, ':')
+      opt_type = parse_type_annotation
+    end
+
+    # Compound assignment: x += expr  →  x = x + expr
+    if match?(:COMPOUND_ASSIGN)
+      unless target.is_a?(AST::Identifier) || target.is_a?(AST::GetField) || target.is_a?(AST::GetIndex)
+        @pos = saved_pos
+        return nil
+      end
+
+      op_token = consume(:COMPOUND_ASSIGN)
+      op_char = op_token.value[0]  # '+=' → '+', '-=' → '-', etc.
+      op_sym = AST::OP_TO_OP_CODE[op_char] || op_char.to_sym
+      rhs = parse_expression
+      consume(:CHAR, ';')
+
+      # Desugar: target op= rhs  →  target = target op rhs
+      desugared_value = AST::BinaryOp.new(op_token, deep_clone_node(target), op_sym, rhs)
+
+      if target.is_a?(AST::Identifier)
+        return AST::BindExpr.new(target_token, target.name, nil, desugared_value)
+      else
+        return AST::Assignment.new(target_token, target, desugared_value)
+      end
+    end
+
+    unless match?(:CHAR, '=')
+      @pos = saved_pos
+      return nil
+    end
+
+    unless target.is_a?(AST::Identifier) || target.is_a?(AST::GetField) || target.is_a?(AST::GetIndex)
+      @pos = saved_pos
+      return nil
+    end
+
+    consume(:CHAR, '=')
+    value = parse_expression
+    consume(:CHAR, ';')
+
+    if target.is_a?(AST::Identifier)
+      AST::BindExpr.new(target_token, target.name, opt_type, value)
+    else
+      # Field or index assignment — always a reassignment, never a declaration
+      AST::Assignment.new(target_token, target, value)
+    end
+  end
+
+  def parse_tight_stmt
+    tight_token = consume(:KEYWORD, 'TIGHT')
+    if match?(:KEYWORD, 'FOR')
+      node = parse_for_range
+      node.tight = true
+      return node
+    end
+    unless match?(:KEYWORD, 'WHILE')
+      raise "Expected WHILE or FOR after TIGHT (got #{current.value.inspect})"
+    end
+    # Reuse the standard WHILE pattern; then annotate as tight
+    consume(:KEYWORD, 'WHILE')
+    cond  = parse_expression
+
+    if match?(:ARROW, '->')
+      consume(:ARROW, '->')
+      stmt = parse_statement
+      body = [stmt].compact
+    else
+      consume(:KEYWORD, 'DO')
+      body  = parse_block_body(['END'])
+      consume(:KEYWORD, 'END')
+    end
+
+    node = AST::WhileLoop.new(tight_token, cond, body, nil)
+    node.tight = true
+    node
+  end
+
+  def parse_return
+    ret_token = consume(:KEYWORD, 'RETURN')
+    value = nil
+
+    # optional expression -> RETURN; is valid for Void functions
+    unless match?(:CHAR, ';')
+      value = parse_expression
+    end
+
+    consume(:CHAR, ';')
+
+    AST::ReturnNode.new(ret_token, value)
+  end
+
+  def parse_exit()
+    exit_token = consume(:KEYWORD)
+    context_expr = nil
+    if !match?(:CHAR, ';') && !match?(:CHAR, ')') && !match?(:KEYWORD, 'END')
+      context_expr = parse_primary
+    end
+    match!(:CHAR, ";") # TDOO: Test
+    AST::ThrowNode.new(exit_token, context_expr)
+  end
+
+  def parse_die()
+    die_token = consume(:KEYWORD)
+    context_expr = nil
+
+    if match!(:CHAR, ';')
+      status = AST::Literal.new(previous, :NUMBER, 1)
+    else
+      status = parse_expression
+      consume(:CHAR, ';')
+    end
+
+    AST::DieNode.new(die_token, status)
+  end
+
+  def parse_argument_list()
+    parse_comma_seq(:CHAR, '(', ')') do
+      takes = match!(:KEYWORD, 'TAKES')
+      is_mutable = match!(:KEYWORD, 'MUTABLE')
+
+      # comptime: T — compile-time type parameter (EXTERN FN only)
+      is_comptime = false
+      if match?(:VAR_ID) && current.value == "comptime"
+        # Peek ahead: if next is ':', it's a comptime param
+        if peek_at(1)&.type == :CHAR && peek_at(1)&.value == ":"
+          consume(:VAR_ID) # consume 'comptime'
+          is_comptime = true
+        end
+      end
+
+      p_name = consume(:VAR_ID).value unless is_comptime
+      p_type = :Any
+      default_val = nil
+
+      if is_comptime
+        consume(:CHAR, ':')
+        p_type = consume(:TYPE_ID).value.to_sym  # The type param name (T)
+        p_name = "comptime"
+      else
+        # Syntax: name=default: Type  (default before type annotation)
+        if match!(:CHAR, '=')
+          default_val = parse_expression()
+        end
+        if match!(:CHAR, ':')
+          p_type = parse_type_annotation
+        end
+      end
+
+      { name: p_name, type: p_type, default: default_val, mutable: is_mutable, takes: takes, comptime: is_comptime }
+    end
+     .last # always ignore the first token
+  end
+
+  def parse_require
+    tok = consume(:KEYWORD, 'REQUIRE')
+    raw = consume(:STRING).value
+
+    if raw.start_with?("pkg:")
+      # Package import: REQUIRE "pkg:math"  →  kind=:package, path="math"
+      pkg_name  = raw.sub(/\Apkg:/, '')
+      path      = pkg_name
+      namespace = pkg_name.gsub(/[^a-zA-Z0-9_]/, '_').sub(/\A(\d)/, '_\1')
+      kind      = :package
+    else
+      # Local file import: REQUIRE "file.cht"
+      path      = raw
+      namespace = File.basename(path, '.cht')
+                      .gsub(/[^a-zA-Z0-9_]/, '_')
+                      .sub(/\A(\d)/, '_\1')
+      kind      = :local
+    end
+
+    if match!(:KEYWORD, 'AS')
+      namespace = consume(:VAR_ID).value
+    end
+    match!(:CHAR, ';')
+    AST::RequireNode.new(tok, path, namespace, kind)
+  end
+
+  def parse_visibility_decl(visibility)
+    consume(:KEYWORD)  # consume PUB or PRIVATE
+    if match?(:KEYWORD, 'FN')
+      parse_function_def(visibility)
+    elsif match?(:KEYWORD, 'STRUCT')
+      parse_struct_def(visibility)
+    elsif match?(:KEYWORD, 'ENUM')
+      parse_enum_def(visibility)
+    elsif match?(:KEYWORD, 'UNION')
+      parse_union_def(visibility)
+    else
+      error!(current, "Expected FN, STRUCT, ENUM, or UNION after visibility modifier, got '#{current.value}'")
+    end
+  end
+
+  # EXTERN FN name(params) RETURNS type FROM "module_name";
+  # EXTERN STRUCT Name { fields } FROM "module_name";
+  def parse_extern_decl
+    tok = consume(:KEYWORD, 'EXTERN')
+    if match?(:KEYWORD, 'FN')
+      parse_extern_fn(tok)
+    elsif match?(:KEYWORD, 'STRUCT')
+      parse_extern_struct(tok)
+    else
+      error!(current, "Expected FN or STRUCT after EXTERN, got '#{current.value}'")
+    end
+  end
+
+  def parse_extern_fn(extern_tok)
+    consume(:KEYWORD, 'FN')
+
+    # Parse name: either "fnName", "fnName<T>", or "TypeName<T>.methodName"
+    owner_type = nil
+    owner_type_params = []
+    fn_type_params = []
+
+    if match?(:TYPE_ID)
+      # Could be TypeName<T>.method or just a TYPE_ID-named function
+      type_name = consume(:TYPE_ID).value
+      if match!(:CHAR, '<')
+        loop do
+          owner_type_params << consume(:TYPE_ID).value.to_sym
+          break unless match!(:CHAR, ',')
+        end
+        consume(:CHAR, '>')
+      end
+      if match!(:CHAR, '.')
+        # It's a method: TypeName<T>.methodName
+        owner_type = type_name
+        name = consume(:VAR_ID).value
+      else
+        # TYPE_ID without dot — treat as function name (unusual but valid)
+        name = type_name
+        fn_type_params = owner_type_params
+        owner_type_params = []
+      end
+    else
+      name = consume(:VAR_ID).value
+      # Optional generic type params on the function: fnName<T>
+      if match!(:CHAR, '<')
+        loop do
+          fn_type_params << consume(:TYPE_ID).value.to_sym
+          break unless match!(:CHAR, ',')
+        end
+        consume(:CHAR, '>')
+      end
+    end
+
+    params = parse_argument_list
+    return_type = match!(:KEYWORD, 'RETURNS') ? parse_type_annotation : nil
+
+    # Optional: EFFECTS :alloc:frame, :alloc:heap, :safe — declare side effects.
+    # :alloc:frame → inject rt.frameAlloc() for Alloc-typed parameters
+    # :alloc:heap  → inject rt.heapAlloc() for Alloc-typed parameters
+    # :alloc       → shorthand for :alloc:frame
+    # :safe        → run directly on fiber stack (skip onRootStack trampoline).
+    #                Use for pure compute FFI (SHA256, math, JSON parsing).
+    #                Do NOT use for filesystem I/O or deep-stack functions.
+    effects = {}
+    if match!(:KEYWORD, 'EFFECTS')
+      loop do
+        consume(:CHAR, ':')
+        eff_name = consume(:VAR_ID).value.to_sym
+        unless [:alloc, :safe].include?(eff_name)
+          error!(current, "Unknown effect ':#{eff_name}'. Valid effects: :alloc, :safe")
+        end
+        if eff_name == :safe
+          effects[:safe] = true
+        elsif eff_name == :alloc && match?(:CHAR, ':')
+          consume(:CHAR, ':')
+          qualifier = consume(:VAR_ID).value.to_sym
+          unless [:frame, :heap].include?(qualifier)
+            error!(current, "Unknown alloc qualifier ':#{qualifier}'. Use :alloc:frame or :alloc:heap")
+          end
+          effects[:alloc] = qualifier
+        else
+          effects[:alloc] = :frame
+        end
+        break unless match!(:CHAR, ',')
+      end
+    end
+
+    consume(:KEYWORD, 'FROM')
+    from_module = consume(:STRING).value
+    match!(:CHAR, ';')
+    node = AST::ExternFnDecl.new(extern_tok, name, params, return_type, from_module, effects)
+    node.owner_type = owner_type if owner_type
+    node.owner_type_params = owner_type_params if owner_type_params.any?
+    node.fn_type_params = fn_type_params if fn_type_params.any?
+    node
+  end
+
+  def parse_extern_struct(extern_tok)
+    consume(:KEYWORD, 'STRUCT')
+    name = consume(:TYPE_ID).value
+
+    # Optional generic type params: EXTERN STRUCT Parsed<T> { ... }
+    type_params = []
+    if match!(:CHAR, '<')
+      loop do
+        type_params << consume(:TYPE_ID).value.to_sym
+        break unless match!(:CHAR, ',')
+      end
+      consume(:CHAR, '>')
+    end
+
+    # Fields can be empty: EXTERN STRUCT Opaque {} FROM "mod";
+    fields = parse_struct_body
+
+    # Optional: CLOSE "method" — register cleanup method for RAII
+    close_method = nil
+    if match!(:KEYWORD, 'CLOSE')
+      close_method = consume(:STRING).value
+    end
+
+    # Optional: AS "ZigTypeExpr" — alias to parameterized Zig type (e.g. Parsed(JsonRecord))
+    as_type = nil
+    if match!(:KEYWORD, 'AS')
+      as_type = consume(:STRING).value
+    end
+
+    from_module = nil
+    if match!(:KEYWORD, 'FROM')
+      from_module = consume(:STRING).value
+    end
+    match!(:CHAR, ';')
+    node = AST::ExternStructDecl.new(extern_tok, name, fields, from_module)
+    node.type_params = type_params if type_params.any?
+    node.close_method = close_method
+    node.as_type = as_type
+    node
+  end
+
+  def parse_struct_def(visibility = :package)
+    tok = consume(:KEYWORD, 'STRUCT')
+    name = consume(:TYPE_ID).value
+    type_params = []
+    if match?(:CHAR, '<')
+      consume(:CHAR, '<')
+      until match?(:CHAR, '>')
+        type_params << consume(:TYPE_ID).value
+        match!(:CHAR, ',')
+      end
+      consume(:CHAR, '>')
+    end
+    fields = parse_struct_body
+    AST::StructDef.new(tok, name, fields, visibility, type_params)
+  end
+
+  def parse_enum_def(visibility = :package)
+    tok = consume(:KEYWORD, 'ENUM')
+    name = consume(:TYPE_ID).value
+    consume(:CHAR, '{')
+    variants = []
+    until match?(:CHAR, '}')
+      variants << consume(:TYPE_ID).value
+      match!(:CHAR, ',')
+    end
+    consume(:CHAR, '}')
+    AST::EnumDef.new(tok, name, variants, visibility)
+  end
+
+  def parse_union_def(visibility = :package)
+    tok = consume(:KEYWORD, 'UNION')
+    name = consume(:TYPE_ID).value
+
+    # Parse optional generic type parameters: UNION Option<T> { ... }
+    type_params = []
+    if match?(:CHAR, '<')
+      consume(:CHAR, '<')
+      until match?(:CHAR, '>')
+        type_params << consume(:TYPE_ID).value
+        match!(:CHAR, ',')
+      end
+      consume(:CHAR, '>')
+    end
+
+    consume(:CHAR, '{')
+    variants = {}
+    method_reqs = []
+    until match?(:CHAR, '}')
+      if match?(:KEYWORD, 'FN') || (match?(:KEYWORD, 'PUB') && peek.type == :KEYWORD && peek.value == 'FN') ||
+         (match?(:KEYWORD, 'PRIVATE') && peek.type == :KEYWORD && peek.value == 'FN')
+        # Method requirement stub: [PUB|PRIVATE] FN name(param: Type, ...) RETURNS Type
+        stub_vis = :package
+        if match?(:KEYWORD, 'PUB')
+          consume(:KEYWORD, 'PUB')
+          stub_vis = :pub
+        elsif match?(:KEYWORD, 'PRIVATE')
+          consume(:KEYWORD, 'PRIVATE')
+          stub_vis = :private
+        end
+        fn_tok = consume(:KEYWORD, 'FN')
+        fn_name = consume(:VAR_ID).value
+        _, raw_params = parse_comma_seq(:CHAR, '(', ')') do
+          p_name = consume(:VAR_ID).value
+          consume(:CHAR, ':')
+          p_type = parse_type_annotation
+          { name: p_name, type: p_type }
+        end
+        ret_type = nil
+        if match!(:KEYWORD, 'RETURNS')
+          ret_type = parse_type_annotation
+        end
+        # Optional default body: FN name(...) RETURNS T -> body END
+        default_body = nil
+        if match?(:ARROW, '->')
+          consume(:ARROW, '->')
+          default_body = parse_block_body(['END'])
+          consume(:KEYWORD, 'END')
+        end
+        method_reqs << { token: fn_tok, name: fn_name, params: raw_params,
+                         return_type: ret_type, body: default_body, visibility: stub_vis }
+      else
+        var_name = consume(:TYPE_ID).value
+        if match?(:CHAR, '{')
+          # Inline struct variant: Circle { radius: Number, color: String }
+          # Supports @indirect on fields for recursive types.
+          # NOTE: @indirect is consumed by parse_type_annotation (line ~1425)
+          # but silently discarded. We detect it by checking if the type was
+          # marked as indirect BEFORE parse_type_annotation returns.
+          indirect_fields = Set.new
+          _, field_pairs = parse_comma_seq(:CHAR, '{', '}') do
+            fname = (current.type == :TYPE_ID ? consume(:TYPE_ID) : consume(:VAR_ID)).value
+            consume(:CHAR, ':')
+            # Peek: will parse_type_annotation consume @indirect?
+            ftype = parse_type_annotation
+            # parse_type_annotation consumed @indirect silently.
+            # We detect it was present by checking @last_indirect_consumed.
+            indirect_fields << fname if @last_indirect_consumed
+            @last_indirect_consumed = false
+            [fname, ftype]
+          end
+          var_data = { kind: :inline_struct, fields: field_pairs.to_h }
+          var_data[:indirect_fields] = indirect_fields unless indirect_fields.empty?
+          variants[var_name] = var_data
+        elsif match!(:CHAR, ':')
+          # Single-type payload: Data: Number  (or Data: Number @indirect)
+          vtype = parse_type_annotation
+          if @last_indirect_consumed
+            @last_indirect_consumed = false
+            vtype = { kind: :indirect_payload, type: vtype }
+          end
+          variants[var_name] = vtype
+        else
+          # Unit variant: Point
+          variants[var_name] = nil
+        end
+      end
+      match!(:CHAR, ',')
+    end
+    consume(:CHAR, '}')
+    node = AST::UnionDef.new(tok, name, variants, visibility)
+    node.type_params = type_params unless type_params.empty?
+    node.methods = method_reqs unless method_reqs.empty?
+    node
+  end
+
+  def parse_function_def(visibility = :package)
+    fn_token = consume(:KEYWORD, 'FN')
+    name = consume(:VAR_ID).value
+    # Predicate suffix: FN name?(...) — ? is part of the function name
+    if match?(:CHAR, '?')
+      consume(:CHAR, '?')
+      name = "#{name}?"
+    end
+
+    # Parse optional generic type parameters: FN name<T, U>(...)
+    type_params = []
+    if match?(:CHAR, '<')
+      consume(:CHAR, '<')
+      until match?(:CHAR, '>')
+        type_params << consume(:TYPE_ID).value
+        match!(:CHAR, ',')
+      end
+      consume(:CHAR, '>')
+    end
+
+    params = parse_argument_list()
+
+    # 2. Parse USE() UpValues
+    captures = []
+    if match!(:KEYWORD, 'USE')
+      captures = parse_argument_list()
+    end
+
+    # 3. Parse optional RETURNS
+    return_type = nil
+    if match!(:KEYWORD, 'RETURNS')
+      if current.type == :VAR_ID
+        return_lifetime = parse_var_id
+        consume(:CHAR, ':')
+      end
+
+      return_type = parse_type_annotation()
+    end
+
+    # 3.5. Parse optional REQUIRES clause: gates which sync families this
+    # function accepts on its parameters. Mandatory whenever the body uses
+    # WITH on a parameter (P2.5 enforces). Stored as { param => Set[Family] }.
+    requires_clause = nil
+    if match!(:KEYWORD, 'REQUIRES')
+      requires_clause = parse_requires_clause
+    end
+
+    # 4. Parse optional @reentrant / @nonReentrant / @reentrant:tailCall function annotation.
+    reentrant = nil
+    tail_call = false
+    if match?(:VAR_ID) && %w[@reentrant @nonReentrant].include?(current.value)
+      cap_tok = consume(:VAR_ID)
+      reentrant = cap_tok.value == '@reentrant' ? :reentrant : :non_reentrant
+      # Check for :tailCall suffix
+      if reentrant == :reentrant && match?(:CHAR, ':') && @tokens[@pos + 1]&.value == 'tailCall'
+        consume(:CHAR, ':')
+        consume(:VAR_ID)
+        tail_call = true
+      end
+    end
+
+    consume(:ARROW, '->')
+    body = parse_block_body(['END', 'CATCH'])
+
+    # 2. Parse Optional CATCH blocks (multi-clause)
+    # Syntax:
+    #   CATCH ErrorName WITH("msg")
+    #     body;
+    #   CATCH ErrorName
+    #     body;
+    #   DEFAULT
+    #     body;
+    #   END
+    catch_block = nil
+    # Parse CATCH clauses (unified error-system grammar):
+    #
+    #   CATCH <item> (',' <item>)* [ WITH(<filter> (',' <filter>)*) ]
+    #
+    # <item>   is a TYPE_ID — disambiguated via ERROR_KINDS into a kind
+    #         or a type. Any mix and any count is valid:
+    #           CATCH Input, NotFound           — kinds only
+    #           CATCH ParseErr, BadJson         — types only
+    #           CATCH Input, ParseErr           — mix
+    # <filter> is a TYPE_ID (error type name) OR a STRING (message to
+    #         match). The annotator validates the types against the
+    #         registry; messages are compared as-is at runtime.
+    #
+    # Match semantics:
+    #   Items are ORed. WITH filters (if present) are ORed among
+    #   themselves and ANDed against the item-list match. Example:
+    #     CATCH Input, ParseErr WITH(BadJson, "bad header")
+    #   matches iff (kind is Input OR type is ParseErr) AND
+    #               (type is BadJson OR message == "bad header").
+    #
+    # Clause shape stored on the AST:
+    #   { items:        [{ form: :kind|:type, name:, token: }, ...],
+    #     filters:      [{ form: :type|:message, value: }, ...],
+    #     body:         [...] }
+    # Annotator fills in clause[:kinds] / [:types] / [:filter_types] /
+    # [:filter_messages] for lowering.
+    catch_block = nil
+    if match?(:KEYWORD, 'CATCH')
+      catch_clauses = []
+      default_body = nil
+      while match?(:KEYWORD, 'CATCH')
+        consume(:KEYWORD, 'CATCH')
+
+        # 1) One or more comma-separated items.
+        items = [parse_catch_item]
+        while match!(:CHAR, ',')
+          items << parse_catch_item
+        end
+
+        # 2) Optional WITH(<filter_list>). Filters may be types
+        #    (TYPE_ID) or messages (STRING).
+        filters = []
+        if match?(:KEYWORD, 'WITH')
+          consume(:KEYWORD, 'WITH')
+          consume(:CHAR, '(')
+          filters << parse_catch_filter
+          while match!(:CHAR, ',')
+            filters << parse_catch_filter
+          end
+          consume(:CHAR, ')')
+        end
+
+        clause_body = parse_block_body(['CATCH', 'DEFAULT', 'END'])
+        catch_clauses << {
+          items: items,
+          filters: filters,
+          body: clause_body,
+        }
+      end
+      if match?(:KEYWORD, 'DEFAULT')
+        consume(:KEYWORD, 'DEFAULT')
+        default_body = parse_block_body(['END'])
+      end
+      catch_block = AST::CatchBlock.new(fn_token, catch_clauses, default_body)
+    end
+
+    consume(:KEYWORD, 'END')
+    node = AST::FunctionDef.new(fn_token, name, params, captures, return_type, return_lifetime, body,
+      catch_block ? catch_block.catch_clauses : [], catch_block ? catch_block.default_body : nil, visibility)
+    node.type_params = type_params unless type_params.empty?
+    node.reentrant = reentrant
+    node.tail_call = tail_call
+    node.requires = requires_clause
+    node
+  end
+
+  # Parse the REQUIRES clause body (the keyword has already been consumed):
+  #
+  #   <name-list> ':' <family-disjunction>
+  #     [',' <name-list> ':' <family-disjunction>]*
+  #
+  # Disambiguation: while parsing a name-list (before ':'), every ',NAME'
+  # extends the name-list. After ':' and the family disjunction, a ','
+  # starts a new group.
+  #
+  # Returns: { param_name_string => Set[Symbol] }
+  REQUIRES_VALID_FAMILIES = %w[LOCKED VERSIONED ACTOR LOCK_FREE].to_set.freeze
+
+  def parse_requires_clause
+    requires_hash = {}
+
+    loop do
+      names = [consume(:VAR_ID).value]
+      while match!(:CHAR, ',')
+        names << consume(:VAR_ID).value
+      end
+      consume(:CHAR, ':')
+
+      families = Set.new
+      families << parse_requires_family
+      while match!(:CHAR, '|')
+        families << parse_requires_family
+      end
+
+      names.each { |n| requires_hash[n] = families }
+
+      break unless match!(:CHAR, ',')
+    end
+
+    requires_hash
+  end
+
+  def parse_requires_family
+    tok = consume(:TYPE_ID)
+    unless REQUIRES_VALID_FAMILIES.include?(tok.value)
+      error!(tok, "Unknown REQUIRES family '#{tok.value}'. Expected one of: " \
+                  "#{REQUIRES_VALID_FAMILIES.to_a.join(', ')}.")
+    end
+    tok.value.to_sym
+  end
+
+  def parse_block_body(stop_words = ['END'])
+    stmts = []
+    types = stop_words.map { |w| Lexer::KEYWORDS.include?(w) ? :KEYWORD : :CHAR }
+    stop_words = stop_words.zip(types)
+    # Keep going until we hit a stop word (END, ELSE, CATCH, }, etc)
+    until stop_words.any? { |w, t| match?(t, w) } || match?(:EOF)
+      stmt = parse_statement()
+      stmts << stmt if stmt
+    end
+    stmts
+  end
+
+  def parse_expression(precedence = 0)
+    lhs = parse_unary
+
+    while (op_token = current) && (op_prec = get_precedence(op_token)) && op_prec > precedence
+      # GUARD CLAUSE: AS is used as a keyword in CAST, and only binds if followed by an alias (@...)
+      if op_token.value == 'AS' && (peek.type == :TYPE_ID || peek.value[0] != '@')
+        break
+      end
+
+      consume(op_token.type)
+      lhs = parse_binary_op(lhs, op_token, op_prec)
+    end
+
+    lhs
+  end
+
+  def get_precedence(token)
+    return nil unless token.type == :CHAR || token.type == :KEYWORD || token.type == :SMOOTH || token.type == :OR_RESCUE || token.type == :RANGE_EXCL || token.type == :RANGE_INCL
+
+    # Precedence levels (higher = tighter binding)
+    case token.value
+    when 's>'             then 1
+    when 'OR', 'AS'       then 2
+    when '..<', '..<=', '..=' then 3
+    when '||'             then 4
+    when '&&'             then 5
+    when '==', '!=', '<', '>', '<=', '>=' then 6
+    when '+', '-', '%+', '%-', '!+', '!-' then 7
+    when '*', '/', 'MOD', '%*', '!*'     then 8
+    when '**'             then 9
+    else nil
+    end
+  end
+
+  def parse_binary_op(lhs, op_token, op_prec)
+    op_val = op_token.value
+    
+    # 1. Handle Right-Associativity (e.g. power operator **)
+    #    Subtract 1 from precedence so the next call consumes subsequent terms
+    next_prec = (op_val == '**') ? op_prec - 1 : op_prec
+
+    # 2. Special Operators
+    case op_val
+# ... file truncated after line 1284; original file has 3167 lines ...
+```
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Something wrong in `consume`. renamed variable: 'token' -> 'current'
+
+Fix it.
+
+Return ONLY the corrected function `consume` in a ```ruby block.
+

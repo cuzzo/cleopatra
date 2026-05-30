@@ -1,8 +1,8 @@
 ```ruby
-def collect_binding_moves(node, state)
-  return [] unless node
-  consumed = Set.new
-  collect_ownership_transfers(node, state, consumed)
-  consumed.to_a
-end
+  def collect_binding_moves(node, state)
+    return [] unless node
+    consumed = Set.new
+    collect_ownership_transfers(node, state, consumed)
+    consumed.to_a
+  end
 ```

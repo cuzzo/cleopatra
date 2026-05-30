@@ -1,0 +1,6 @@
+```ruby
+def parse_response
+  response_body = HTTParty.get('https://api.example.com/data')
+  JSON.parse(response_body)
+end
+```

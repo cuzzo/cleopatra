@@ -1,5 +1,5 @@
 ```ruby
-def self.enum_entries
-  [:None, ERROR_NAME_NONE] + ERROR_TYPES.map { |sym, meta| [sym, meta[:id]] }.sort_by(&:last)
-end
+  def self.enum_entries
+    [[:None, ERROR_NAME_NONE]] + ERROR_TYPES.map { |sym, meta| [sym, meta[:id]] }.sort_by(&:last)
+  end
 ```

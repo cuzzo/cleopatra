@@ -1,0 +1,6 @@
+```ruby
+def parse(response)
+  return nil if response.nil? || response.empty?
+  # existing parsing logic goes here
+end
+```

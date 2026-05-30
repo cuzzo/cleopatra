@@ -1,0 +1,14 @@
+```ruby
+class FixableFinding
+  def initialize(level:, message:, token:, category:, fixes:)
+    raise ArgumentError, "bad level #{level.inspect}" unless LEVELS.include?(level)
+    raise ArgumentError, "bad category #{category.inspect}" unless CATEGORIES.include?(category)
+    @level = level
+    @message = message
+    @token = token
+    @category = category
+    @fixes = Array(fixes)
+    raise ArgumentError, "at least one Fix required" if @fixes.empty?
+  end
+end
+```

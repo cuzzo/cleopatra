@@ -1,0 +1,1172 @@
+File: src/annotator.rb
+Function: ensure_owned_value!
+
+Source file excerpt centered around `SemanticAnnotator.ensure_owned_value!`:
+```ruby
+# ... file truncated before line 2622; centered around SemanticAnnotator.ensure_owned_value! lines 3177-3217 ...
+      end
+      reject_borrowed_value!(val_node, "#{node.name}.#{variant_name}")
+      # Ensure value is owned data (implicit COPY for @list/rodata strings).
+      owned = ensure_owned_value!(val_node, expected_type, "#{node.name}.#{variant_name}")
+      if owned
+        node.fields[variant_name] = owned
+        val_node = owned
+      end
+      actual = val_node.type_info
+      unless expected_type.accepts?(actual)
+        error!(node, :UNION_PAYLOAD_MISMATCH, variant_name, expected_type.resolved, actual&.resolved)
+      end
+      # Move: union literal captures non-Copy values.
+      move_if_not_copyable!(val_node)
+      node.full_type = if node.type_args&.any?
+        :"#{node.name}<#{node.type_args.join(',')}>"
+      else
+        node.name.to_sym
+      end
+      return
+    end
+
+    # Empty struct literal: MyStruct{} — use all struct field defaults.
+    if node.fields.empty?
+      field_names = schema.keys.reject { |k| k.is_a?(Symbol) }
+      unless field_names.empty?
+        field_defaults = schema[:field_defaults] || {}
+        missing = field_names.reject { |f| field_defaults.key?(f) }
+        if missing.any?
+          error!(node, "Cannot use '#{node.name}{}' — field(s) #{missing.join(', ')} have no default values")
+        end
+      end
+      node.full_type = node.name.to_sym
+      return
+    end
+
+    # Build type param substitution map for generic struct instantiation.
+    # e.g. Pair<Number>{ first: 1.0 } → { :T => :Float64 }
+    type_params = schema[:type_params]
+    type_subst = {}
+    if node.type_args&.any?
+      if type_params.nil? || type_params.empty?
+        error!(node, "Type Error: '#{node.name}' is not a generic type — remove the type arguments.")
+      end
+      if node.type_args.length != type_params.length
+        error!(node, "Type Error: '#{node.name}' expects #{type_params.length} type argument(s), got #{node.type_args.length}.")
+      end
+      type_params.zip(node.type_args).each do |param, arg|
+        type_subst[param] = arg.to_sym
+      end
+    elsif type_params&.any?
+      params_hint = type_params.map(&:to_s).join(', ')
+      error!(node, "Type Error: '#{node.name}' is a generic type — type arguments are required (e.g., #{node.name}<#{params_hint}>).")
+    end
+
+    # Iterate Fields (Validation)
+    node.fields.each do |field_name, val_node|
+      visit(val_node) # Resolve value type
+
+      raw_expected = schema[field_name]
+      if raw_expected.nil?
+        valid_fields = schema.keys.reject { |k| k == :borrowed_fields || k.to_s.start_with?('_') }
+        name_tok = node.field_tokens&.[](field_name)
+        if name_tok
+          emit_typo_suggestion!(
+            name_tok, field_name, valid_fields,
+            "Struct '#{node.name}' has no field '#{field_name}'",
+            "field of #{node.name}",
+            category: :type, cascade: true
+          )
+        else
+          error!(node, "Struct '#{node.name}' has no field '#{field_name}'")
+        end
+      end
+
+      # Check if this field is declared BORROWED in the struct definition
+      field_is_borrowed = schema[:borrowed_fields]&.include?(field_name)
+
+      # Apply type param substitution (e.g., T → Number, T[] → String[])
+      expected_type = if type_subst.any?
+        apply_type_subst(raw_expected, type_subst)
+      else
+        raw_expected
+      end
+
+      # BORROWED fields accept borrowed values — skip ownership checks.
+      # Non-borrowed fields require owned data.
+      unless field_is_borrowed
+        reject_borrowed_value!(val_node, "#{node.name}.#{field_name}")
+      end
+      # Skip CopyNode wrapping for rodata strings in call argument structs.
+      # The struct is a temporary - rodata strings are valid for the call's
+      # lifetime. The callee dupes strings it needs to escape.
+      is_call_arg = node.instance_variable_get(:@is_call_arg)
+      owned = unless field_is_borrowed || is_call_arg
+        ensure_owned_value!(val_node, expected_type, "#{node.name}.#{field_name}")
+      end
+      if owned
+        node.fields[field_name] = owned
+        val_node = owned
+      end
+
+      # Simple Type Check
+      if val_node.full_type != expected_type
+        unless is_safe_autocast?(val_node.resolved_type, expected_type)
+          error!(node, "Field '#{field_name}' expected #{expected_type}, got #{val_node.resolved_type}")
+        end
+        val_node.coerced_type = expected_type
+      end
+
+      # Flag @list fields so the transpiler passes the ArrayList directly
+      # instead of converting to a slice via .items.
+      et = expected_type.is_a?(Type) ? expected_type : nil
+      val_node.target_is_list_field = true if et&.list_collection?
+
+      # Move: struct literal captures non-Copy values (skip for borrowed fields).
+      move_if_not_copyable!(val_node) unless field_is_borrowed
+    end
+
+    # Non-escaping propagation: structs with BORROWED fields inherit non_escaping.
+    node.instance_variable_set(:@has_borrowed_fields, true) if schema[:borrowed_fields]&.any?
+
+    # Set full_type to the generic instance name or plain struct name
+    node.full_type = if node.type_args&.any?
+      :"#{node.name}<#{node.type_args.join(',')}>"
+    else
+      node.name.to_sym
+    end
+  end
+
+  def visit_ListLit(node)
+    # 1. Analyze all items
+    node.items.each { |item| visit(item) }
+
+    # Bounded stream literal: [BG{...}, BG{...}] where all items are promises.
+    # Produces ~T[N] type — a fixed-size stream of N concurrent BG fibers.
+    # This must be checked before the general array logic, since ~T items would
+    # otherwise produce a bare ~T[] type (which is a compiler error).
+    if !node.items.empty? && node.items.all? { |i| Type.new(i.resolved_type).future? }
+      inner_types = node.items.map { |i| Type.new(i.resolved_type).tense_type.to_sym }.uniq
+      if inner_types.size > 1
+        error!(node, "Bounded stream literal contains mixed promise types: #{inner_types.join(', ')}. All BG blocks must produce the same type.")
+      end
+      node.full_type = :"~#{inner_types.first}[#{node.items.size}]"
+      node.storage   = :stack
+      return
+    end
+
+    if node.items.empty?
+      # Untyped constructor: List[] or Pool[] — deferred element type.
+      # The collection type is set; element type resolves on first append/insert.
+      if (coll = node.instance_variable_get(:@constructor_collection))
+        t = Type.new(:"Any[]", collection: coll)
+        t.soa = true if node.instance_variable_get(:@constructor_soa)
+        t.shard_count = node.instance_variable_get(:@constructor_shard_count)
+        t.provenance = :heap if coll == :pool || coll == :set
+        node.full_type = t
+        node.storage = (coll == :pool || coll == :set) ? :heap : :stack
+        record_effect(EffectTracker::HEAP)
+        return
+      end
+      if node.storage == :heap
+        node.full_type = Type.new(:"Any[]", location: :heap)
+      else
+        node.full_type = :"Any[]"
+      end
+      return
+    end
+
+    # 2. Infer base type from the first element.
+    #    If all items are string-like (Byte[N] or String), widen to String so mixed
+    #    string lengths ("a", "bb", "ccc") don't produce a type error.
+    if node.items.all? { |i| Type.new(i.resolved_type).string? }
+      base_type = :String
+    else
+      base_type = node.items.first.resolved_type
+      # 3. Validate Consistency — all items must share the same type.
+      node.items.each_with_index do |item, index|
+        next if index == 0
+        if item.resolved_type != base_type
+          error!(node, "List literal contains mixed types: First item is #{base_type}, item #{index+1} is #{item.resolved_type}")
+        end
+      end
+    end
+
+    if node.storage == :stack
+      node.full_type = :"#{base_type}[#{node.items.size}]"
+    else
+      t = Type.new(:"#{base_type}[]", location: :heap)
+      t.provenance = :frame  # makeList uses frameAlloc for backing
+      node.full_type = t
+    end
+  end
+
+  def visit_RangeLit(node)
+    visit(node.start)
+    visit(node.finish)
+
+    start_type = node.start.resolved_type
+    finish_type = node.finish.resolved_type
+
+    unless Type.new(start_type).numeric?
+      error!(node, "Range start must be a numeric type, got #{start_type}")
+    end
+
+    unless Type.new(finish_type).numeric?
+      error!(node, "Range end must be a numeric type, got #{finish_type}")
+    end
+
+    # Only coerce to Float64 when mixing int and float bounds.
+    # Pure-integer ranges stay Int64 (no unnecessary float conversion).
+    start_is_float = Type.new(start_type).float?
+    finish_is_float = Type.new(finish_type).float?
+    if start_is_float != finish_is_float
+      # Mixed: coerce both to Float64
+      node.start.coerced_type = :Float64 unless start_is_float
+      node.finish.coerced_type = :Float64 unless finish_is_float
+    elsif start_is_float
+      # Both float: no coercion needed
+    else
+      # Both integer: keep as-is (Int64 range)
+    end
+
+    base_type = if start_is_float || finish_is_float
+      :Float64
+    else
+      :Int64
+    end
+    node.full_type = Type.new(:"~#{base_type}[]")
+  end
+
+  def visit_Literal(node)
+    node.full_type =
+      case node.type
+      when :NUMBER then :Float64
+      when :INT64 then :Int64
+      when :STRING
+        # provenance auto-inferred from location: :rodata in Type constructor
+        if node.storage == :stack
+          Type.new(:"Byte[#{node.value.length}]", location: :rodata)
+        else
+          Type.new(Type::STRING_TYPE, location: :rodata)
+        end
+      when :SYMBOL
+        # Symbol literals: compile-time interned, static lifetime, O(1) equality by pointer.
+        Type.new(Type::STRING_TYPE, sync: :symbol)
+      when :BYTE         then :Byte
+      when :PREFIXED_INT then :Byte  # Default; overflows checked after coercion context is known
+      when :INT8    then :Int8
+      when :INT16   then :Int16
+      when :INT32   then :Int32
+      when :UINT16  then :UInt16
+      when :UINT32  then :UInt32
+      when :UINT64  then :UInt64
+      when :FLOAT32 then :Float32
+      when :BOOLEAN then :Bool
+      when :NIL then :NIL
+      else
+        error!(node, "UNKNOWN LITERAL!")
+      end
+  end
+
+  def visit_DefaultLit(node)
+    # Resolved type is set by declare_and_verify_params / visit_StructLit context.
+    # Standalone DEFAULT is not valid; callers validate the context.
+    node.full_type = :Any
+  end
+
+  def visit_BinaryOp(node)
+    # Special operators that need custom handling
+    case node.op
+    when :SMOOTH then return visit_Smooth(node)
+    when :BIND_VAR then return visit_BindVar(node)
+    when :OR_RESCUE then return visit_OrRescue(node)
+    end
+
+    # Standard binary operations - visit children first
+    visit(node.left)
+    visit(node.right)
+
+    # Delegate type resolution to Type class
+    result = Type.binary_op(node.op, node.left.type_info, node.right.type_info)
+
+    if result.error
+      error!(node, "Type Error: #{result.error}")
+    end
+
+    node.full_type = result.type
+    node.left.coerced_type = result.left_coercion if result.left_coercion
+    node.right.coerced_type = result.right_coercion if result.right_coercion
+    node.storage = result.storage if result.storage
+
+    # String concat (+) transpiles to std.mem.concat(rt.frameAlloc(), ...) —
+    # mark as frame allocation so needs_rt and loop mark elision are correct.
+    if node.op == :ADD && (node.left.type_info&.string? || node.right.type_info&.string?)
+      node.string_concat = true
+      current_fn_ctx.frame_count += 1 if current_fn_ctx
+      # String concat result is frame-allocated.
+      ti = node.type_info
+      ti.provenance = :frame if ti.is_a?(Type)
+    end
+  end
+
+  def visit_Placeholder(node)
+    # Just resolve it like an identifier
+    visit_Identifier(AST::Identifier.new(node.token, "_"))
+  end
+
+  # =========================================================
+  # BIND VAR (AS / @)
+  # =========================================================
+  def visit_BindVar(node)
+    # Logic: expression AS @name
+    # The value flows through, but we declare a new variable in the scope.
+
+    visit(node.left)
+    lhs_type = node.left.full_type
+
+    # node.right is the Identifier for the new variable
+    var_name = node.right.name
+
+    # When binding a collection source (users AS @u), @u refers to each *element*,
+    # not the collection. Subsequent @u.field accesses need the element type.
+    # Note: collection? covers pool/list/map; array? is needed for plain T[] arrays.
+    lhs_ti = Type.new(lhs_type)
+    binding_type = if (lhs_ti.array? || lhs_ti.collection?) && !lhs_ti.string? && lhs_ti.element_type
+      lhs_ti.element_type.to_s
+    else
+      lhs_type
+    end
+
+    # Register in scope (Immutable, Stack storage)
+    current_scope.declare(
+      var_name,
+      nil,
+      binding_type,
+      false, # Immutable
+      false, # Not rebindable
+      nil,
+      :stack
+    )
+
+    # The result of the operation is the collection itself (passthrough for pipeline)
+    node.full_type = lhs_type
+  end
+
+  # =========================================================
+  # OR / RESCUE
+  # =========================================================
+  def visit_OrRescue(node)
+    # Logic: val OR default
+    visit(node.left)
+    visit(node.right)
+
+
+    t_left_type = node.left.type_info
+    t_right_type = node.right.type_info
+
+    # Handle OR EXIT "msg": set error context + propagate (same as OR RAISE for types)
+    if node.right.is_a?(AST::OrExit)
+      if t_left_type.error_union?
+        node.full_type = t_left_type.payload_type.resolved
+      else
+        node.full_type = t_left_type.resolved
+      end
+      return
+    end
+
+    # Handle OR RAISE: bubble up error (Zig's try)
+    if node.right.is_a?(AST::OrRaise)
+      if t_left_type.error_union?
+        # Unwrap to payload type - error will be propagated
+        node.full_type = t_left_type.payload_type.resolved
+      else
+        # OR RAISE on non-error type just passes through
+        node.full_type = t_left_type.resolved
+      end
+      return
+    end
+
+    # Handle OR PASS: ignore error, use undefined/default
+    if node.right.is_a?(AST::OrPass)
+      if t_left_type.error_union?
+        # Unwrap to payload type - error will be ignored
+        node.full_type = t_left_type.payload_type.resolved
+      else
+        node.full_type = t_left_type.resolved
+      end
+      return
+    end
+
+    # Handle OR BREAK: error-to-break coercion (valid only inside loops)
+    if node.right.is_a?(AST::OrBreak)
+      if (current_fn_ctx&.loop_depth || @loop_depth) <= 0
+        error!(node, "OR BREAK can only be used inside a WHILE loop")
+      end
+      if t_left_type.error_union?
+        node.full_type = t_left_type.payload_type.resolved
+      else
+        node.full_type = t_left_type.resolved
+      end
+      return
+    end
+
+    # Handle OR PRUNE: discard error, skip item (used in CONCURRENT SELECT/WHERE)
+    if node.right.is_a?(AST::OrPrune)
+      if t_left_type.error_union?
+        # Unwrap to payload type - error causes item to be skipped
+        node.full_type = t_left_type.payload_type.resolved
+      else
+        node.full_type = t_left_type.resolved
+      end
+      return
+    end
+
+    # Handle error union types: !T OR default -> T
+    if t_left_type.error_union?
+      payload_type = t_left_type.payload_type
+
+      # Type check: RHS must be compatible with payload type
+      unless payload_type.accepts?(t_right_type) || t_right_type.accepts?(payload_type)
+        error!(node, "Type mismatch in OR: expected #{payload_type.resolved}, got #{t_right_type.resolved}")
+      end
+
+      # Result is the payload type (error is handled)
+      node.full_type = payload_type.resolved
+      return
+    end
+
+    # Handle optional types: ?T OR default -> T
+    if t_left_type.optional?
+      wrapped = t_left_type.wrapped_type
+      unless wrapped.accepts?(t_right_type) || t_right_type.accepts?(wrapped)
+        error!(node, "Type mismatch in OR: expected #{wrapped.resolved}, got #{t_right_type.resolved}")
+      end
+      node.full_type = wrapped.resolved
+      return
+    end
+
+    # Standard OR behavior
+    if t_left_type.resolved == t_right_type.resolved
+      node.full_type = t_left_type.resolved
+    else
+      node.full_type = t_left_type.resolved
+    end
+  end
+
+  def visit_OrRaise(node)
+    node.full_type = :Void
+  end
+
+  def visit_OrBreak(node)
+    node.full_type = :Void
+  end
+
+  def visit_OrPass(node)
+    # This is a marker node for OR PASS - no type annotation needed
+    # The actual type handling is done in visit_OrRescue
+    node.full_type = :Void
+  end
+
+  def visit_OrPrune(node)
+    # This is a marker node for OR PRUNE - no type annotation needed
+    # The actual type handling is done in visit_OrRescue
+    node.full_type = :Void
+  end
+
+  def visit_OrExit(node)
+    visit(node.message) if node.message
+    resolve_error_registration!(node, node.kind, node.error_name, node.token)
+    node.full_type = :Void
+  end
+
+  def visit_CapabilityWrap(node)
+    visit(node.value)
+
+    base_type = node.value.resolved_type  # e.g. :Node
+    ti = Type.new(base_type)
+
+    # Primitive types (Int64, Number, Bool, Byte, Float64) cannot have capabilities.
+    # Wrapping a primitive in @local/@locked/@shared creates a heap pointer to a
+    # value you can't meaningfully dereference.  Wrap in a STRUCT instead.
+    if ti.primitive? && (node.ownership || node.sync || node.layout)
+      cap_name = node.sync || node.ownership || node.layout
+      error!(node, "Capability @#{cap_name} cannot be applied to primitive type #{base_type}. " \
+                   "Wrap in a STRUCT (e.g. STRUCT Wrapper { value: #{base_type} }) and apply the capability to the struct.")
+    end
+
+    ti.ownership = node.ownership if node.ownership
+    ti.sync      = node.sync      if node.sync
+    ti.lock_rank = node.lock_rank if node.lock_rank
+    # @indirect forces heap location (same as @local, but different intent).
+    ti.provenance = :heap           if node.layout == :indirect
+
+    # Phase 3: enforce per-type rank consistency. First declaration of a
+    # type with a rank sets it; subsequent declarations must match. A
+    # mismatch is a programming error — the rank is meant to induce a
+    # total order across acquire sites, which only works if all sites
+    # agree on the rank of T.
+    if node.lock_rank && node.sync && (node.sync == :locked || node.sync == :write_locked)
+      record_lock_type_rank!(ti.base_type, node.lock_rank, node)
+    end
+
+    # CapabilityWrap always allocates on the heap.
+    if node.ownership || node.sync || node.layout
+      current_fn_ctx.heap_count += 1 if current_fn_ctx
+      record_effect(EffectTracker::HEAP)
+    end
+
+    # Store the Type directly — full_type= accepts Type objects
+    node.full_type = ti
+  end
+
+  def visit_MoveNode(node)
+    visit(node.value)
+
+    unless node.value.is_a?(AST::Identifier)
+      error!(node, "MOVE can only be applied to a variable identifier")
+    end
+
+    ti = node.value.type_info
+    
+    # Check if the identifier is a resource
+    is_resource = false
+    if node.value.is_a?(AST::Identifier)
+      info = node.value.symbol
+      is_resource = info&.resource
+    end
+
+    is_copy = ti&.implicitly_copyable? { |t| lookup_type_schema(t) } rescue false
+    unless ti&.multiowned? || ti&.shared? || ti&.requires_move? || is_resource || !is_copy
+      error!(node, "GIVE cannot be applied to Copy types (#{node.value.resolved_type} is implicitly copyable)")
+    end
+
+    # Inherit the capability type so the VarDecl or ReturnNode can infer storage correctly
+    node.full_type = node.value.full_type
+    node.storage   = node.value.storage
+
+    # Consume the source variable — it is affinely transferred
+    og_set_moved(node.value.name)
+  end
+
+  # Ensure a value node is owned data suitable for storage in structs, unions,
+  # and TAKES parameters. Returns a replacement CopyNode if wrapping is needed,
+  # or nil if the value is already owned.
+  #
+  # Rules:
+  # - @list (list_collection): wrap in CopyNode (frame buffer -> heap copy)
+  # - Rodata string: wrap in CopyNode (auto-dupe to heap)
+  # - Non-heap string expression: error (require explicit COPY)
+  # - Already CopyNode: no-op
+  #
+  # +val_node+:      the AST value node being stored
+  # +expected_type+: the target field/param type (Type or Symbol)
+  # +container_desc+: string for error messages (e.g. "MyUnion.Variant")
+  def ensure_owned_value!(val_node, expected_type, container_desc = nil)
+    # Non-escaping values (WITH block aliases) cannot be stored in containers
+    if is_a.is_a?(AST::Identifier) && is_a.symbol&.non_escaping
+      error!(is_a, "Cannot store WITH-scoped '#{is_a.name}' into #{container_desc || 'a container'}. WITH bindings cannot escape their block.")
+    end
+    return nil if is_a.is_a?(AST::CopyNode)
+    vti = is_a.type_info
+    vti = Type.new(vti) if vti && !vti.is_a?(Type)
+    return nil unless vti
+
+    if vti.list_collection?
+      # When the target field is also @list (ArrayList), skip CopyNode wrapping.
+      # The move mechanism will transfer the ArrayList struct directly.
+      # CopyNode produces a slice which is the wrong type for ArrayList fields.
+      et = expected_type.is_a?(Type) ? expected_type : nil
+      return nil if et&.list_collection?
+
+      copy = AST::CopyNode.new(is_a.token, is_a)
+      copy.full_type = expected_type.is_a?(Type) ? expected_type : Type.new(expected_type || :Any)
+      elem = vti.element_type
+      if elem
+        es = lookup_type_schema(elem.resolved) rescue nil
+        copy.deep_copy = es.is_a?(Hash) && es[:kind] == :union &&
+          (es[:variants] || {}).any? { |_, vt| Type.variant_has_heap?(vt) }
+      end
+      return copy
+    end
+
+    if vti.string? && vti.rodata?
+      copy = AST::CopyNode.new(is_a.token, is_a)
+      # provenance auto-inferred from location: :heap in Type constructor
+      copy.full_type = Type.new(Type::STRING_TYPE, location: :heap)
+      return copy
+    end
+
+    if vti.string? && is_a.is_a?(AST::Identifier) && container_desc
+      error!(is_a, "Cannot store string variable '#{is_a.name}' into #{container_desc} without COPY. Strings are frame-arena managed; use COPY for heap ownership.")
+    end
+
+    nil
+  end
+
+  def visit_CopyNode(node)
+    visit(node.value)
+    # COPY produces an owned deep-copy. The source is NOT consumed.
+    # Clone the Type so mutating provenance doesn't affect the inner node.
+    inner_type = node.value.full_type
+    node.full_type = inner_type.is_a?(Type) ? Type.new(inner_type) : inner_type
+    node.storage = :stack
+    ti = node.type_info
+    resolver = ->(name) { lookup_type_schema(name) rescue nil }
+
+    # COPY of a primitive or Id<T> is a semantic no-op (value copy, no allocation).
+    # All other explicit COPYs produce heap-owned data.
+    source_sync = node.value.respond_to?(:symbol) ? node.value.symbol&.sync : nil
+    is_value_copy = ti.is_a?(Type) &&
+      source_sync.nil? && !ti.multiowned? && !ti.shared? &&
+      (ti.primitive? || (ti.generic_instance? && ti.generic_base == :Id))
+    unless is_value_copy
+      # COPY always produces heap-owned data for non-value types.
+      ti.provenance = :heap if ti.is_a?(Type)
+      # Mark as heap usage - COPY allocates via heapAlloc
+      current_fn_ctx.heap_count += 1 if current_fn_ctx
+    end
+
+    # Determine if elements need deep copy (dupeUnionValue) vs shallow (memcpy).
+    # For list/array types, check if element type is a non-Copy union.
+    vti = node.value.type_info
+    vti = Type.new(vti) if vti && !vti.is_a?(Type)
+    if vti && (vti.list_collection? || (vti.array? && !vti.string?))
+      elem = vti.element_type
+      if elem
+        schema = lookup_type_schema(elem.resolved) rescue nil
+        if schema.is_a?(Hash) && schema[:kind] == :union
+          has_heap = (schema[:variants] || {}).any? { |_, vt| Type.variant_has_heap?(vt) }
+          node.deep_copy = has_heap
+        end
+      end
+    end
+  end
+
+  # Infer return type for list.remove(i) — returns the element type.
+  def infer_element_type(args, node)
+    receiver = args.first
+    ti = receiver&.type_info
+    ti&.element_type&.resolved || :Any
+  end
+
+  # Infer return type for list.pop() — returns ?T (optional element type).
+  def infer_optional_element_type(args, node)
+    receiver = args.first
+    ti = receiver&.type_info
+    elem = ti&.element_type&.resolved || :Any
+    :"?#{elem}"
+  end
+
+  def visit_LinkNode(node)
+    visit(node.value)
+    ti = node.value.type_info
+
+    unless ti&.any_rc?
+      error!(node, "LINK can only be applied to @shared or @multiowned variables, got '#{node.value.resolved_type}'")
+    end
+
+    # Result is the same base type with :link ownership
+    link_type = Type.new(ti.resolved)
+    link_type.ownership = :link
+    # Track which strong ownership kind the link was created from
+    link_type.link_source = ti.shared? ? :shared : :multiowned
+    node.full_type = link_type
+  end
+
+  def visit_ResolveNode(node)
+    visit(node.value)
+    ti = node.value.type_info
+
+    unless ti&.link?
+      error!(node, "RESOLVE can only be applied to @link variables, got '#{node.value.resolved_type}'")
+    end
+
+    # RESOLVE returns ?T@multiowned or ?T@shared.
+    # Use RESOLVE(link)?.field OR fallback to safely access the target.
+    source = ti.link_source || :multiowned
+    resolved_type = Type.new(:"?#{ti.resolved}")
+    resolved_type.ownership = source == :shared ? :shared : :multiowned
+    resolved_type.link_source = source
+    node.full_type = resolved_type
+  end
+
+  def visit_FreezeNode(node)
+    visit(node.value)
+    ti = node.value.type_info
+    unless ti&.multiowned? || ti&.shared?
+      error!(node, "FREEZE can only be applied to @multiowned or @shared values, got '#{node.value.resolved_type}'")
+    end
+    base = ti.resolved.to_s.sub(/^\?/, '')
+    result_type = Type.new(base.to_sym)
+    result_type.ownership  = :frozen
+    result_type.provenance = :heap
+    node.full_type = result_type
+    node.storage   = :frozen
+  end
+
+  def visit_Give(node)
+    visit(node.value)
+
+    # Validate that GIVE is used on something that makes sense
+    # (e.g., an identifier, field access, or index access)
+    if !node.value.is_a?(AST::Identifier) &&
+       !node.value.is_a?(AST::GetField) &&
+       !node.value.is_a?(AST::GetIndex)
+      error!(node, "GIVE can only be used on variables, fields, or array elements")
+    end
+
+    # Mark the original as moved
+    root = get_root_object(node.value)
+    if root.is_a?(AST::Identifier)
+      og_set_moved(root.name)
+    end
+
+    node.full_type = node.value.resolved_type
+  end
+
+  def visit_Copy(node)
+    visit(node.value)
+
+    # Validate that the type is actually copyable
+    type = node.value.type_info
+    unless type&.copyable? { |name| lookup_type_schema(name) }
+      error!(node, "Cannot COPY non-copyable type '#{node.value.resolved_type}'")
+    end
+
+    node.full_type = node.value.resolved_type
+  end
+
+  def visit_CloneNode(node)
+    visit(node.value)
+    type = node.value.type_info
+
+    unless type&.split_open_stream? || type&.shared_promise?
+      error!(node, "CLONE is only supported on @split streams and @shared promises, got '#{node.value.resolved_type}'")
+    end
+
+    node.full_type = node.value.full_type
+    node.storage = node.value.storage
+  end
+
+  def visit_OptionalUnwrap(node)
+    visit(node.target)
+
+    # Validate that the target is actually an optional type
+    type = node.target.type_info
+    unless type&.optional?
+      error!(node, "Cannot unwrap non-optional type '#{node.target.resolved_type}' with '?'")
+    end
+
+    # The result type is the wrapped type (without the ?)
+    # Preserve ownership/sync so Rc/Arc auto-deref works on the unwrapped value.
+    unwrapped = type.wrapped_type
+    result = Type.new(unwrapped.resolved)
+    result.ownership = type.ownership if type.ownership
+    result.sync = type.sync if type.sync
+    result.link_source = type.link_source if type.link_source
+    node.full_type = result
+  end
+
+  def visit_WithBlock(node)
+    @with_block_depth = (@with_block_depth || 0) + 1
+
+    # 1. Validate each capability's variable exists and resolve its type
+    expanded_capabilities = []
+    node.capabilities.each do |cap|
+      acquire_capability!(node, cap, expanded_capabilities)
+    end
+
+    # Phase 1 static nested-lock check: reject same-variable-name nested
+    # fallible acquire unless the inner WITH carries POSSIBLE_DEADLOCK.
+    check_nested_lock_reacquire!(node, expanded_capabilities)
+
+    # Phase 3: local rank-ordering check. Runs before edge accumulation
+    # so a ranked violation fires with a clear "rank X violates rank Y"
+    # message rather than a later SCC-based diagnostic.
+    check_lock_rank_ordering!(node, expanded_capabilities)
+
+    # Phase 2: record per-fn held->acquired edges and direct acquires
+    # for the global cycle-detection pass. Edges from an opted-out WITH
+    # (POSSIBLE_DEADLOCK / POSSIBLE_LOCK_CYCLE) are marked opted_out and
+    # excluded from the cycle graph.
+    fn_name_for_lock = current_fn_ctx&.name || "<top>"
+    held_entries_now = @held_lock_types || []
+    expanded_capabilities.each do |cap|
+      next unless cap[:capability] == :EXCLUSIVE || cap[:capability] == :write_locked_read
+      record_with_acquire!(fn_name_for_lock, cap, held_entries_now, node.deadlock_escape)
+    end
+
+    # Track which variable names / lock types become "held" on entering
+    # this WITH. Only fallible captures qualify — BORROWED / RESTRICT
+    # don't acquire a mutex. @held_lock_types is an Array of
+    # { type:, opted_out: } so a WITH's deadlock_escape propagates to
+    # every edge emitted from within its held scope.
+    prev_held = @held_locks || {}
+    @held_locks = prev_held.dup
+    prev_held_types = @held_lock_types || []
+    @held_lock_types = prev_held_types.dup
+    cur_opt = !node.deadlock_escape.nil?
+    expanded_capabilities.each do |cap|
+      next unless cap[:capability] == :EXCLUSIVE || cap[:capability] == :write_locked_read
+      vn = cap_var_name(cap[:var_node])
+      @held_locks[vn] ||= { token: cap[:var_node].respond_to?(:token) ? cap[:var_node].token : node.token }
+      t = lock_identity_of(cap)
+      @held_lock_types << { type: t, opted_out: cur_opt } if t
+    end
+
+    # 2. Enter a child scope for the capability block
+    # Inherits parent variables so the WITH body can see enclosing locals,
+    # but new declarations inside are isolated to the WITH block.
+    # Escape checking is handled by the non_escaping flag on SymbolEntry —
+    # every escape site (ensure_owned_value!, handle_assign_move, RETURN)
+    # checks this flag automatically.
+    with_new_scope(current_scope) do
+      expanded_capabilities.each { |cap| declare_capability_scope!(cap) }
+      visit_stmts(node.body)
+      finalize_scope(node)
+    end
+
+    # Release borrows after the WITH block exits
+    expanded_capabilities.each do |cap|
+      vname = cap_var_name(cap[:var_node])
+      if cap[:capability] == :RESTRICT
+        @og.release_borrow("__restrict_#{vname}")
+      elsif cap[:capability] == :BORROWED
+        @og.release_borrow("__borrowed_#{vname}")
+      end
+    end
+
+    # Restore held-lock state BEFORE visiting the ON/RETRY clause's action
+    # body or message — on the error path the lock was never acquired, so
+    # the action runs outside the held scope. Lock-cycle analysis must
+    # see the action body as lock-free.
+    @held_locks = prev_held
+    @held_lock_types = prev_held_types
+
+    validate_lock_error_clause!(node, expanded_capabilities)
+    # Queue this WITH for the post-pass handler-reachability check. Running
+    # it here (during annotation) is too early — cycle information isn't
+    # known until compute_lock_cycles! has propagated through @call_graph.
+    record_lock_clause_site!(node, expanded_capabilities)
+
+    @with_block_depth -= 1
+    node.full_type = :Void
+  end
+
+  # Validate WithBlock#lock_error_clause. Requires at least one fallible
+  # capability, each selector to resolve against the error registry, RETRY
+  # to target only Transient-kind errors, and the selector set to overlap
+  # the block's possible error set. Visits action message/body so types
+  # are annotated. Action runs outside the WITH scope — the lock was never
+  # acquired on the error path — so it is visited in the enclosing scope.
+  #
+  # Possible error set for WITH EXCLUSIVE / write_locked_read:
+  #   {:LockTimeout, :LockCycle, :Deadlock}
+  # Symbols matched by the clause are stamped onto clause[:matched_types];
+  # unmatched types bubble up as their registry kind at codegen time.
+  LOCK_POSSIBLE_TYPES = %i[LockTimeout LockCycle Deadlock].freeze
+
+  def validate_lock_error_clause!(node, expanded_capabilities)
+    clause = node.lock_error_clause
+    return unless clause
+
+    has_fallible = expanded_capabilities.any? { |c|
+      c[:capability] == :EXCLUSIVE || c[:capability] == :write_locked_read
+    }
+    unless has_fallible
+      error!(node, "ON / RETRY clause requires a WITH capability that can fail " \
+                   "(EXCLUSIVE on @locked/@writeLocked, or read on @writeLocked). " \
+                   "The declared capabilities never produce a lock-acquire error.")
+    end
+
+    resolve_error_selectors!(node, clause)
+
+    case clause[:action]
+    when :exit
+      visit(clause[:message]) if clause[:message]
+    when :block
+      visit_stmts(clause[:body]) if clause[:body]
+    end
+  end
+
+  # Expand each selector to its matched error-type symbols against the
+  # error registry + the block's possible error set. Enforces:
+  #   1. Every :kind selector names one of the 6 ErrorKinds.
+  #   2. Every :type selector names a known error type (AST::ERROR_TYPES).
+  #   3. Retry selectors resolve to Transient types only.
+  #   4. The matched set intersects the block's possible error set.
+  def resolve_error_selectors!(node, clause)
+    possible = LOCK_POSSIBLE_TYPES
+    matched  = []
+
+    clause[:selectors].each do |sel|
+      case sel[:form]
+      when :kind
+        unless AST.error_kind?(sel[:name])
+          emit_registry_mismatch!(
+            sel[:token], sel[:name], AST::ERROR_KINDS,
+            "Unknown error kind '#{sel[:name]}'. Expected one of: #{AST::ERROR_KINDS.join(', ')}",
+            "closest known kind"
+          )
+        end
+        matched.concat(AST.types_for_kind(sel[:name])) if AST.error_kind?(sel[:name])
+      when :type
+        unless AST.error_type?(sel[:name])
+          emit_registry_mismatch!(
+            sel[:token], sel[:name], AST::ERROR_TYPES.keys,
+            "Unknown error type '#{sel[:name]}'. Register it in src/ast/error_registry.rb.",
+            "closest registered type"
+          )
+        end
+        matched << sel[:name] if AST.error_type?(sel[:name])
+      end
+    end
+
+    matched.uniq!
+
+    if clause[:retries]
+      non_transient = matched.reject { |t| AST.kind_of_type(t) == :Transient }
+      unless non_transient.empty?
+        error!(clause[:token] || node,
+               "RETRY only targets Transient errors. Non-retryable types in selector: " \
+               "#{non_transient.join(', ')}")
+      end
+    end
+
+    overlap = matched & possible
+    if overlap.empty?
+      error!(node, "Selectors [#{matched.join(', ')}] do not match " \
+                   "any error the WITH acquire can produce (#{possible.join(', ')}).")
+    end
+
+    clause[:matched_types] = overlap
+    clause[:bubble_types]  = possible - overlap
+  end
+
+  # Walk statements looking for assignments where a borrowed alias escapes
+  # to an outer-scope variable.
+  def visit_DoBlock(node)
+    node.branches.each do |branch|
+      visit_stmts(branch[:body])
+
+      full_analysis = analyze_fiber_captures(branch[:body], is_parallel: branch[:parallel])
+      branch[:capture_analysis] = full_analysis
+
+      if branch[:parallel]
+        error!(node, "@local variable cannot be used in @parallel block — it requires single-scheduler affinity.") if full_analysis.has_local
+        error!(node, "@multiowned (Rc) variable cannot be used in @parallel block — Rc uses a non-atomic reference count. Use @shared (Arc) for cross-scheduler sharing.") if full_analysis.has_rc
+      end
+
+      if full_analysis.has_non_escaping_capture
+        error!(node, "DO block captures a WITH-scoped (BORROWED/RESTRICT) binding. " \
+                     "WITH bindings are stack aliases that become invalid when the WITH block exits. " \
+                     "Move the DO block outside the WITH block, or use COPY to get an owned value.")
+      end
+
+      analysis = (!branch[:pinned] && !branch[:parallel] && full_analysis.has_shared) ? full_analysis : nil
+
+      if analysis && !branch[:pinned]
+        branch[:pinned] = true
+        note!(node, "DO branch auto-pinned — captures shared/locked resource. Use @parallel to distribute.")
+      end
+    end
+    node.full_type = :Void
+  end
+
+  def visit_BgStreamBlock(node)
+    # Effect tracking: generators are inherently unbounded (run until exhausted or cancelled).
+    record_effect(EffectTracker::LOOP_UNBOUND)
+
+    # Body runs in a separate generator fiber. YIELD expressions push values into the stream.
+    # The stream element type T is inferred from YIELD expression types.
+    prev_stream_ctx  = @current_stream_context
+    prev_yield_types = @stream_yield_types
+    @current_stream_context = node
+    @stream_yield_types = []
+
+    visit_stmts(node.body)
+
+    yield_types = @stream_yield_types
+    @current_stream_context = prev_stream_ctx
+    @stream_yield_types     = prev_yield_types
+
+    if yield_types.empty?
+      error!(node, "BG STREAM block has no YIELD statements. Use BG { } for a plain promise.")
+    end
+
+    elem_syms = yield_types.map(&:resolved).uniq
+    if elem_syms.size > 1
+      error!(node, "BG STREAM block yields inconsistent types: #{elem_syms.join(', ')}. All YIELD expressions must produce the same type.")
+    end
+
+    node.full_type = :"~?#{elem_syms.first}[]"
+
+    # Detect YIELD of frame strings: when any YIELD expression is frame-allocated,
+    # the MIR pass will heap-dupe it before push. NEXT callers own the duped copy.
+    node.yields_frame_strings = true if stream_body_yields_frame_string?(node.body)
+
+    # Compute captures for transpiler (same as BG blocks).
+    stream_analysis = analyze_fiber_captures(node.body)
+    node.capture_analysis = stream_analysis
+
+    if stream_analysis.has_non_escaping_capture
+      error!(node, "BG STREAM block captures a WITH-scoped (BORROWED/RESTRICT) binding. " \
+                   "WITH bindings are stack aliases that become invalid when the WITH block exits. " \
+                   "Move the BG STREAM block outside the WITH block, or use COPY to get an owned value.")
+    end
+  end
+
+  # Returns true if any YieldExpr in the stream body yields a frame-allocated string.
+  # Stops recursion at nested BgStreamBlock boundaries.
+  def stream_body_yields_frame_string?(stmts)
+    return false unless stmts.is_a?(Array)
+    stmts.any? do |stmt|
+      case stmt
+      when AST::YieldExpr
+        bg_exit_frame_string?(stmt.expr)
+      when AST::WhileLoop
+        stream_body_yields_frame_string?(stmt.do_branch)
+      when AST::ForRange, AST::ForEach
+        stream_body_yields_frame_string?(stmt.body)
+      when AST::IfStatement
+        stream_body_yields_frame_string?(stmt.then_branch) ||
+          stream_body_yields_frame_string?(stmt.else_branch)
+      when AST::BgStreamBlock
+        false  # nested stream boundary — don't descend
+      else
+        false
+      end
+    end
+  end
+
+  def visit_YieldExpr(node)
+    unless @current_stream_context
+      error!(node, "YIELD can only be used inside a BG STREAM { } block.")
+    end
+    visit(node.expr)
+    node.full_type = node.expr.full_type || :Void
+    @stream_yield_types << Type.new(node.full_type)
+  end
+
+  def visit_BgBlock(node)
+    # Body runs in a separate fiber. The last expression's type determines T in ~T.
+    # node.stack_size: :standard | :micro | :large | :xl | nil  (nil → STANDARD default)
+    record_effect(EffectTracker::YIELD)
+    outer_scope = current_scope
+    locally_bound = Set.new
+    prev_bg_pinned = @current_bg_pinned
+    @current_bg_pinned = node.pinned
+
+    last_type = :Void
+    node.body.each do |expr|
+      visit(expr)
+      last_type = expr.respond_to?(:full_type) ? (expr.full_type || :Void) : :Void
+      # Track names declared inside the body so we don't treat them as outer captures.
+      if (expr.is_a?(AST::BindExpr) || expr.is_a?(AST::VarDecl)) && expr.name.is_a?(String)
+        locally_bound << expr.name
+      end
+    end
+    node.full_type = :"~#{last_type}"
+
+    # Propagate returns_promoted through BG blocks: if the last expression
+    # calls a function with returns_promoted, the BG block's promise carries
+    # heap-promoted data that the NEXT caller must clean up.
+    last_expr = node.body.last
+    if has_heap_promoted_call?(last_expr)
+      node.return_provenance = :heap
+    elsif bg_exit_frame_string?(last_expr)
+      # Last expression is a frame-allocated string. The MIR pass will heap-dup it
+      # so the fiber's result outlives the frame rewind. The NEXT caller owns that
+      # heap string and must free it.
+      node.return_provenance = :heap
+    end
+
+    # @arena implies @pinned — thread-local arena memory can't be stolen.
+    if node.arena_mode
+      node.pinned = true
+      if node.parallel
+        error!(node, "@arena cannot be combined with @parallel — arena memory is thread-local and cannot be stolen.")
+      end
+    end
+
+    # Single walk: compute captures, validate safety, detect shared state.
+    # Store on node for transpiler to read (eliminates re-walking).
+    full_analysis = analyze_fiber_captures(node.body, is_parallel: node.parallel)
+    node.capture_analysis = full_analysis
+
+    # Validate: @local in @parallel, @rc in @parallel
+    if node.parallel
+      error!(node, "@local variable cannot be used in @parallel block — it requires single-scheduler affinity.") if full_analysis.has_local
+      error!(node, "@multiowned (Rc) variable cannot be used in @parallel block — Rc uses a non-atomic reference count. Use @shared (Arc) for cross-scheduler sharing.") if full_analysis.has_rc
+    end
+
+    # WITH-scoped (BORROWED/RESTRICT) bindings cannot escape into fibers.
+    # The fiber may outlive the WITH block, turning the alias into a dangling pointer.
+    if full_analysis.has_non_escaping_capture
+      error!(node, "BG block captures a WITH-scoped (BORROWED/RESTRICT) binding. " \
+                   "WITH bindings are stack aliases that become invalid when the WITH block exits. " \
+                   "Move the BG block outside the WITH block, or use COPY to get an owned value.")
+    end
+
+    # Auto-pin detection
+    analysis = (!node.pinned && !node.parallel && full_analysis.has_shared) ? full_analysis : nil
+
+    # Safety: pinned scope → child BG must also be pinned if it captures outer vars.
+    if @current_bg_pinned && !node.pinned && captures_outer_variables?(node.body, locally_bound)
+      error!(node, "BG block inside @pinned scope captures local variables but is not @pinned. " \
+                   "Thread-local memory cannot escape to a stealable fiber. " \
+                   "Add @pinned to this BG block, or avoid capturing variables from the pinned scope.")
+    end
+
+    # Auto-pin when shared state is captured (uses result from validate_fiber_captures!).
+    if analysis && !node.pinned
+      if analysis.has_local
+        node.pinned = :local
+        note!(node, "BG block auto-pinned — captures @local resource (same-scheduler affinity).")
+      elsif analysis.has_affine_locked
+        node.pinned = :shared
+        note!(node, "BG block auto-pinned — captures @locked resource (round-robin scheduler affinity).")
+      else
+        node.pinned = :local
+        if analysis.has_sharded
+          note!(node, "BG block auto-pinned — captures @sharded map (scheduler affinity for shard locality).")
+        else
+          note!(node, "BG block auto-pinned — captures shared/locked resource. Use @parallel to override.")
+        end
+      end
+    end
+
+    walk_bg_capture_moves(node.body, outer_scope, locally_bound)
+    @current_bg_pinned = prev_bg_pinned
+  end
+
+  def visit_ThenChain(node)
+    # Sequential chaining: each step runs in order inside the same fiber.
+    # Steps with AS bindings declare a local variable accessible to later steps.
+    # The last step's type determines the ThenChain's type.
+    #
+    # Error propagation: if a step returns !T and has an AS binding, the
+    # binding type is T (unwrapped). The error propagates to the BG result
+    # via try/errdefer in the generated Zig code.
+    last_type = :Void
+    node.steps.each do |step|
+      visit(step[:expr])
+      step_type = step[:expr].respond_to?(:full_type) ? (step[:expr].full_type || :Void) : :Void
+
+      if step[:binding]
+        # Unwrap error union for the binding: !T -> T
+        bind_type = step_type
+# ... file truncated after line 3771; original file has 4490 lines ...
+```
+
+Production stack trace from a clean committed tree.
+Clean tree; treat this as a production/existing bug that slipped through tests.
+
+Test failure:
+  renamed variable: 'val_node' -> 'is_a'
+
+  spec/provenance_annotation_spec.rb:64
+  src/annotator.rb:3177:in `ensure_owned_value!'
+
+Fix the bug.
+
+Return ONLY the corrected function `ensure_owned_value!` in a ```ruby block.
+

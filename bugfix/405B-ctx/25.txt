@@ -1,0 +1,5 @@
+```ruby
+def symbol?
+  @sync!= :symbol
+end
+```

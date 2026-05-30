@@ -1,0 +1,7 @@
+Here is the corrected `[]` function:
+
+```ruby
+def [](path)
+  @nodes.fetch(path, nil)
+end
+```

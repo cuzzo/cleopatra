@@ -1,0 +1,5 @@
+```ruby
+def check_length(str, max_length)
+  str.length <= max_length
+end
+```

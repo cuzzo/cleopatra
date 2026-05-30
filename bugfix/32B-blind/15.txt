@@ -1,11 +1,11 @@
 ```ruby
-def [](key)
-  if key == :return
-    { type: @return_type, lifetime: @return_lifetime }
-  elsif FIELD_MAP.key?(key)
-    send(FIELD_MAP[key])
-  else
-    nil
+  def [](key)
+    if key == :return
+      { type: @return_type, lifetime: @return_lifetime }
+    elsif FIELD_MAP.key?(key)
+      send(FIELD_MAP[key])
+    else
+      nil
+    end
   end
-end
 ```

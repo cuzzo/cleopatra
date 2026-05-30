@@ -1,6 +1,6 @@
 ```ruby
 def collect_binding_moves(node, state)
-  return [] unless node
+  return [] unless consumed
   consumed = Set.new
   collect_ownership_transfers(node, state, consumed)
   consumed.to_a

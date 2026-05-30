@@ -1,0 +1,10 @@
+Here is the corrected code:
+
+```ruby
+def initialize
+    @locals = {}
+    @dependencies = {}
+    @types = {}  # Add this line to initialize @types
+    @owned_names = Set.new
+  end
+```

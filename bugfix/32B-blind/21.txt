@@ -1,5 +1,5 @@
 ```ruby
-def frame?
-  @provenance == :frame
-end
+  def frame?
+    @provenance == :frame
+  end
 ```

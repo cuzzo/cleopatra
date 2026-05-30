@@ -1,0 +1,5 @@
+```ruby
+def incomplete_function
+  # original code here
+end
+```

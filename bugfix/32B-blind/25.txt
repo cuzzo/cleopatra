@@ -1,5 +1,3 @@
-```ruby
-def symbol?
-  @sync == :symbol
+def add(a, b)
+  a + b
 end
-```

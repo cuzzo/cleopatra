@@ -1,0 +1,7 @@
+```ruby
+def fetch_data(url)
+  response = HTTParty.get(url)
+  raise "Empty response" if response.body.nil? || response.body.empty?
+  JSON.parse(response.body)
+end
+```

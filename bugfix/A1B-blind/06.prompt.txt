@@ -1,0 +1,1099 @@
+File: src/backends/pipeline_host.rb
+Function: initialize
+
+Source file excerpt centered around `PipelineHost.initialize`:
+```ruby
+# ... file truncated before line 1; centered around PipelineHost.initialize lines 22-33 ...
+require "set"
+require_relative "./pipeline_generator"
+require_relative "./zig_type_mapper"
+require_relative "../mir/fiber_ctx_builder"
+
+# Lightweight host for PipelineGenerator that routes sub-expression
+# transpilation through MIRLowering + MIREmitter instead of the old
+# ZigTranspiler visit() dispatch.
+#
+# PipelineGenerator expects its host to provide:
+#   - visit(node) -> Zig string
+#   - transpile_type(type) -> Zig type string
+#   - @placeholder_name, @acc_placeholder, @soa_* state (via with_pipeline_context)
+#   - @join_param_map (managed internally by PipelineGenerator)
+#   - @fn_sigs (for catch snapshot detection in transpile_Smooth)
+class PipelineHost
+  include PipelineGenerator
+  include ZigTypeMapper
+
+  attr_accessor :fn_sigs
+
+  def initialize(lowering:, emitter:)
+    @emitter = emitter
+    @emitter = emitter
+    @fn_sigs = emitter.fn_sigs
+    # Pipeline context state (managed by with_pipeline_context)
+    @soa_rewrite_active = false
+    @soa_each_mode = false
+    @soa_needed_fields = Set.new
+    @mir_mode = false
+    # Named pipeline bindings: "@u" -> "__pipe_u" (persist across stages, cleared per-chain)
+    @named_bindings = {}
+  end
+
+  # Compute the Zig variable name for a CLEAR named pipeline binding.
+  # "@u" -> "__pipe_u", "@order" -> "__pipe_order"
+  def pipe_binding_zig_name(clear_name)
+    "__pipe_#{clear_name.delete_prefix('@')}"
+  end
+
+  # Conditional version of with_named_binding: registers the binding only
+  # if a name is provided, otherwise just calls the block. Used at the
+  # CONCURRENT lowering site where `list AS @u s> ...` provides a name
+  # but plain `list s> ...` does not.
+  def with_optional_named_binding(clear_name, zig_var, &blk)
+    return blk.call if clear_name.nil?
+    with_named_binding(clear_name, zig_var, &blk)
+  end
+
+  # Register a named pipeline binding for the duration of a block.
+  # Saves and restores previous value so nested bindings stack correctly.
+  def with_named_binding(clear_name, zig_var, &blk)
+    prev = @named_bindings[clear_name]
+    @named_bindings[clear_name] = zig_var
+    blk.call
+  ensure
+    if prev.nil?
+      @named_bindings.delete(clear_name)
+    else
+      @named_bindings[clear_name] = prev
+    end
+  end
+
+  # Delegate fiber capture map management to MIRLowering
+  def with_fiber_capture_map(new_entries, capture_symbols: nil, rt_override: "__rt", &blk)
+    @lowering.with_fiber_capture_map(new_entries, capture_symbols: capture_symbols, rt_override: rt_override, &blk)
+  end
+
+  # Delegate task_config_zig to MIRLowering (used by CONCURRENT pipeline operators)
+  def task_config_zig(stack_size, computed_tier = nil)
+    @lowering.send(:task_config_zig, stack_size, computed_tier)
+  end
+
+  # Route AST node -> Zig string, handling pipeline-specific nodes
+  # (Placeholder, SOA field rewrites) before general MIR lowering.
+  def visit(node)
+    # In MIR mode, return MIR nodes instead of Zig strings.
+    return visit_mir(node) if @mir_mode
+
+    # Placeholder: _ inside pipeline expression -> loop variable name
+    if node.is_a?(AST::Identifier) && node.name == "_" && @placeholder_name
+      return @placeholder_name
+    end
+
+    # Join param map: lambda param names -> Zig loop variables
+    if node.is_a?(AST::Identifier) && @join_param_map && @join_param_map[node.name]
+      return @join_param_map[node.name]
+    end
+
+    # Named pipeline binding: @u -> registered Zig var (e.g. "__pipe_u")
+    if node.is_a?(AST::Identifier) && !@named_bindings.empty? && @named_bindings.key?(node.name)
+      return @named_bindings[node.name]
+    end
+
+    # SOA field-slice rewrite: _.field -> __soa_field[__soa_i]
+    if @soa_rewrite_active && node.is_a?(AST::GetField) &&
+       node.target.is_a?(AST::Identifier) && node.target.name == "_"
+      @soa_needed_fields << node.field
+      return "__soa_#{node.field}[__soa_i]"
+    end
+
+    # SOA assignment rewrite: _.field = expr -> __soa_field[__soa_i] = expr
+    if @soa_rewrite_active && (node.is_a?(AST::BindExpr) || node.is_a?(AST::Assignment)) &&
+       node.name.is_a?(AST::GetField) && node.name.target.is_a?(AST::Identifier) &&
+       node.name.target.name == "_"
+      field = node.name.field
+      @soa_needed_fields << field
+      value = visit(node.value)
+      return "__soa_#{field}[__soa_i] = #{value};"
+    end
+
+    # Accumulator placeholder
+    if node.is_a?(AST::Identifier) && node.name == "acc" && @acc_placeholder
+      return @acc_placeholder
+    end
+
+    # Before sending to MIRLowering, substitute _ placeholders and join
+    # params in the AST tree. MIRLowering's lower() recurses on its own,
+    # so it won't call back to us for sub-expressions.
+    substituted = substitute_placeholders(node)
+
+    # Propagate shard-direct context so MIRLowering emits putDirect/getDirect
+    @lowering.shard_context = if @shard_direct_map
+      { map: @shard_direct_map, idx: @shard_direct_idx, key: @shard_direct_key }
+    end
+
+    # General case: lower to MIR, emit to Zig
+    mir_node = @lowering.lower(substituted)
+    @emitter.emit(mir_node)
+  end
+
+  # MIR-mode visit: returns MIR node instead of Zig string.
+  # Used by lower_* pipeline methods during MIR migration.
+  def visit_mir(node)
+    substituted = substitute_placeholders(node)
+    @lowering.lower(substituted)
+  end
+
+  # Lower an array of AST body statements to MIR nodes, with pipeline
+  # placeholder substitution. Used by side-effect operators (Tap, Each, Join)
+  # whose loop bodies contain multiple statements.
+  def visit_pipeline_body_mir(body_stmts, placeholder:)
+    with_pipeline_context(placeholder: placeholder) do
+      substituted = body_stmts.map { |stmt| substitute_placeholders(stmt) }
+      @lowering.lower_body(substituted)
+    end
+  end
+
+  private
+
+  # Check whether any statement in an AST array references the `_` placeholder.
+  # Used to decide whether to use `|__each_item|` vs `|_|` in while captures.
+  def ast_stmts_use_placeholder?(stmts)
+    stmts.any? { |s| ast_node_uses_placeholder?(s) }
+  end
+
+  def ast_node_uses_placeholder?(node)
+    return false unless node
+    return false if node.is_a?(String) || node.is_a?(Symbol) || node.is_a?(Numeric) ||
+                    node.is_a?(TrueClass) || node.is_a?(FalseClass)
+    return node.name == "_" if node.is_a?(AST::Identifier)
+    # Traverse known child fields that may contain sub-expressions/statements
+    [:left, :right, :value, :args, :object, :target, :index, :condition,
+     :then_branch, :else_branch, :do_branch, :body, :start, :finish].each do |field|
+      next unless node.respond_to?(field)
+      child = node.public_send(field)
+      case child
+      when Array  then return true if child.any? { |c| ast_node_uses_placeholder?(c) }
+      when NilClass, String, Symbol, Numeric, TrueClass, FalseClass, Hash then next
+      else return true if ast_node_uses_placeholder?(child)
+      end
+    end
+    false
+  end
+
+  # Recursively replace AST::Identifier("_") with the current placeholder name,
+  # and join param names with their Zig loop variable names.
+  # Returns the node (possibly modified) or a new synthetic Identifier.
+  def substitute_placeholders(node)
+    return node unless @placeholder_name || @acc_placeholder || @join_param_map || @soa_each_mode || !@named_bindings.empty?
+
+    # SOA EACH: _.field -> synthetic identifier __soa_field[__soa_i]
+    if @soa_each_mode && node.is_a?(AST::GetField) &&
+       node.target.is_a?(AST::Identifier) && node.target.name == "_"
+      @soa_needed_fields << node.field
+      new_id = AST::Identifier.new(node.token, "__soa_#{node.field}[__soa_i]")
+      copy_type_info(node, new_id)
+      return new_id
+    end
+
+    case node
+    when AST::Identifier
+      if node.name == "_" && @placeholder_name
+        new_id = AST::Identifier.new(node.token, @placeholder_name)
+        copy_type_info(node, new_id)
+        return new_id
+      elsif node.name == "acc" && @acc_placeholder
+        new_id = AST::Identifier.new(node.token, @acc_placeholder)
+        copy_type_info(node, new_id)
+        return new_id
+      elsif @join_param_map && @join_param_map[node.name]
+        new_id = AST::Identifier.new(node.token, @join_param_map[node.name])
+        copy_type_info(node, new_id)
+        return new_id
+      elsif !@named_bindings.empty? && (zig_var = @named_bindings[node.name])
+        new_id = AST::Identifier.new(node.token, zig_var)
+        copy_type_info(node, new_id)
+        return new_id
+      end
+    when AST::FuncCall
+      new_args = node.args.map { |a| substitute_placeholders(a) }
+      if new_args != node.args
+        new_call = AST::FuncCall.new(node.token, node.name, new_args)
+        copy_type_info(node, new_call)
+        new_call.zig_pattern = node.zig_pattern if node.respond_to?(:zig_pattern)
+        new_call.matched_stdlib_def = node.matched_stdlib_def if node.respond_to?(:matched_stdlib_def) && node.matched_stdlib_def
+        return new_call
+      end
+    when AST::MethodCall
+      new_target = substitute_placeholders(node.object)
+      new_args = node.args.map { |a| substitute_placeholders(a) }
+      if new_target != node.object || new_args != node.args
+        new_mc = AST::MethodCall.new(node.token, new_target, node.name, new_args)
+        copy_type_info(node, new_mc)
+        new_mc.zig_pattern = node.zig_pattern if node.respond_to?(:zig_pattern) && node.zig_pattern
+        new_mc.matched_stdlib_def = node.matched_stdlib_def if node.respond_to?(:matched_stdlib_def) && node.matched_stdlib_def
+        return new_mc
+      end
+    when AST::BinaryOp
+      new_left = substitute_placeholders(node.left)
+      new_right = substitute_placeholders(node.right)
+      if new_left != node.left || new_right != node.right
+        new_bin = AST::BinaryOp.new(node.token, new_left, node.op, new_right)
+        copy_type_info(node, new_bin)
+        new_bin.string_concat = node.string_concat if node.respond_to?(:string_concat) && node.string_concat
+        return new_bin
+      end
+    when AST::GetField
+      # SOA field-slice rewrite: _.field -> __soa_field[__soa_i]
+      if @soa_rewrite_active && node.target.is_a?(AST::Identifier) && node.target.name == "_"
+        @soa_needed_fields << node.field
+        soa_field = AST::Identifier.new(node.token, "__soa_#{node.field}")
+        soa_idx = AST::Identifier.new(node.token, "__soa_i")
+        new_gi = AST::GetIndex.new(node.token, soa_field, soa_idx)
+        copy_type_info(node, new_gi)
+        return new_gi
+      end
+      new_target = substitute_placeholders(node.target)
+      if new_target != node.target
+        new_gf = AST::GetField.new(node.token, new_target, node.field)
+        copy_type_info(node, new_gf)
+        return new_gf
+      end
+    when AST::GetIndex
+      new_target = substitute_placeholders(node.target)
+      new_index = substitute_placeholders(node.index)
+      if new_target != node.target || new_index != node.index
+        new_ia = AST::GetIndex.new(node.token, new_target, new_index)
+        copy_type_info(node, new_ia)
+        return new_ia
+      end
+    when AST::BindExpr
+      new_name = node.name.is_a?(AST::GetField) || node.name.is_a?(AST::GetIndex) ? substitute_placeholders(node.name) : node.name
+      new_value = substitute_placeholders(node.value)
+      if new_name != node.name || new_value != node.value
+        new_bind = AST::BindExpr.new(node.token, new_name, node.type, new_value)
+        new_bind.mode = node.mode
+        new_bind.reassign_cleanup = node.reassign_cleanup
+        copy_type_info(node, new_bind)
+        return new_bind
+      end
+    when AST::Assignment
+      new_name = node.name.is_a?(AST::GetField) || node.name.is_a?(AST::GetIndex) ? substitute_placeholders(node.name) : node.name
+      new_value = substitute_placeholders(node.value)
+      if new_name != node.name || new_value != node.value
+        new_assign = AST::Assignment.new(node.token, new_name, new_value)
+        new_assign.auto_lock = node.auto_lock
+        new_assign.field_pre_cleanup = node.field_pre_cleanup
+        copy_type_info(node, new_assign)
+        return new_assign
+      end
+    when AST::UnaryOp
+      new_operand = substitute_placeholders(node.operand)
+      if new_operand != node.operand
+        new_uo = AST::UnaryOp.new(node.token, node.op, new_operand)
+        copy_type_info(node, new_uo)
+        return new_uo
+      end
+    when AST::WithBlock
+      new_body = node.body.map { |stmt| substitute_placeholders(stmt) }
+      if new_body != node.body
+        new_with = AST::WithBlock.new(node.token, node.capabilities, new_body, node.deferred_drops)
+        copy_type_info(node, new_with)
+        return new_with
+      end
+    when AST::StructLit
+      new_fields = node.fields.transform_values { |v| substitute_placeholders(v) }
+      if new_fields != node.fields
+        new_sl = AST::StructLit.new(node.token, node.name, new_fields, node.storage, node.type_args)
+        copy_type_info(node, new_sl)
+        return new_sl
+      end
+    when AST::HashLit
+      new_pairs = node.pairs.transform_values { |v| substitute_placeholders(v) }
+      if new_pairs != node.pairs
+        new_hl = AST::HashLit.new(node.token, new_pairs, node.storage)
+        copy_type_info(node, new_hl)
+        return new_hl
+      end
+    when AST::Assert
+      new_cond = substitute_placeholders(node.condition)
+      if new_cond != node.condition
+        new_assert = AST::Assert.new(node.token, new_cond, node.message)
+        copy_type_info(node, new_assert)
+        return new_assert
+      end
+    end
+
+    node
+  end
+
+  def copy_type_info(src, dst)
+    dst.full_type = src.full_type if src.respond_to?(:full_type) && src.full_type && dst.respond_to?(:full_type=)
+    dst.type_info = src.type_info if src.respond_to?(:type_info) && src.type_info && dst.respond_to?(:type_info=)
+    dst.coerced_type = src.coerced_type if src.respond_to?(:coerced_type) && src.coerced_type && dst.respond_to?(:coerced_type=)
+    dst.storage = src.storage if src.respond_to?(:storage) && src.storage && dst.respond_to?(:storage=)
+    dst.var_used = src.var_used if src.respond_to?(:var_used) && dst.respond_to?(:var_used=)
+  end
+
+  public
+
+  # MIR entry point: returns MIR node tree for migrated pipeline operators.
+  # Returns nil for non-migrated operators (caller falls back to string path).
+  RANGE_FOLD_OPS = [AST::CountOp, AST::SumOp, AST::AverageOp, AST::MinOp,
+                    AST::MaxOp, AST::AnyOp, AST::AllOp, AST::FindOp].freeze
+
+  def lower_pipeline(node)
+    rhs = node.right
+    lhs = node.left
+    lhs_type = lhs.type_info
+
+    # SOA scalar operators have zero allocations -- field-slice path in the
+    # string generator is strictly better (no materialization overhead) on
+    # the Zig backend. The VM has no SoA layout (Value.List is uniform), so
+    # in BC mode, treat the SoA source as a regular list and dispatch through
+    # the structural fold path. This keeps both backends going through MIR
+    # nodes the bc_emitter can compile.
+    is_soa = lhs_type&.soa? && (lhs_type&.pool? || lhs_type&.list_collection? || lhs_type&.fixed_soa?)
+    scalar_op = RANGE_FOLD_OPS.any? { |t| rhs.is_a?(t) }
+    return nil if is_soa && scalar_op && @lowering.instance_variable_get(:@target) != :bc
+
+    # Range source with fold terminal: fuse into a single accumulating while loop.
+    if RANGE_FOLD_OPS.any? { |t| rhs.is_a?(t) }
+      range_chain = unwrap_range_chain(lhs)
+      return lower_range_fold(range_chain[:source], range_chain[:stages], rhs, node) if range_chain
+    end
+
+    # Range source with REDUCE: fuse into a single accumulating while loop.
+    if rhs.is_a?(AST::ReduceOp)
+      range_chain = unwrap_range_chain(lhs)
+      return lower_range_reduce(range_chain[:source], range_chain[:stages], rhs) if range_chain
+    end
+
+    # Binding-unnest chain: source AS @u s> UNNEST expr [AS @o] s> [stages] s> fold
+    # Must be fused into nested loops - materializing UNNEST would lose the @u context.
+    if (bchain = unwrap_binding_unnest_chain(node))
+      return lower_binding_chain(bchain, node)
+    end
+
+    case rhs
+    when AST::CountOp   then lower_count(lhs, rhs, node)
+    when AST::SumOp     then lower_sum(lhs, rhs, node)
+    when AST::AverageOp then lower_average(lhs, rhs, node)
+    when AST::MinOp     then lower_min(lhs, rhs, node)
+    when AST::MaxOp     then lower_max(lhs, rhs, node)
+    when AST::AnyOp     then lower_any(lhs, rhs, node)
+    when AST::AllOp     then lower_all(lhs, rhs, node)
+    when AST::FindOp    then lower_find(lhs, rhs, node)
+    when AST::WhereOp   then lower_where(lhs, rhs.expression, node)
+    when AST::SelectOp  then lower_select(lhs, rhs.expression, node)
+    when AST::LimitOp   then lower_limit(lhs, rhs, node)
+    when AST::TakeWhileOp then lower_take_while(lhs, rhs.expression, node)
+    when AST::SkipOp    then lower_skip(lhs, rhs, node)
+    when AST::DistinctOp then lower_distinct(lhs, rhs, node)
+    when AST::UnnestOp  then lower_unnest(lhs, rhs, node)
+    when AST::ReduceOp  then lower_reduce(lhs, rhs, node)
+    when AST::WindowOp       then lower_window(lhs, rhs, node)
+    when AST::BatchWindowOp
+      # Zig keeps the legacy template (battle-tested, has time-based
+      # semantics via CheatLib.BatchWindow). BC has no equivalent runtime
+      # type, so route to a structural slice-based lowering on BC only.
+      if @lowering.instance_variable_get(:@target) == :bc
+        lower_batch_window(lhs, rhs, node)
+      else
+        nil
+      end
+    when AST::OrderByOp      then lower_order_by(lhs, rhs, node)
+    when AST::IndexOp   then lower_index(lhs, rhs.expression, node)
+    when AST::JoinOp    then lower_join(lhs, rhs, node)
+    when AST::TapOp     then lower_tap(lhs, rhs, node)
+    when AST::EachOp    then lower_each(lhs, rhs, node)
+    when AST::ConcurrentOp then lower_concurrent(lhs, rhs, node)
+    else nil
+    end
+  end
+
+  # Infrastructure: builds labeled block with source eval + materialization,
+  # yields to operator body, returns MIR::BlockExpr.
+  def lower_pipeline_block(list_node)
+    label = next_pipe_label
+    source_mir = visit_mir(list_node)
+    @current_pipe_label = label
+
+    lhs_type = list_node.type_info
+    mat_stmts, items_ident = build_pipe_items_mir(lhs_type)
+
+    body_stmts = yield(items_ident, label)
+
+    MIR::BlockExpr.new(label, [
+      MIR::Let.new("pipe_src_list", source_mir, false, nil, nil),
+      *mat_stmts,
+      *body_stmts
+    ])
+  end
+
+  # Build materialization MIR nodes. Returns [stmts_array, items_ident_string].
+  # Pool/sharded sources materialize live items into a temp buffer.
+  def build_pipe_items_mir(lhs_type)
+    # In BC mode the VM has no SoA layout; treat @soa lists as regular lists
+    # so the structural ItemsAccess path below applies uniformly.
+    bc_mode = @lowering.instance_variable_get(:@target) == :bc
+    if lhs_type&.pool? && lhs_type&.sharded?
+      [build_mat_sharded_pool(lhs_type), "pipe_items"]
+    elsif lhs_type&.pool? && lhs_type&.soa? && !bc_mode
+      [build_mat_soa_pool(lhs_type), "pipe_items"]
+    elsif lhs_type&.pool? && !bc_mode
+      [build_mat_pool(lhs_type), "pipe_items"]
+    elsif (lhs_type&.list_collection? || lhs_type&.fixed_soa?) && lhs_type&.soa? && !bc_mode
+      [build_mat_soa_list(lhs_type), "pipe_items"]
+    elsif lhs_type&.list_collection? && lhs_type&.sharded? && !bc_mode
+      [build_mat_sharded_list(lhs_type), "pipe_items"]
+    elsif lhs_type&.set_collection?
+      [build_mat_set(lhs_type), "pipe_items"]
+    else
+      # Plain array/list: structural ItemsAccess(safe: true) emits the same
+      # comptime hasField pattern (with [0..] slice coercion in the else
+      # branch). Resolves to identity in the VM since Value.List has no
+      # ArrayList/raw-slice distinction.
+      init = MIR::ItemsAccess.new(MIR::Ident.new("pipe_src_list"), true)
+      [[MIR::Let.new("pipe_items", init, false, nil, nil)], "pipe_items"]
+    end
+  end
+
+  private
+
+  HEAP_ALLOC = "rt.heapAlloc()"
+
+  # Convert allocator symbol to Zig string (for InlineZig content only).
+  def alloc_zig_str(sym)
+    case sym
+    when :heap  then "rt.heapAlloc()"
+    when :frame then "rt.frameAlloc()"
+    else "rt.heapAlloc()"
+    end
+  end
+
+  # stdlib_def for InlineZig nodes that pass an allocator (borrows only).
+  ALLOC_REF_DEF = { borrows: :all }.freeze
+  # stdlib_def for InlineZig nodes that allocate via the passed allocator.
+  ALLOCATING_DEF = { allocates: true }.freeze
+
+  # Common: var pipe_mat = ArrayListUnmanaged(T){}; defer pipe_mat.deinit(alloc);
+  def mat_var_and_defer(elem_zig)
+    # Use a structural MIR node so both backends can dispatch. The Zig
+    # backend's ContainerInit emitter produces `@as(std.ArrayListUnmanaged(T),
+    # .empty)` for :list_empty + this zig_type prefix, matching what the
+    # legacy InlineZig string used to produce. The VM's bc_emitter compiles
+    # ContainerInit :list_empty to LOAD_CONST [:empty_list], giving it a real
+    # Value.List to grow via list-push.
+    var_decl = MIR::Let.new("pipe_mat",
+      MIR::ContainerInit.new("std.ArrayListUnmanaged(#{elem_zig})",
+        :list_empty, :heap, nil),
+      true, nil, nil)
+    defer = MIR::DeferStmt.new(
+      MIR::MethodCall.new(MIR::Ident.new("pipe_mat"), "deinit",
+        [MIR::AllocatorRef.new(:heap)], false)
+    )
+    [var_decl, defer]
+  end
+
+  # Common: const pipe_items = pipe_mat.items;
+  def mat_items_let
+    MIR::Let.new("pipe_items", MIR::FieldGet.new(MIR::Ident.new("pipe_mat"), "items"), false, nil, nil)
+  end
+
+  # try pipe_mat.append(rt.heapAlloc(), value_expr)
+  def mat_append(value_expr)
+    MIR::ExprStmt.new(
+      MIR::MethodCall.new(MIR::Ident.new("pipe_mat"), "append",
+        [MIR::AllocatorRef.new(:heap), value_expr], true), false)
+  end
+
+  # try pipe_mat.appendSlice(rt.heapAlloc(), slice_expr)
+  def mat_append_slice(slice_expr)
+    MIR::ExprStmt.new(
+      MIR::MethodCall.new(MIR::Ident.new("pipe_mat"), "appendSlice",
+        [MIR::AllocatorRef.new(:heap), slice_expr], true), false)
+  end
+
+  # Sharded pool: for each shard, for each slot, append alive values.
+  def build_mat_sharded_pool(lhs_type)
+    elem_zig = lhs_type.element_type.zig_type
+    n = lhs_type.shard_count
+    var_decl, defer = mat_var_and_defer(elem_zig)
+
+    inner_loop = MIR::ForStmt.new(
+      MIR::FieldGet.new(
+        MIR::IndexGet.new(MIR::FieldGet.new(MIR::Ident.new("pipe_src_list"), "shards"),
+                          MIR::Ident.new("__psi")),
+        "slots"),
+      "*__pslot",
+      [MIR::IfStmt.new(
+        MIR::FieldGet.new(MIR::Ident.new("__pslot"), "alive"),
+        [mat_append(MIR::FieldGet.new(MIR::Ident.new("__pslot"), "value"))],
+        nil)],
+      nil)
+
+    outer_loop = MIR::ForStmt.new(
+      MIR::IterRange.new(MIR::Lit.new("0"), MIR::Lit.new(n.to_s)), "__psi", [inner_loop], nil)
+
+    [var_decl, defer, outer_loop, mat_items_let]
+  end
+
+  # SOA pool: iterate data.len, check alive[i], append data.get(i).
+  def build_mat_soa_pool(lhs_type)
+    elem_zig = lhs_type.element_type.zig_type
+    var_decl, defer = mat_var_and_defer(elem_zig)
+
+    value_expr = MIR::MethodCall.new(
+      MIR::FieldGet.new(MIR::Ident.new("pipe_src_list"), "data"),
+      "get", [MIR::Ident.new("__psi")], false)
+    alive_check = MIR::IndexGet.new(
+      MIR::FieldGet.new(MIR::Ident.new("pipe_src_list"), "alive"),
+      MIR::Ident.new("__psi"))
+
+    loop_node = MIR::ForStmt.new(
+      MIR::IterRange.new(MIR::Lit.new("0"), MIR::Cast.new(MIR::ListLength.new(MIR::FieldGet.new(MIR::Ident.new("pipe_src_list"), "data")), "usize", :intCast)),
+      "__psi",
+      [MIR::IfStmt.new(alive_check, [mat_append(value_expr)], nil)],
+      nil)
+
+    [var_decl, defer, loop_node, mat_items_let]
+  end
+
+  # Plain pool: iterate slots, check alive, append value.
+  def build_mat_pool(lhs_type)
+    elem_zig = lhs_type.element_type.zig_type
+    var_decl, defer = mat_var_and_defer(elem_zig)
+
+    loop_node = MIR::ForStmt.new(
+      MIR::FieldGet.new(MIR::Ident.new("pipe_src_list"), "slots"),
+      "*__pslot",
+      [MIR::IfStmt.new(
+        MIR::FieldGet.new(MIR::Ident.new("__pslot"), "alive"),
+        [mat_append(MIR::FieldGet.new(MIR::Ident.new("__pslot"), "value"))],
+        nil)],
+      nil)
+
+    [var_decl, defer, loop_node, mat_items_let]
+  end
+
+  # Set: materialize keys into a temp slice via keyIterator (deref ?*T pointers).
+  def build_mat_set(lhs_type)
+    elem_zig = lhs_type.element_type.zig_type
+    var_decl, defer = mat_var_and_defer(elem_zig)
+
+    iter_let = MIR::Let.new("__skit",
+      MIR::MethodCall.new(MIR::Ident.new("pipe_src_list"), "keyIterator", [], false),
+      true, nil, nil)
+    deref = MIR::FieldGet.new(MIR::Ident.new("__skptr"), "*")
+    loop_node = MIR::WhileStmt.new(
+      MIR::MethodCall.new(MIR::Ident.new("__skit"), "next", [], false),
+      [mat_append(deref)],
+      "__skptr", nil)
+
+    [var_decl, defer, iter_let, loop_node, mat_items_let]
+  end
+
+  # SOA list: iterate data.len, append data.get(i).
+  def build_mat_soa_list(lhs_type)
+    elem_zig = lhs_type.element_type.zig_type
+    var_decl, defer = mat_var_and_defer(elem_zig)
+
+    value_expr = MIR::MethodCall.new(
+      MIR::FieldGet.new(MIR::Ident.new("pipe_src_list"), "data"),
+      "get", [MIR::Ident.new("__psi")], false)
+
+    loop_node = MIR::ForStmt.new(
+      MIR::IterRange.new(MIR::Lit.new("0"), MIR::Cast.new(MIR::ListLength.new(MIR::FieldGet.new(MIR::Ident.new("pipe_src_list"), "data")), "usize", :intCast)),
+      "__psi",
+      [mat_append(value_expr)],
+      nil)
+
+    [var_decl, defer, loop_node, mat_items_let]
+  end
+
+  # Sharded list: iterate shards, appendSlice each shard's items.
+  def build_mat_sharded_list(lhs_type)
+    elem_zig = lhs_type.element_type.zig_type
+    n = lhs_type.shard_count
+    var_decl, defer = mat_var_and_defer(elem_zig)
+
+    shard_items = MIR::FieldGet.new(
+      MIR::IndexGet.new(MIR::FieldGet.new(MIR::Ident.new("pipe_src_list"), "shards"),
+                        MIR::Ident.new("__psi")),
+      "items")
+
+    loop_node = MIR::ForStmt.new(
+      MIR::IterRange.new(MIR::Lit.new("0"), MIR::Lit.new(n.to_s)), "__psi",
+      [mat_append_slice(shard_items)],
+      nil)
+
+    [var_decl, defer, loop_node, mat_items_let]
+  end
+
+  public
+
+  # Visit pipeline expression in MIR mode with placeholder substitution.
+  def visit_pipeline_expr_mir(list_node, expr_node, placeholder = "it")
+    with_pipeline_context(placeholder: placeholder) do
+      visit_mir(expr_node)
+    end
+  end
+
+  # --- Scalar accumulator lowerings (Phase 1) ---
+
+  def lower_count(list_node, count_node, _smooth_node)
+    pred_mir = visit_pipeline_expr_mir(list_node, count_node.expression)
+    lower_pipeline_block(list_node) do |items, label|
+      [
+        MIR::Let.new("count_result", MIR::Lit.new("0"), true, "i64", nil),
+        MIR::ForStmt.new(MIR::Ident.new(items), "it", [
+          MIR::IfStmt.new(pred_mir, [
+            MIR::Set.new(MIR::Ident.new("count_result"),
+              MIR::BinOp.new("+", MIR::Ident.new("count_result"), MIR::Lit.new("1")))
+          ], nil)
+        ], nil),
+        MIR::BreakStmt.new(label, MIR::Ident.new("count_result"))
+      ]
+    end
+  end
+
+  def lower_sum(list_node, sum_node, _smooth_node)
+    expr_mir = visit_pipeline_expr_mir(list_node, sum_node.expression)
+    lower_pipeline_block(list_node) do |items, label|
+      [
+        MIR::Let.new("sum_result", MIR::Lit.new("0"), true, "f64", nil),
+        MIR::ForStmt.new(MIR::Ident.new(items), "it", [
+          MIR::Set.new(MIR::Ident.new("sum_result"),
+            MIR::BinOp.new("+", MIR::Ident.new("sum_result"), expr_mir))
+        ], nil),
+        MIR::BreakStmt.new(label, MIR::Ident.new("sum_result"))
+      ]
+    end
+  end
+
+  def lower_average(list_node, avg_node, _smooth_node)
+    expr_mir = visit_pipeline_expr_mir(list_node, avg_node.expression)
+    lower_pipeline_block(list_node) do |items, label|
+      [
+        MIR::Let.new("avg_sum", MIR::Lit.new("0"), true, "f64", nil),
+        MIR::Let.new("avg_count", MIR::FieldGet.new(MIR::Ident.new(items), "len"), false, nil, nil),
+        MIR::ForStmt.new(MIR::Ident.new(items), "it", [
+          MIR::Set.new(MIR::Ident.new("avg_sum"),
+            MIR::BinOp.new("+", MIR::Ident.new("avg_sum"), expr_mir))
+        ], nil),
+        MIR::BreakStmt.new(label,
+          MIR::Conditional.new(
+            MIR::BinOp.new("==", MIR::Ident.new("avg_count"), MIR::Lit.new("0")),
+            MIR::Cast.new(MIR::Lit.new("0"), "f64", :as),
+            MIR::BinOp.new("/", MIR::Ident.new("avg_sum"),
+              MIR::Cast.new(MIR::Ident.new("avg_count"), "f64", :floatFromInt))))
+      ]
+    end
+  end
+
+  def lower_min(list_node, min_node, _smooth_node)
+    expr_mir = visit_pipeline_expr_mir(list_node, min_node.expression)
+    lower_pipeline_block(list_node) do |items, label|
+      [
+        MIR::IfStmt.new(
+          MIR::BinOp.new("==",
+            MIR::FieldGet.new(MIR::Ident.new(items), "len"),
+            MIR::Lit.new("0")),
+          [MIR::Panic.new("MIN applied to empty list")],
+          nil),
+        MIR::Let.new("min_result", MIR::TypeSentinel.new(:max, "f64"),
+          true, "f64", nil),
+        MIR::ForStmt.new(MIR::Ident.new(items), "it", [
+          MIR::Let.new("min_val", expr_mir, false, nil, nil),
+          MIR::IfStmt.new(
+            MIR::BinOp.new("<", MIR::Ident.new("min_val"), MIR::Ident.new("min_result")),
+            [MIR::Set.new(MIR::Ident.new("min_result"), MIR::Ident.new("min_val"))],
+            nil)
+        ], nil),
+        MIR::BreakStmt.new(label, MIR::Ident.new("min_result"))
+      ]
+    end
+  end
+
+  def lower_max(list_node, max_node, _smooth_node)
+    expr_mir = visit_pipeline_expr_mir(list_node, max_node.expression)
+    lower_pipeline_block(list_node) do |items, label|
+      [
+        MIR::IfStmt.new(
+          MIR::BinOp.new("==",
+            MIR::FieldGet.new(MIR::Ident.new(items), "len"),
+            MIR::Lit.new("0")),
+          [MIR::Panic.new("MAX applied to empty list")],
+          nil),
+        MIR::Let.new("max_result", MIR::TypeSentinel.new(:min, "f64"),
+          true, "f64", nil),
+        MIR::ForStmt.new(MIR::Ident.new(items), "it", [
+          MIR::Let.new("max_val", expr_mir, false, nil, nil),
+          MIR::IfStmt.new(
+            MIR::BinOp.new(">", MIR::Ident.new("max_val"), MIR::Ident.new("max_result")),
+            [MIR::Set.new(MIR::Ident.new("max_result"), MIR::Ident.new("max_val"))],
+            nil)
+        ], nil),
+        MIR::BreakStmt.new(label, MIR::Ident.new("max_result"))
+      ]
+    end
+  end
+
+  def lower_any(list_node, any_node, _smooth_node)
+    pred_mir = visit_pipeline_expr_mir(list_node, any_node.expression)
+    lower_pipeline_block(list_node) do |items, label|
+      [
+        MIR::Let.new("any_result", MIR::Lit.new("false"), true, nil, nil),
+        MIR::ForStmt.new(MIR::Ident.new(items), "it", [
+          MIR::IfStmt.new(pred_mir, [
+            MIR::Set.new(MIR::Ident.new("any_result"), MIR::Lit.new("true")),
+            MIR::BreakStmt.new(nil, nil)
+          ], nil)
+        ], nil),
+        MIR::BreakStmt.new(label, MIR::Ident.new("any_result"))
+      ]
+    end
+  end
+
+  def lower_all(list_node, all_node, _smooth_node)
+    pred_mir = visit_pipeline_expr_mir(list_node, all_node.expression)
+    lower_pipeline_block(list_node) do |items, label|
+      [
+        MIR::Let.new("all_result", MIR::Lit.new("true"), true, nil, nil),
+        MIR::ForStmt.new(MIR::Ident.new(items), "it", [
+          MIR::IfStmt.new(MIR::UnaryOp.new("!", pred_mir), [
+            MIR::Set.new(MIR::Ident.new("all_result"), MIR::Lit.new("false")),
+            MIR::BreakStmt.new(nil, nil)
+          ], nil)
+        ], nil),
+        MIR::BreakStmt.new(label, MIR::Ident.new("all_result"))
+      ]
+    end
+  end
+
+  def lower_find(list_node, find_node, _smooth_node)
+    elem_zig_type = transpile_type(list_node.full_type.element_type.resolved.to_s)
+    pred_mir = visit_pipeline_expr_mir(list_node, find_node.expression)
+    lower_pipeline_block(list_node) do |items, label|
+      [
+        MIR::Let.new("find_result",
+          MIR::Undef.new(nil), true, elem_zig_type, nil),
+        MIR::Let.new("find_found", MIR::Lit.new("false"), true, nil, nil),
+        MIR::ForStmt.new(MIR::Ident.new(items), "it", [
+          MIR::Let.new("find_matches", pred_mir, false, nil, nil),
+          MIR::IfStmt.new(MIR::Ident.new("find_matches"), [
+            MIR::Set.new(MIR::Ident.new("find_result"), MIR::Ident.new("it")),
+            MIR::Set.new(MIR::Ident.new("find_found"), MIR::Lit.new("true")),
+            MIR::BreakStmt.new(nil, nil)
+          ], nil)
+        ], nil),
+        MIR::BreakStmt.new(label,
+          MIR::Conditional.new(
+            MIR::Ident.new("find_found"),
+            MIR::Cast.new(MIR::Ident.new("find_result"), "?#{elem_zig_type}", :as),
+            MIR::Lit.new("null")))
+      ]
+    end
+  end
+
+  # --- Filter/transform operator lowerings (Phase 2) ---
+
+  def pipeline_alloc(smooth_node)
+    smooth_node.respond_to?(:storage) && smooth_node.storage == :heap ? :heap : :frame
+  end
+
+  def lower_where(list_node, expr_node, smooth_node)
+    elem_type = list_node.full_type.element_type.resolved.to_s
+    elem_zig = transpile_type(elem_type)
+    alloc = pipeline_alloc(smooth_node)
+    pred_mir = visit_pipeline_expr_mir(list_node, expr_node)
+    lower_pipeline_block(list_node) do |items, label|
+      [
+        MIR::Let.new("res_list",
+          MIR::MakeList.new(elem_zig, [], alloc), true, nil, nil),
+        MIR::ForStmt.new(MIR::Ident.new(items), "it", [
+          MIR::Let.new("matches", pred_mir, false, nil, nil),
+          MIR::IfStmt.new(MIR::Ident.new("matches"), [
+            MIR::ExprStmt.new(MIR::MethodCall.new(
+              MIR::Ident.new("res_list"), "append",
+              [MIR::AllocatorRef.new(alloc), MIR::Ident.new("it")], true), nil)
+          ], nil)
+        ], nil),
+        MIR::BreakStmt.new(label, MIR::Ident.new("res_list"))
+      ]
+    end
+  end
+
+  def lower_select(list_node, expr_node, smooth_node)
+    res_type = expr_node.full_type
+    res_zig = transpile_type(res_type)
+    alloc = pipeline_alloc(smooth_node)
+    expr_mir = visit_pipeline_expr_mir(list_node, expr_node)
+    lower_pipeline_block(list_node) do |items, label|
+      [
+        MIR::Let.new("res_list",
+          MIR::MakeList.new(res_zig, [], alloc), true, nil, nil),
+        MIR::ForStmt.new(MIR::Ident.new(items), "it", [
+          MIR::Let.new("val", expr_mir, false, nil, nil),
+          MIR::ExprStmt.new(MIR::MethodCall.new(
+            MIR::Ident.new("res_list"), "append",
+            [MIR::AllocatorRef.new(alloc), MIR::Ident.new("val")], true), nil)
+        ], nil),
+        MIR::BreakStmt.new(label, MIR::Ident.new("res_list"))
+      ]
+    end
+  end
+
+  def lower_limit(list_node, limit_node, smooth_node)
+    elem_type = list_node.full_type.element_type.resolved.to_s
+    elem_zig = transpile_type(elem_type)
+    alloc = pipeline_alloc(smooth_node)
+    count_mir = visit_mir(limit_node.count)
+    lower_pipeline_block(list_node) do |items, label|
+      [
+        MIR::Let.new("lim_requested",
+          MIR::Cast.new(count_mir, "usize", :intCast), false, nil, nil),
+        MIR::Let.new("lim_actual",
+          MIR::Call.new("@min", [MIR::Ident.new("lim_requested"),
+                                 MIR::ListLength.new(MIR::Ident.new(items))], false),
+          false, nil, nil),
+        MIR::BreakStmt.new(label,
+          MIR::Call.new("CheatLib.makeList",
+            [MIR::Ident.new(elem_zig), MIR::AllocatorRef.new(alloc),
+             MIR::SliceExpr.new(MIR::Ident.new(items),
+               MIR::Lit.new("0"), MIR::Ident.new("lim_actual"), nil)],
+            true))
+      ]
+    end
+  end
+
+  def lower_take_while(list_node, expr_node, smooth_node)
+    elem_type = list_node.full_type.element_type.resolved.to_s
+    elem_zig = transpile_type(elem_type)
+    alloc = pipeline_alloc(smooth_node)
+    pred_mir = visit_pipeline_expr_mir(list_node, expr_node)
+    lower_pipeline_block(list_node) do |items, label|
+      [
+        MIR::Let.new("res_list",
+          MIR::MakeList.new(elem_zig, [], alloc), true, nil, nil),
+        MIR::ForStmt.new(MIR::Ident.new(items), "it", [
+          MIR::Let.new("matches", pred_mir, false, nil, nil),
+          MIR::IfStmt.new(MIR::UnaryOp.new("!", MIR::Ident.new("matches")),
+            [MIR::BreakStmt.new(nil, nil)], nil),
+          MIR::ExprStmt.new(MIR::MethodCall.new(
+            MIR::Ident.new("res_list"), "append",
+            [MIR::AllocatorRef.new(alloc), MIR::Ident.new("it")], true), nil)
+        ], nil),
+        MIR::BreakStmt.new(label, MIR::Ident.new("res_list"))
+      ]
+    end
+  end
+
+  def lower_skip(list_node, skip_node, _smooth_node)
+    label = next_pipe_label
+    source_mir = visit_mir(list_node)
+    @current_pipe_label = label
+    count_mir = visit_mir(skip_node.count)
+
+    MIR::BlockExpr.new(label, [
+      MIR::Let.new("__skip_src", source_mir, false, nil, nil),
+      MIR::Let.new("__skip_items",
+        MIR::ItemsAccess.new(MIR::Ident.new("__skip_src"), true), false, nil, nil),
+      MIR::Let.new("skip_requested",
+        MIR::Cast.new(count_mir, "usize", :intCast), false, nil, nil),
+      MIR::Let.new("skip_actual",
+        MIR::Call.new("@min", [MIR::Ident.new("skip_requested"),
+                               MIR::ListLength.new(MIR::Ident.new("__skip_items"))], false),
+        false, nil, nil),
+      MIR::BreakStmt.new(label,
+        MIR::SliceExpr.new(MIR::Ident.new("__skip_items"),
+                           MIR::Ident.new("skip_actual"), nil, nil))
+    ])
+  end
+
+  def lower_distinct(list_node, distinct_node, smooth_node)
+    # smooth_node.full_type is T[]@set; element_type gives the key type T.
+    elem_zig = transpile_type(smooth_node.full_type.element_type.resolved.to_s)
+    set_zig  = "CheatLib.Set(#{elem_zig})"
+    alloc    = :heap  # Set.insert/deinit always use heap (HashMap needs real allocator)
+    expr_mir = visit_pipeline_expr_mir(list_node, distinct_node.expression)
+
+    # Use unwrap_range_chain to detect stream sources: list_node may be a SMOOTH
+    # chain (e.g. counter s> LIMIT 9) whose annotated full_type is already a
+    # materialized list, so checking lhs_ti.dynamic_stream? is insufficient.
+    range_chain = unwrap_range_chain(list_node)
+    if range_chain
+
+      p = build_lazy_range_prefix(range_chain[:source], range_chain[:stages])
+      item_var     = p[:item_var]
+      range_next   = MIR::MethodCall.new(MIR::Ident.new(p[:source_name]), p[:next_method], [], true)
+      key_expr_mir = with_pipeline_context(placeholder: item_var) { visit_mir(distinct_node.expression) }
+      label        = next_pipe_label
+
+      source_ti    = range_chain[:source].type_info
+      defer_deinit = source_ti&.bounded_stream? ?
+        MIR::DeferStmt.new(MIR::MethodCall.new(MIR::Ident.new(p[:source_name]), "deinit", [], false)) :
+        nil
+
+      return MIR::BlockExpr.new(label, [
+        *([p[:range_let]].compact), *p[:outer_stmts],
+        MIR::Let.new("dist_set", MIR::ContainerInit.new(set_zig, :set_empty, nil, nil), true, nil, nil),
+        *([defer_deinit].compact),
+        MIR::WhileStmt.new(range_next,
+          [*p[:stage_stmts],
+           MIR::Let.new("dist_key", key_expr_mir, false, nil, nil),
+           MIR::ExprStmt.new(MIR::MethodCall.new(
+             MIR::Ident.new("dist_set"), "insert",
+             [MIR::AllocatorRef.new(alloc),
+              MIR::Ident.new("dist_key")], true), nil)],
+          p[:initial_capture], nil, nil, nil),
+        MIR::BreakStmt.new(label, MIR::Ident.new("dist_set"))
+      ])
+    end
+
+    lower_pipeline_block(list_node) do |items, label|
+      [
+        MIR::Let.new("dist_set", MIR::ContainerInit.new(set_zig, :set_empty, nil, nil), true, nil, nil),
+        MIR::ForStmt.new(MIR::Ident.new(items), "it", [
+          MIR::Let.new("dist_key", expr_mir, false, nil, nil),
+          MIR::ExprStmt.new(MIR::MethodCall.new(
+            MIR::Ident.new("dist_set"), "insert",
+            [MIR::AllocatorRef.new(alloc),
+             MIR::Ident.new("dist_key")], true), nil)
+        ], nil),
+        MIR::BreakStmt.new(label, MIR::Ident.new("dist_set"))
+      ]
+    end
+  end
+
+  # --- Complex operator lowerings (Phase 3) ---
+
+  def lower_unnest(list_node, unnest_node, smooth_node)
+    inner_elem_type = unnest_node.full_type.element_type.resolved.to_s
+    inner_zig = transpile_type(inner_elem_type)
+    alloc = pipeline_alloc(smooth_node)
+    expr_mir = visit_pipeline_expr_mir(list_node, unnest_node.expression)
+    lower_pipeline_block(list_node) do |items, label|
+      [
+        MIR::Let.new("res_list",
+          MIR::MakeList.new(inner_zig, [], alloc), true, nil, nil),
+        MIR::ForStmt.new(MIR::Ident.new(items), "it", [
+          MIR::Let.new("unn_inner", expr_mir, false, nil, nil),
+          MIR::Let.new("unn_inner_items",
+            MIR::ItemsAccess.new(MIR::Ident.new("unn_inner"), true), false, nil, nil),
+          MIR::ForStmt.new(MIR::Ident.new("unn_inner_items"), "inner_it", [
+            MIR::ExprStmt.new(MIR::MethodCall.new(
+              MIR::Ident.new("res_list"), "append",
+              [MIR::AllocatorRef.new(alloc), MIR::Ident.new("inner_it")], true), nil)
+          ], nil)
+        ], nil),
+        MIR::BreakStmt.new(label, MIR::Ident.new("res_list"))
+      ]
+    end
+  end
+
+  def lower_reduce(list_node, reduce_node, _smooth_node)
+    acc_zig = transpile_type(reduce_node.full_type)
+    init_mir = visit_mir(reduce_node.initial_value)
+    expr_mir = with_pipeline_context(placeholder: "it", acc: "acc") {
+      visit_mir(reduce_node.expression)
+    }
+    lower_pipeline_block(list_node) do |items, label|
+      [
+        MIR::Let.new("acc", init_mir, true, acc_zig, nil),
+        MIR::ForStmt.new(MIR::Ident.new(items), "it", [
+          MIR::Set.new(MIR::Ident.new("acc"), expr_mir)
+        ], nil),
+        MIR::BreakStmt.new(label, MIR::Ident.new("acc"))
+      ]
+    end
+  end
+
+  def lower_window(list_node, window_node, smooth_node)
+    expr_type_str = (window_node.expression.full_type || window_node.expression.resolved_type).to_s
+    res_zig = transpile_type(expr_type_str)
+    alloc = pipeline_alloc(smooth_node)
+    size_mir = visit_mir(window_node.size)
+    expr_mir = with_pipeline_context(placeholder: "window_slice") {
+      visit_mir(window_node.expression)
+    }
+    lower_pipeline_block(list_node) do |items, label|
+      [
+        MIR::Let.new("res_list",
+          MIR::MakeList.new(res_zig, [], alloc), true, nil, nil),
+        MIR::ScopeBlock.new([
+          MIR::Let.new("__w_size",
+            MIR::Cast.new(size_mir, "usize", :intCast), false, nil, nil),
+          MIR::IfStmt.new(
+            MIR::BinOp.new(">=",
+              MIR::FieldGet.new(MIR::Ident.new(items), "len"),
+              MIR::Ident.new("__w_size")),
+            [
+              MIR::Let.new("__wi", MIR::Lit.new("0"), true, "usize", nil),
+              MIR::WhileStmt.new(
+                MIR::BinOp.new("<=",
+                  MIR::Ident.new("__wi"),
+                  MIR::BinOp.new("-",
+                    MIR::FieldGet.new(MIR::Ident.new(items), "len"),
+                    MIR::Ident.new("__w_size"))),
+                [
+                  MIR::Let.new("window_slice",
+                    MIR::SliceExpr.new(MIR::Ident.new(items),
+                      MIR::Ident.new("__wi"),
+                      MIR::BinOp.new("+", MIR::Ident.new("__wi"), MIR::Ident.new("__w_size")),
+                      nil),
+                    false, nil, nil),
+                  MIR::Let.new("val", expr_mir, false, nil, nil),
+                  MIR::ExprStmt.new(MIR::MethodCall.new(
+                    MIR::Ident.new("res_list"), "append",
+                    [MIR::AllocatorRef.new(alloc), MIR::Ident.new("val")],
+                    true), nil)
+                ],
+                nil,
+                MIR::Set.new(MIR::Ident.new("__wi"),
+                  MIR::BinOp.new("+", MIR::Ident.new("__wi"), MIR::Lit.new("1"))),
+                nil, nil)
+            ], nil)
+        ]),
+        MIR::BreakStmt.new(label, MIR::Ident.new("res_list"))
+      ]
+    end
+  end
+
+  # WINDOW(size: N [, time: 'Xs']) batch/tumbling window:
+  # accumulate items into a batch, fire `expr(batch)` whenever the
+  # batch reaches `size`, and flush a final partial batch at end.
+  # Time-only / size+time semantics: the BC backend is synchronous, so
+  # there is no time-based mid-stream flush; the final flush captures
+  # any accumulated tail. Tests using time-only windows (e.g. test 7
+  # of 243_batch_window) rely on the final flush for a single batch.
+  def lower_batch_window(list_node, bw_node, smooth_node)
+    expr_type_str = (bw_node.expression.full_type || bw_node.expression.resolved_type).to_s
+    res_zig = transpile_type(expr_type_str)
+
+    lhs_type = list_node.type_info
+    elem_type = if lhs_type&.open_stream? || lhs_type&.dynamic_stream?
+# ... file truncated after line 1068; original file has 3275 lines ...
+```
+
+A new unit test was added and is failing.
+A new failing unit test was added; use it to understand expected behavior.
+
+New test file: spec/generated/pipeline_host_spec.rb
+```ruby
+# Generated failing test for Cleopatra mutant PipelineHost.initialize.
+# Mutation under test: renamed variable: 'lowering' -> 'emitter'
+require "minitest/autorun"
+
+class GeneratedInitializeTest < Minitest::Test
+  def test_initialize_regression
+    flunk "Regression for PipelineHost.initialize: renamed variable: 'lowering' -> 'emitter'"
+  end
+end
+```
+
+Something wrong in `initialize`. renamed variable: 'lowering' -> 'emitter'
+
+Fix it.
+
+Return ONLY the corrected function `initialize` in a ```ruby block.
+

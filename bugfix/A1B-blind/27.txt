@@ -1,0 +1,11 @@
+```ruby
+def visit_NextExpr
+  case self.node
+  when SemanticAnnotator::Next
+    # existing handling for Next expression
+    # (replace with actual implementation)
+  else
+    raise ArgumentError, "Unsupported node type: #{self.node.inspect}"
+  end
+end
+```
