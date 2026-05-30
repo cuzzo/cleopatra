@@ -130,7 +130,7 @@ Current model/context comparisons are tracked in
 ### In progress
 
  - [x] Test against Qwen2.5-Coder-32B blind.
- - [ ] Test against a ~300B model (less apples to apples since Qwen does not have a 300B model).
+ - [x] Test against a ~300B model (less apples to apples since Qwen does not have a 300B model).
 
 ## Stage 2:
 
